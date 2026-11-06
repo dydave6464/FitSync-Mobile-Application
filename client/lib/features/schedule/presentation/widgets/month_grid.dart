@@ -110,11 +110,29 @@ class ScheduleDayCell extends StatelessWidget {
   final DotState habits;
   final VoidCallback? onTap;
 
+  /// What a screen reader says for the day: the fill, the outline and the
+  /// dots are all colour and shape, which it cannot pass on. As the week
+  /// strip's cells do.
+  String get semanticsLabel => [
+    formatDayLabel(date),
+    if (isToday) 'today',
+    switch (workout) {
+      DotState.done => 'workout done',
+      DotState.planned => 'workout planned',
+      DotState.none => null,
+    },
+    switch (habits) {
+      DotState.done => 'habits done',
+      DotState.planned => 'habits due',
+      DotState.none => null,
+    },
+  ].nonNulls.join(', ');
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
     final radius = BorderRadius.circular(9);
-    return Opacity(
+    final cell = Opacity(
       opacity: inMonth ? 1 : 0.35,
       child: Padding(
         padding: const EdgeInsets.all(2),
@@ -151,8 +169,9 @@ class ScheduleDayCell extends StatelessWidget {
                         if (workout != DotState.none)
                           ScheduleDot(
                             key: Key('schedule.dot.workout.$date'),
-                            // Green on the accent fill would vanish.
-                            color: isToday ? t.onAccent : t.accent,
+                            // Green on the accent fill would vanish; off it,
+                            // accentFill keeps the dot at 3:1 in light too.
+                            color: isToday ? t.onAccent : t.accentFill,
                             filled: workout == DotState.done,
                           ),
                         if (workout != DotState.none && habits != DotState.none)
@@ -176,6 +195,15 @@ class ScheduleDayCell extends StatelessWidget {
           ),
         ),
       ),
+    );
+    return Semantics(
+      container: true,
+      button: onTap != null,
+      selected: selected,
+      label: semanticsLabel,
+      onTap: onTap,
+      excludeSemantics: true,
+      child: cell,
     );
   }
 }
@@ -239,8 +267,8 @@ class _Legend extends StatelessWidget {
       spacing: 14,
       runSpacing: 6,
       children: [
-        entry(t.accent, true, 'Workout done'),
-        entry(t.accent, false, 'Workout planned'),
+        entry(t.accentFill, true, 'Workout done'),
+        entry(t.accentFill, false, 'Workout planned'),
         entry(t.blue, true, 'Habits done'),
         entry(t.blue, false, 'Habits due'),
       ],

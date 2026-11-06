@@ -127,7 +127,10 @@ class _CheckinSheet extends ConsumerStatefulWidget {
 }
 
 class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
-  late final Map<String, String> _answers = {
+  /// The answers already stored: nothing, for a new check-in. One map seeds
+  /// [_answers] and is what [_dirty] compares against, so a question added
+  /// here is counted by both.
+  late final Map<String, String> _saved = {
     if (widget.existing case final existing?) ...{
       'sleepQuality': existing.sleepQuality,
       'muscleSoreness': existing.muscleSoreness,
@@ -136,9 +139,27 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
     },
   };
 
+  late final Map<String, String> _answers = {..._saved};
+
   /// Save waits for all four: a partial check-in has nothing honest to put
   /// in the missing columns.
   bool get _complete => _questions.every((q) => _answers.containsKey(q.field));
+
+  /// Whether closing now would throw answers away: any answer that differs
+  /// from what was saved (nothing, for a new check-in), or a pain answer not
+  /// yet stored. Never while a save is in flight -- that save still lands
+  /// after the sheet has gone.
+  bool get _dirty {
+    if (_busy) return false;
+    final changed =
+        _answers.length != _saved.length ||
+        _answers.entries.any((e) => _saved[e.key] != e.value);
+    return changed || (_painLevel != null && !_painSaved);
+  }
+
+  /// How far the current drag has pulled the sheet down, while [_dirty]
+  /// holds the drag back from the sheet itself.
+  double _dragDown = 0;
 
   /// The workout the pain row asks about, once [lookUpPendingOutcome] has
   /// answered; null hides the row. Held here rather than watched: the save
@@ -251,9 +272,9 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
   Future<void> _save() async {
     if (_busy) return;
     // Captured before the awaits for the same reason as generator_screen's
-    // _generate and session_logger_screen's _addToPlan: nothing sets
-    // isDismissible: false or blocks the back gesture here, so the sheet can
-    // be swiped away while a request is still in flight. ref would throw
+    // _generate and session_logger_screen's _addToPlan: the discard guard
+    // stands down during a save, so the sheet can still be swiped away
+    // while the request is in flight. ref would throw
     // against a disposed State -- the container outlives the widget, so the
     // refresh still lands even when the sheet is already gone, which is what
     // should happen: the check-in really did save. The messenger is the
@@ -291,6 +312,43 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
   Widget build(BuildContext context) {
     final t = context.fs;
 
+    // Answers given and not saved make back, a tap on the scrim and a swipe
+    // down ask before throwing them away. FsDiscardGuard covers back and the
+    // scrim, which both ask the route to pop. A drag down never asks: the
+    // bottom sheet pops its route itself once the drag ends. So while dirty
+    // the drag is claimed here first -- the innermost vertical-drag
+    // recognizer wins the arena, as in exercise_swap_sheet -- and a clear
+    // pull down asks the route to pop, which the guard turns into the
+    // question.
+    final dirty = _dirty;
+    return FsDiscardGuard(
+      dirty: dirty,
+      message: "Your check-in answers won't be saved.",
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        // Kept out of semantics: otherwise a dirty sheet tells a screen
+        // reader it scrolls, and a scroll gesture runs these callbacks into
+        // the discard question. Screen readers close the sheet through back,
+        // escape or the scrim, which the guard already covers.
+        excludeFromSemantics: true,
+        onVerticalDragStart: dirty ? (_) => _dragDown = 0 : null,
+        onVerticalDragUpdate: dirty
+            ? (details) => _dragDown += details.primaryDelta ?? 0
+            : null,
+        onVerticalDragEnd: dirty
+            ? (details) {
+                final velocity = details.primaryVelocity ?? 0;
+                if (_dragDown > 48 || velocity > 700) {
+                  Navigator.of(context).maybePop();
+                }
+              }
+            : null,
+        child: _content(t),
+      ),
+    );
+  }
+
+  Widget _content(FsTokens t) {
     // Scrolls, so at large text on a small phone Save is still reachable
     // rather than pushed off the bottom of the sheet.
     return SafeArea(
@@ -363,7 +421,9 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
             ],
             if (_pending case final pending?) ..._painRow(pending, t),
             if (_failure != null) ...[
-              Text(_failure!, style: TextStyle(fontSize: 12, color: t.red)),
+              // A live region: a screen reader says the failure when it
+              // appears, not just the button's loading ending.
+              FsErrorLine(_failure!, key: const Key('checkin.error')),
               const SizedBox(height: 12),
             ],
             FsButton(

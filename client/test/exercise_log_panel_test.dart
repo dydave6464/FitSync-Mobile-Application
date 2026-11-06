@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
@@ -1450,5 +1451,42 @@ void main() {
       expect(find.byKey(const Key('logpanel.addSet')), findsNothing);
       expect(find.byKey(const Key('set.3.remove')), findsNothing);
     });
+  });
+
+  // A name cut mid-word is a name that can be mistaken for its neighbour.
+  // Two lines hold the catalogue's long names at large text (SE-6).
+  testWidgets('the name wraps to a second line at large text, uncut', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
+        child: _host(
+          ExerciseLogPanel(
+            exercise: const PlanExercise(
+              planExerciseId: 603,
+              exerciseId: 103,
+              name: 'Incline DB press',
+              muscleGroup: 'pectorals',
+              orderNo: 1,
+              targetSets: 3,
+              targetReps: '8-12',
+            ),
+            session: _session(),
+            drafts: _drafts(tester),
+            onUndoSet: (_) async {},
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    final name = tester.renderObject<RenderParagraph>(
+      find.text('Incline DB press'),
+    );
+    expect(name.didExceedMaxLines, isFalse);
   });
 }

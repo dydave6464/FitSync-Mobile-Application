@@ -26,8 +26,11 @@ Future<bool> startSnapMeal(
   try {
     pro = (await ref.read(profileProvider.future)).isPremium;
   } catch (_) {
-    // No profile to go by: the server would refuse anyway (403).
-    pro = false;
+    // No profile to go by (offline, a timeout): let the server decide. A
+    // free account's photo is refused with PRO_REQUIRED, which the photo
+    // screen turns into the Pro screen; a Pro one is not sent to the
+    // purchase page as if it had lost Pro.
+    pro = true;
   }
   if (!context.mounted) return false;
   if (!pro) {

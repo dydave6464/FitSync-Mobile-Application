@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/presentation/exercise_detail_screen.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
@@ -50,7 +51,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('3/4 sit-up'), findsOneWidget);
-    expect(find.textContaining('abs'), findsWidgets);
+    expect(find.textContaining('Abs'), findsWidgets);
     // The cue list moved into AiCueList, shared with the workout's demo stage,
     // so the number is its own widget rather than a "1. " prefix on the text.
     expect(find.text('How to perform'), findsOneWidget);
@@ -82,13 +83,35 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('No live exercise with id 1.'), findsOneWidget);
-    expect(find.text('Retry'), findsOneWidget);
+    expect(find.byType(FsRetry), findsOneWidget);
     expect(calls, 1);
 
-    await tester.tap(find.text('Retry'));
+    await tester.tap(find.text('Try again'));
     await tester.pumpAndSettle();
 
     expect(calls, 2);
+  });
+
+  testWidgets('a broken reply is reported in plain words', (tester) async {
+    _usePortraitSurface(tester);
+    await tester.pumpWidget(
+      harness(
+        exerciseDetailProvider(1).overrideWith((ref) async {
+          throw const ApiException(
+            'INVALID_RESPONSE',
+            'Server returned a non-JSON body (HTTP 502).',
+          );
+        }),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Something went wrong on our side. Please try again.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('HTTP'), findsNothing);
+    expect(find.textContaining('adb'), findsNothing);
   });
 
   testWidgets('an unreachable animation does not crash the screen', (

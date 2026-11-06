@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/profile/data/profile_repository.dart';
 import 'package:fitsync/features/profile/domain/body_weight.dart';
@@ -21,6 +22,11 @@ const _profile = Profile(
 );
 
 class FakeProfileRepository implements ProfileRepository {
+  FakeProfileRepository({this.logError});
+
+  /// Thrown by [logBodyWeight] instead of saving, when set.
+  final Object? logError;
+
   final logged = <double>[];
 
   /// How many times [load] has been called -- starts at 0, since unlike
@@ -36,6 +42,7 @@ class FakeProfileRepository implements ProfileRepository {
 
   @override
   Future<BodyWeightPoint> logBodyWeight(double weightKg) async {
+    if (logError != null) throw logError!;
     logged.add(weightKg);
     return BodyWeightPoint(loggedOn: '2026-09-16', weightKg: weightKg);
   }
@@ -96,6 +103,29 @@ Future<void> _pump(
 }
 
 void main() {
+  // PS-10: the sheet's only escape control was announced as a bare "Button".
+  testWidgets('the close button is named Close for screen readers', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester, repo: FakeProfileRepository(), fetches: _FetchCount());
+
+    expect(
+      tester.getSemantics(find.byKey(const Key('bodyWeight.close'))),
+      matchesSemantics(
+        tooltip: 'Close',
+        isButton: true,
+        isEnabled: true,
+        hasEnabledState: true,
+        isFocusable: true,
+        hasTapAction: true,
+        hasFocusAction: true,
+      ),
+    );
+    await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+    handle.dispose();
+  });
+
   testWidgets(
     'entering a weight and saving calls the repository and refreshes the card',
     (tester) async {
@@ -222,5 +252,43 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(fetches, {'week': 2, 'month': 2});
+  });
+
+  // PS-6 / PS-3: a failed save showed the client's transport text (an
+  // address, an adb command, "HTTP 502") as a plain red line no screen
+  // reader announced.
+  testWidgets('a failed save says so in plain words, announced', (
+    tester,
+  ) async {
+    final repo = FakeProfileRepository(
+      logError: const ApiException(
+        'INVALID_RESPONSE',
+        'Server returned a non-JSON body (HTTP 502).',
+      ),
+    );
+    await _pump(tester, repo: repo, fetches: _FetchCount());
+
+    await tester.enterText(find.byKey(const Key('bodyWeight.field')), '72.5');
+    await tester.tap(find.byKey(const Key('bodyWeight.save')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Something went wrong on our side. Please try again.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('HTTP'), findsNothing);
+    expect(find.textContaining('adb'), findsNothing);
+    final error = find.byKey(const Key('bodyWeight.error'));
+    expect(error, findsOneWidget);
+    expect(
+      find.descendant(
+        of: error,
+        matching: find.byWidgetPredicate(
+          (w) => w is Semantics && w.properties.liveRegion == true,
+        ),
+      ),
+      findsOneWidget,
+      reason: 'the error must be announced when it appears',
+    );
   });
 }

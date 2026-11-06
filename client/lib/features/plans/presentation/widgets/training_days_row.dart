@@ -14,6 +14,7 @@ class TrainingDaysRow extends StatelessWidget {
     required this.selected,
     required this.onChanged,
     this.busyWeekday,
+    this.savedWeekday,
     this.enabled = true,
   });
 
@@ -27,6 +28,11 @@ class TrainingDaysRow extends StatelessWidget {
   /// The weekday whose write is in flight, if any. Its cell stops accepting
   /// taps so a second tap cannot race the first.
   final int? busyWeekday;
+
+  /// The weekday whose write just landed, if the caller saves as the user
+  /// taps (the generator does; the habit sheet's local row does not). Its
+  /// cell then reads "Saved", so the save is said on the control itself.
+  final int? savedWeekday;
 
   /// Whether the row may be tapped at all.
   ///
@@ -65,6 +71,7 @@ class TrainingDaysRow extends StatelessWidget {
               dayName: _dayNames[weekday - 1],
               selected: chosen.contains(weekday),
               busy: busyWeekday == weekday,
+              saved: savedWeekday == weekday,
               onTap: !enabled || busyWeekday != null
                   ? null
                   : () {
@@ -96,6 +103,7 @@ class TrainingDayCell extends StatelessWidget {
     required this.selected,
     required this.busy,
     required this.onTap,
+    this.saved = false,
   });
 
   final String label;
@@ -106,6 +114,11 @@ class TrainingDayCell extends StatelessWidget {
 
   final bool selected;
   final bool busy;
+
+  /// This day's write just landed. Spoken as the cell's value; a write in
+  /// flight ([busy]) says "Saving" instead.
+  final bool saved;
+
   final VoidCallback? onTap;
 
   @override
@@ -121,7 +134,11 @@ class TrainingDayCell extends StatelessWidget {
       enabled: onTap != null,
       selected: selected,
       label: dayName,
-      value: busy ? 'Saving' : null,
+      value: busy
+          ? 'Saving'
+          : saved
+          ? 'Saved'
+          : null,
       onTap: onTap,
       excludeSemantics: true,
       child: InkWell(

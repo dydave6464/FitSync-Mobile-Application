@@ -370,4 +370,41 @@ void main() {
         tester.view.physicalSize.height / tester.view.devicePixelRatio;
     expect(targetRect.bottom, lessThanOrEqualTo(screenHeight - 300));
   });
+
+  testWidgets('a validation error is spoken when it appears', (tester) async {
+    final handle = tester.ensureSemantics();
+    await _open(tester);
+
+    await tester.tap(find.byKey(const Key('goal.option.3')));
+    await tester.pumpAndSettle();
+    await _setTarget(tester, '');
+
+    expect(
+      tester.getSemantics(find.byKey(const Key('goal.error'))),
+      matchesSemantics(label: 'Enter a target weight.', isLiveRegion: true),
+    );
+    handle.dispose();
+  });
+
+  testWidgets('a server refusal is spoken when it appears', (tester) async {
+    final handle = tester.ensureSemantics();
+    final repo = await _open(tester);
+    repo.failAdd = const ApiException(
+      'GOAL_EXISTS',
+      'You already have a goal for this exercise.',
+    );
+
+    await tester.tap(find.byKey(const Key('goal.option.3')));
+    await tester.pumpAndSettle();
+    await _setTarget(tester, '70');
+
+    expect(
+      tester.getSemantics(find.byKey(const Key('goal.error'))),
+      matchesSemantics(
+        label: 'You already have a goal for this exercise.',
+        isLiveRegion: true,
+      ),
+    );
+    handle.dispose();
+  });
 }

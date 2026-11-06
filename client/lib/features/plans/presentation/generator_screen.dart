@@ -31,6 +31,10 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   bool _busy = false;
   int? _savingWeekday;
 
+  /// The weekday whose write last landed, read out as "Saved" on its cell.
+  /// Cleared when the next tap starts, and never set by a failed write.
+  int? _savedWeekday;
+
   /// True once /regenerate has answered. Separate from [_busy], which flips
   /// before anything has been asked for: the building screen's last row
   /// claims the plan exists, so only this may tick it.
@@ -46,9 +50,13 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   /// day looking chosen.
   Future<void> _setTrainingDays(List<int> next, int tapped) async {
     final messenger = ScaffoldMessenger.of(context);
-    setState(() => _savingWeekday = tapped);
+    setState(() {
+      _savingWeekday = tapped;
+      _savedWeekday = null;
+    });
     try {
       await ref.read(profileProvider.notifier).setTrainingDays(next);
+      if (mounted) setState(() => _savedWeekday = tapped);
     } catch (error) {
       if (!mounted) return;
       messenger.showSnackBar(
@@ -135,7 +143,7 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
       if (error.code != 'CUSTOM_PLAN_WOULD_BE_LOST') {
         if (!mounted) return;
         setState(() => _busy = false);
-        messenger.showSnackBar(SnackBar(content: Text(error.message)));
+        messenger.showSnackBar(SnackBar(content: Text(userMessage(error))));
         return;
       }
       // Reset before the dialog, not after: nothing has actually started
@@ -175,12 +183,7 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
         // request inline, so the confirmed attempt gets the identical busy
         // state and hold as the first -- there is exactly one place that
         // logic lives.
-        await _generate(
-          split,
-          days,
-          trainingDays,
-          replaceCustomPlan: true,
-        );
+        await _generate(split, days, trainingDays, replaceCustomPlan: true);
       }
     } catch (_) {
       if (!mounted) return;
@@ -221,15 +224,8 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   /// a count only when there are none, because a count is then all there is
   /// to say.
   static String _describeChoice(String split, List<int> days, int count) {
-    final label = splitStyles
-        .firstWhere(
-          (s) => s.value == split,
-          orElse: () => (value: split, label: describeSplit(split)),
-        )
-        .label;
-    if (days.isEmpty) {
-      return '$label, $count day${count == 1 ? '' : 's'} a week';
-    }
+    final label = splitLabel(split);
+    if (days.isEmpty) return '$label, ${daysAWeek(count)}';
     const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     return '$label, ${(days.toList()..sort()).map((d) => names[d - 1]).join(' · ')}';
   }
@@ -425,6 +421,7 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
         TrainingDaysRow(
           selected: trainingDays,
           busyWeekday: _savingWeekday,
+          savedWeekday: _savedWeekday,
           enabled: daysKnown,
           onChanged: (next) {
             // The tapped day is the one that differs between the two sets.
@@ -441,6 +438,17 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
             _setTrainingDays(next, changed.first);
           },
         ),
+        // The split chips wait for Generate; these do not. Said where it
+        // happens, so backing out without generating surprises nobody.
+        if (daysKnown) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Saved to your schedule as you tap. Used by reminders and the '
+            'calendar.',
+            key: const Key('gen.trainingDays.saved'),
+            style: TextStyle(fontSize: 12, color: t.text3, height: 1.35),
+          ),
+        ],
         if (!daysKnown) ...[
           const SizedBox(height: 8),
           Text(
@@ -655,16 +663,21 @@ class _DescribeCardState extends ConsumerState<_DescribeCard> {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
+                  // Actions, not choices: as the prototype's sm chips, off,
+                  // and announced with no selected state. Apply used to be
+                  // drawn and read as permanently "selected".
                   FsChip(
                     key: const Key('gen.describe.apply'),
                     label: 'Apply',
-                    selected: true,
+                    selected: false,
+                    toggle: false,
                     onTap: _apply,
                   ),
                   FsChip(
                     key: const Key('gen.describe.fromProfile'),
                     label: 'From profile',
                     selected: false,
+                    toggle: false,
                     onTap: () => setState(() {
                       _controller.text = widget.composed;
                       _applied = null;

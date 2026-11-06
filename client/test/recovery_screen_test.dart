@@ -838,6 +838,56 @@ void main() {
     expect(chart.label, '7-day training load');
   });
 
+  testWidgets('Check in and Update are full-size tap targets', (tester) async {
+    final semantics = tester.ensureSemantics();
+    for (final (overview, key) in [
+      (
+        const RecoveryOverview(
+          todayCheckin: null,
+          latestEstimate: null,
+          load: [],
+        ),
+        'recovery.checkin',
+      ),
+      (_withToday(_todays()), 'recovery.update'),
+    ]) {
+      await _pump(tester, overview);
+      // The guideline skips a node clipped off screen, so the button must be
+      // there, and wholly in view, for the check to mean anything.
+      final button = find.byKey(Key(key));
+      expect(button, findsOneWidget);
+      await tester.ensureVisible(button);
+      await tester.pumpAndSettle();
+      final screen =
+          Offset.zero & tester.view.physicalSize / tester.view.devicePixelRatio;
+      expect(screen.intersect(tester.getRect(button)), tester.getRect(button));
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+    }
+    semantics.dispose();
+  });
+
+  testWidgets('a week of no workouts says what fills the load card', (
+    tester,
+  ) async {
+    // What GET /recovery sends for a rest week: seven zero-filled days.
+    final load = [
+      for (var i = 0; i < 7; i++)
+        VolumeBucket(label: '-${6 - i}d', volumeKg: 0),
+    ];
+    await _pump(tester, _withToday(_todays(), load: load));
+    final line = find.text(
+      'No workouts in the last 7 days. Finished workouts show here as '
+      'training load.',
+    );
+    await tester.scrollUntilVisible(line, 200);
+    await tester.pumpAndSettle();
+
+    expect(find.text('7-DAY TRAINING LOAD'), findsOneWidget);
+    expect(line, findsOneWidget);
+    // Not a bare baseline under seven weekday labels.
+    expect(find.byType(FsBarChart), findsNothing);
+  });
+
   group('320 dp at 2x text', () {
     Future<void> narrow(WidgetTester tester) async {
       tester.view.physicalSize = const Size(320, 640);

@@ -6,6 +6,8 @@ import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/widgets/session_card.dart';
 import 'package:fitsync/features/plans/presentation/widgets/week_strip.dart';
 
+import 'helpers/a11y.dart' show contrast;
+
 const _plan = WorkoutPlan(
   planId: 42,
   name: 'Week 1 — Full body',
@@ -768,6 +770,123 @@ void main() {
       );
 
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('state dots read at 3:1 (PT-13)', () {
+    for (final dark in [false, true]) {
+      final t = dark ? FsTokens.dark : FsTokens.light;
+      final theme = dark ? 'dark' : 'light';
+
+      BoxDecoration dot(WidgetTester tester, int weekday) =>
+          tester
+                  .widget<DecoratedBox>(
+                    find.descendant(
+                      of: find.byKey(Key('day.$weekday')),
+                      matching: find.byKey(const Key('day.dot')),
+                    ),
+                  )
+                  .decoration
+              as BoxDecoration;
+
+      testWidgets('planned, today-planned and trained dots ($theme)', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: dark ? fsDarkTheme() : fsLightTheme(),
+            home: Scaffold(
+              body: WeekStrip(
+                daysPerWeek: 3,
+                completedDates: const {'2026-09-07'},
+                today: DateTime(2026, 9, 9), // a Wednesday
+                trainingDays: const [1, 3, 5],
+              ),
+            ),
+          ),
+        );
+
+        // Friday: planned, on the plain cell.
+        expect(
+          contrast(dot(tester, 5).color!, t.surface),
+          greaterThanOrEqualTo(3),
+          reason: 'planned dot',
+        );
+        // Wednesday: today and planned, on the accent fill.
+        expect(
+          contrast(dot(tester, 3).color!, t.accent),
+          greaterThanOrEqualTo(3),
+          reason: "today's planned dot",
+        );
+        // Monday: trained, on the plain cell.
+        expect(
+          contrast(dot(tester, 1).color!, t.surface),
+          greaterThanOrEqualTo(3),
+          reason: 'trained marker',
+        );
+      });
+    }
+  });
+
+  group('session card facts agree with the rest of the tab (PT-18)', () {
+    testWidgets('the day count is the chosen days, not the stale label', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _host(
+          SessionCard(
+            plan: _plan, // daysPerWeek: 3
+            trainingDays: const [1, 2, 4, 6],
+            hasActiveSession: false,
+            onStart: () {},
+          ),
+        ),
+      );
+      expect(find.textContaining('4 days a week'), findsOneWidget);
+      expect(find.textContaining('3 days a week'), findsNothing);
+    });
+
+    testWidgets('one day is singular', (tester) async {
+      await tester.pumpWidget(
+        _host(
+          SessionCard(
+            plan: _plan,
+            trainingDays: const [3],
+            hasActiveSession: false,
+            onStart: () {},
+          ),
+        ),
+      );
+      expect(find.textContaining('1 day a week'), findsOneWidget);
+    });
+
+    testWidgets('no chosen days falls back to the plan count', (tester) async {
+      await tester.pumpWidget(
+        _host(
+          SessionCard(
+            plan: _plan,
+            trainingDays: const [],
+            hasActiveSession: false,
+            onStart: () {},
+          ),
+        ),
+      );
+      expect(find.textContaining('3 days a week'), findsOneWidget);
+    });
+
+    testWidgets('the split is spelled as the choosers spell it', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _host(
+          SessionCard(
+            plan: _rotationPlan, // upper_lower
+            hasActiveSession: false,
+            onStart: () {},
+          ),
+        ),
+      );
+      expect(find.textContaining('Upper / Lower ·'), findsOneWidget);
     });
   });
 }

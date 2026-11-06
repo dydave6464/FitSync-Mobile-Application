@@ -73,7 +73,6 @@ class _NavShellState extends State<NavShell> {
   /// tapped reminder about a habit or the workout item opens onto, the same
   /// screen Home's own routine card opens.
   void _openRoutine() {
-    _popToShell();
     _select(0);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -92,8 +91,40 @@ class _NavShellState extends State<NavShell> {
   /// Switching the underlying tab alone would leave it sitting there,
   /// invisible on top -- popped back to the shell first, so the tab the tap
   /// asked for is what is actually seen.
-  void _popToShell() =>
-      Navigator.of(context).popUntil((route) => route.isFirst);
+  ///
+  /// Except past a route that refuses to pop: an editor holding unsaved
+  /// input, or a meal mid-log. `popUntil` does not consult PopScope, so it
+  /// stops there itself, and returns false: the user is left to finish, and
+  /// the reminder waits in a SnackBar.
+  bool _popToShell() {
+    var reached = false;
+    Navigator.of(context).popUntil((route) {
+      if (route.isFirst) return reached = true;
+      return route.popDisposition == RoutePopDisposition.doNotPop;
+    });
+    return reached;
+  }
+
+  /// Opens what a tapped reminder points at, if nothing in the way must be
+  /// kept; otherwise offers it under [name] with an Open action, which tries
+  /// again once the user is done.
+  void _onReminder(String name, VoidCallback open) {
+    // The SnackBar can outlive the shell (a sign-out while it shows).
+    if (!mounted) return;
+    if (_popToShell()) {
+      open();
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$name reminder'),
+        action: SnackBarAction(
+          label: 'Open',
+          onPressed: () => _onReminder(name, open),
+        ),
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -120,10 +151,22 @@ class _NavShellState extends State<NavShell> {
   static const _trainIndex = 1;
 
   static const _items = [
-    FsNavItem(icon: Icons.home_outlined, label: 'Home'),
-    FsNavItem(icon: Icons.fitness_center_outlined, label: 'Train'),
-    FsNavItem(icon: Icons.restaurant_outlined, label: 'Nutrition'),
-    FsNavItem(icon: Icons.person_outline, label: 'Profile'),
+    FsNavItem(icon: Icons.home_outlined, activeIcon: Icons.home, label: 'Home'),
+    FsNavItem(
+      icon: Icons.fitness_center_outlined,
+      activeIcon: Icons.fitness_center,
+      label: 'Train',
+    ),
+    FsNavItem(
+      icon: Icons.restaurant_outlined,
+      activeIcon: Icons.restaurant,
+      label: 'Nutrition',
+    ),
+    FsNavItem(
+      icon: Icons.person_outline,
+      activeIcon: Icons.person,
+      label: 'Profile',
+    ),
   ];
 
   Widget _tab(int index, Widget Function() builder) =>
@@ -132,53 +175,68 @@ class _NavShellState extends State<NavShell> {
   @override
   Widget build(BuildContext context) {
     return ReminderSync(
-      onOpenRoutine: _openRoutine,
-      onOpenRecovery: () {
-        _popToShell();
-        _openTrainAt('recovery');
-      },
-      child: ActivitySync(child: ProSync(child: DayRollover(
-        child: Scaffold(
-          body: IndexedStack(
-            index: _index,
-            children: [
-              _tab(
-                0,
-                () => HomeScreen(
-                  onGoToTrain: () => _openTrainAt('plan'),
-                  onGoToProfile: () => _select(3),
-                  onGoToRecovery: () => _openTrainAt('recovery'),
-                  onGoToProgress: () {
-                    // The card says "Past month"; Progress must open on the
-                    // month, or the numbers the user tapped on vanish.
-                    ProviderScope.containerOf(
-                      context,
-                      listen: false,
-                    ).read(trainingPeriodProvider.notifier).set('month');
-                    _openTrainAt('progress');
-                  },
+      onOpenRoutine: () => _onReminder('Routine', _openRoutine),
+      onOpenRecovery: () =>
+          _onReminder('Morning check-in', () => _openTrainAt('recovery')),
+      child: ActivitySync(
+        child: ProSync(
+          child: DayRollover(
+            // Android back on Train, Nutrition or Profile goes to Home, as the
+            // platform's bottom-navigation pattern expects; only back on Home
+            // leaves the app. A pushed screen on top handles back itself first.
+            child: PopScope(
+              canPop: _index == 0,
+              onPopInvokedWithResult: (didPop, _) {
+                if (!didPop) _select(0);
+              },
+              child: Scaffold(
+                body: IndexedStack(
+                  index: _index,
+                  children: [
+                    _tab(
+                      0,
+                      () => HomeScreen(
+                        onGoToTrain: () => _openTrainAt('plan'),
+                        onGoToProfile: () => _select(3),
+                        onGoToRecovery: () => _openTrainAt('recovery'),
+                        onGoToProgress: () {
+                          // The card says "Past month"; Progress must open on the
+                          // month, or the numbers the user tapped on vanish.
+                          ProviderScope.containerOf(
+                            context,
+                            listen: false,
+                          ).read(trainingPeriodProvider.notifier).set('month');
+                          _openTrainAt('progress');
+                        },
+                      ),
+                    ),
+                    _tab(
+                      _trainIndex,
+                      () => TrainingShell(
+                        openCount: _trainOpens,
+                        onGoToProfile: () => _select(3),
+                        tabRequest: _trainTab,
+                      ),
+                    ),
+                    _tab(
+                      2,
+                      () => NutritionScreen(onGoToProfile: () => _select(3)),
+                    ),
+                    _tab(3, () => const SettingsScreen()),
+                  ],
+                ),
+                bottomNavigationBar: FsNav(
+                  currentIndex: _index,
+                  onSelect: _select,
+                  items: _items,
+                  onFabTap: () => showStartWorkoutSheet(context),
+                  fabLabel: 'Start a workout',
                 ),
               ),
-              _tab(
-                _trainIndex,
-                () => TrainingShell(
-                  openCount: _trainOpens,
-                  onGoToProfile: () => _select(3),
-                  tabRequest: _trainTab,
-                ),
-              ),
-              _tab(2, () => NutritionScreen(onGoToProfile: () => _select(3))),
-              _tab(3, () => const SettingsScreen()),
-            ],
-          ),
-          bottomNavigationBar: FsNav(
-            currentIndex: _index,
-            onSelect: _select,
-            items: _items,
-            onFabTap: () => showStartWorkoutSheet(context),
+            ),
           ),
         ),
-      ))),
+      ),
     );
   }
 }

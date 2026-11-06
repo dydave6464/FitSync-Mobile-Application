@@ -1,3 +1,5 @@
+import 'dart:ui' show Tristate;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -6,6 +8,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/units.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
+
+import 'helpers/a11y.dart';
 
 Widget _host(Widget child) => MaterialApp(
   theme: fsLightTheme(),
@@ -1274,6 +1278,1043 @@ void main() {
         isSemantics(label: 'LB', isSelected: false, isButton: true),
       );
       handle.dispose();
+    });
+  });
+
+  group('48 dp targets and spoken names', () {
+    // The pill a small button draws, as opposed to the 48 dp box it lays out.
+    Rect smallPill(WidgetTester tester, [Finder? button]) => tester.getRect(
+      find.descendant(
+        of: button ?? find.byType(FsButton),
+        matching: find.byType(InkWell),
+      ),
+    );
+
+    testWidgets('a small FsButton answers taps across 48 dp', (tester) async {
+      final h = tester.ensureSemantics();
+      var taps = 0;
+      // A width short of the screen's, or the guideline skips the node as
+      // touching the view's edge: a button in a Center fills the width. No
+      // room is given around it: the 48 dp is the button's own.
+      await tester.pumpWidget(
+        host(
+          SizedBox(
+            width: 200,
+            child: FsButton(
+              label: 'Retry',
+              small: true,
+              onPressed: () => taps++,
+            ),
+          ),
+        ),
+      );
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      final pill = smallPill(tester);
+      expect(pill.height, 42, reason: 'the pill is drawn as before');
+      expect(tester.getSize(find.byType(FsButton)).height, 48);
+      // Just above and just below the 42 dp pill.
+      await tester.tapAt(Offset(pill.center.dx, pill.top - 2));
+      await tester.tapAt(Offset(pill.center.dx, pill.bottom + 2));
+      expect(taps, 2);
+      h.dispose();
+    });
+
+    testWidgets('a small FsButton that ends a card answers the full 48 dp', (
+      tester,
+    ) async {
+      // Home's "Start workout" and the shell's Retry: the button is the last
+      // child of a Column inside the card's padding, so the Column's bottom
+      // edge is flush with the button. Room outside the Column never reaches
+      // the button, so the 48 dp has to be inside it.
+      final h = tester.ensureSemantics();
+      var taps = 0;
+      await tester.pumpWidget(
+        host(
+          SizedBox(
+            width: 240,
+            child: FsCard(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text('Push day'),
+                  const SizedBox(height: 14),
+                  FsButton(
+                    label: 'Start workout',
+                    small: true,
+                    onPressed: () => taps++,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      final pill = smallPill(tester);
+      await tester.tapAt(Offset(pill.center.dx, pill.bottom + 2));
+      expect(taps, 1, reason: 'just below the pill, at the Column\'s end');
+      await tester.tapAt(Offset(pill.center.dx, pill.top - 2));
+      expect(taps, 2, reason: 'just above the pill');
+      // What a screen reader frames is what a thumb can hit.
+      final node = tester.getSemantics(find.text('Start workout'));
+      expect(node.rect.height, 48);
+      expect(node.label, 'Start workout');
+      h.dispose();
+    });
+
+    testWidgets('small FsButtons in a Wrap answer above and below the pill', (
+      tester,
+    ) async {
+      // Home's "Turn on" / "Not now" and "Continue": each button fills its
+      // own run of the Wrap, so a run's edge is flush with the pill.
+      var turnOn = 0, notNow = 0;
+      await tester.pumpWidget(
+        host(
+          SizedBox(
+            width: 240,
+            child: FsCard(
+              child: Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                children: [
+                  FsButton(
+                    key: const Key('on'),
+                    label: 'Turn on',
+                    small: true,
+                    onPressed: () => turnOn++,
+                  ),
+                  FsButton(
+                    key: const Key('off'),
+                    label: 'Not now',
+                    small: true,
+                    kind: FsButtonKind.secondary,
+                    onPressed: () => notNow++,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      final on = smallPill(tester, find.byKey(const Key('on')));
+      final off = smallPill(tester, find.byKey(const Key('off')));
+      await tester.tapAt(Offset(on.center.dx, on.top - 2));
+      await tester.tapAt(Offset(on.center.dx, on.bottom + 2));
+      await tester.tapAt(Offset(off.center.dx, off.top - 2));
+      await tester.tapAt(Offset(off.center.dx, off.bottom + 2));
+      expect((turnOn, notNow), (2, 2));
+    });
+
+    testWidgets('a small FsButton in a Row as tall as itself still gets 48', (
+      tester,
+    ) async {
+      // Recovery's "Check in": the Row is as tall as the button.
+      var taps = 0;
+      await tester.pumpWidget(
+        host(
+          SizedBox(
+            width: 300,
+            child: Row(
+              children: [
+                const Expanded(child: Text('How do you feel?')),
+                FsButton(
+                  label: 'Check in',
+                  small: true,
+                  onPressed: () => taps++,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      final pill = smallPill(tester);
+      await tester.tapAt(Offset(pill.center.dx, pill.top - 2));
+      await tester.tapAt(Offset(pill.center.dx, pill.bottom + 2));
+      expect(taps, 2);
+    });
+
+    testWidgets('the bottom-bar fab has a name and a tooltip', (tester) async {
+      final h = tester.ensureSemantics();
+      // Four tabs, as the shell has: the fab sits before the third, so a
+      // shorter bar never draws it.
+      await tester.pumpWidget(
+        host(
+          FsNav(
+            currentIndex: 0,
+            onSelect: (_) {},
+            onFabTap: () {},
+            items: const [
+              FsNavItem(
+                icon: Icons.home_outlined,
+                activeIcon: Icons.home,
+                label: 'Home',
+              ),
+              FsNavItem(
+                icon: Icons.fitness_center_outlined,
+                activeIcon: Icons.fitness_center,
+                label: 'Train',
+              ),
+              FsNavItem(
+                icon: Icons.restaurant_outlined,
+                activeIcon: Icons.restaurant,
+                label: 'Nutrition',
+              ),
+              FsNavItem(
+                icon: Icons.person_outline,
+                activeIcon: Icons.person,
+                label: 'Profile',
+              ),
+            ],
+          ),
+        ),
+      );
+      expect(find.byKey(const Key('nav.fab')), findsOneWidget);
+      expect(find.bySemanticsLabel('Start a workout'), findsOneWidget);
+      expect(find.byTooltip('Start a workout'), findsOneWidget);
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      h.dispose();
+    });
+
+    testWidgets(
+      'the current tab is selected in semantics and shows its filled icon',
+      (tester) async {
+        final h = tester.ensureSemantics();
+        await tester.pumpWidget(
+          host(
+            FsNav(
+              currentIndex: 1,
+              onSelect: (_) {},
+              items: const [
+                FsNavItem(
+                  icon: Icons.home_outlined,
+                  activeIcon: Icons.home,
+                  label: 'Home',
+                ),
+                FsNavItem(
+                  icon: Icons.person_outline,
+                  activeIcon: Icons.person,
+                  label: 'Profile',
+                ),
+              ],
+            ),
+          ),
+        );
+        expect(
+          tester.getSemantics(find.text('Profile')),
+          matchesSemantics(
+            isButton: true,
+            isSelected: true,
+            hasSelectedState: true,
+            isInMutuallyExclusiveGroup: true,
+            hasTapAction: true,
+            hasFocusAction: true,
+            isFocusable: true,
+            isEnabled: true,
+            hasEnabledState: true,
+            label: 'Profile',
+            hint: 'Tab 2 of 2',
+          ),
+        );
+        expect(
+          tester.getSemantics(find.text('Home')),
+          isSemantics(isSelected: false, hint: 'Tab 1 of 2'),
+        );
+        expect(find.byIcon(Icons.person), findsOneWidget);
+        expect(find.byIcon(Icons.home_outlined), findsOneWidget);
+        h.dispose();
+      },
+    );
+
+    testWidgets('FsSegmented segments answer at least 48 dp and are equal', (
+      tester,
+    ) async {
+      final h = tester.ensureSemantics();
+      await tester.pumpWidget(
+        host(
+          SizedBox(
+            width: 340,
+            child: FsSegmented(
+              options: const [
+                (value: 'a', label: '15 min'),
+                (value: 'b', label: '1 hour before the session'),
+              ],
+              selected: 'a',
+              onSelected: (_) {},
+            ),
+          ),
+          textScale: 1.6,
+        ),
+      );
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      expect(tester.takeException(), isNull);
+      final a = tester.getSize(find.byKey(const Key('segment.a')));
+      final b = tester.getSize(find.byKey(const Key('segment.b')));
+      expect(a.height, b.height, reason: 'segments share one height');
+      // What a screen reader frames, and a thumb can hit, is 48 dp even
+      // where the pill is drawn shorter.
+      for (final value in ['a', 'b']) {
+        final node = tester.getSemantics(find.byKey(Key('segment.$value')));
+        expect(node.rect.height, greaterThanOrEqualTo(48));
+      }
+      h.dispose();
+    });
+
+    // `.seg > div { padding: 8px 0 }` in the prototype's styles.css: one line
+    // of 12.5 text with 8 above and below it, in a track 4 bigger all round.
+    testWidgets('FsSegmented draws its track and pill at the prototype size', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        host(
+          SizedBox(
+            width: 300,
+            child: FsSegmented(
+              options: const [
+                (value: 'male', label: 'Male'),
+                (value: 'female', label: 'Female'),
+              ],
+              selected: 'female',
+              onSelected: (_) {},
+            ),
+          ),
+        ),
+      );
+      final line = tester.getSize(find.text('Female')).height;
+      final pill = tester.getSize(
+        find
+            .ancestor(
+              of: find.text('Female'),
+              matching: find.byType(DecoratedBox),
+            )
+            .first,
+      );
+      final track = tester.getSize(
+        find
+            .descendant(
+              of: find.byType(FsSegmented),
+              matching: find.byType(Material),
+            )
+            .first,
+      );
+      expect(pill.height, line + 16, reason: 'the selected pill, as drawn');
+      expect(pill.height, lessThan(48));
+      expect(track.height, pill.height + 8);
+      // The room for a thumb is laid out around the track, not drawn.
+      expect(tester.getSize(find.byType(FsSegmented)).height, 48);
+    });
+
+    testWidgets('FsSegmented that ends a Column answers taps across 48 dp', (
+      tester,
+    ) async {
+      // The sex and experience pickers: the control is the last child of a
+      // Column, flush with its bottom edge. Room outside the Column never
+      // reaches it, so the 48 dp has to be inside the control's own box.
+      final h = tester.ensureSemantics();
+      final picked = <String>[];
+      await tester.pumpWidget(
+        host(
+          SizedBox(
+            width: 300,
+            child: Column(
+              key: const Key('column'),
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('Sex'),
+                FsSegmented(
+                  options: const [
+                    (value: 'male', label: 'Male'),
+                    (value: 'female', label: 'Female'),
+                  ],
+                  selected: 'male',
+                  onSelected: picked.add,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      final column = tester.getRect(find.byKey(const Key('column')));
+      final pill = tester.getRect(find.byKey(const Key('segment.female')));
+      final track = tester.getRect(
+        find
+            .descendant(
+              of: find.byType(FsSegmented),
+              matching: find.byType(Material),
+            )
+            .first,
+      );
+      final x = pill.center.dx;
+      await tester.tapAt(Offset(x, column.bottom - 0.5));
+      expect(picked, ['female'], reason: 'the Column\'s last dp');
+      await tester.tapAt(Offset(x, pill.bottom + 2));
+      expect(picked, hasLength(2), reason: 'the track, just under the pill');
+      await tester.tapAt(Offset(x, track.top - 1));
+      expect(picked, hasLength(3), reason: 'just above the drawn track');
+      expect(picked.toSet(), {'female'});
+      final node = tester.getSemantics(find.byKey(const Key('segment.female')));
+      expect(node.rect.height, 48);
+      expect(node.label, 'Female');
+      h.dispose();
+    });
+
+    testWidgets('an action chip reports no selected state', (tester) async {
+      final h = tester.ensureSemantics();
+      await tester.pumpWidget(
+        host(
+          FsChip(label: 'Add', selected: false, toggle: false, onTap: () {}),
+        ),
+      );
+      final data = tester.getSemantics(find.text('Add')).getSemanticsData();
+      expect(data.flagsCollection.isSelected, Tristate.none);
+      expect(data.flagsCollection.isButton, isTrue);
+      h.dispose();
+    });
+
+    testWidgets('a toggle chip still reports its selected state', (
+      tester,
+    ) async {
+      final h = tester.ensureSemantics();
+      await tester.pumpWidget(
+        host(FsChip(label: 'Bench', selected: false, onTap: () {})),
+      );
+      final data = tester.getSemantics(find.text('Bench')).getSemanticsData();
+      expect(data.flagsCollection.isSelected, Tristate.isFalse);
+      h.dispose();
+    });
+  });
+
+  // A placeholder vanishes once the user types, and a label beside the field
+  // is a separate node: the field itself has to carry its name.
+  group('field labels', () {
+    testWidgets('FsStatField is announced by its label and unit', (
+      tester,
+    ) async {
+      final h = tester.ensureSemantics();
+      await tester.pumpWidget(
+        host(
+          FsStatField(
+            label: 'Height',
+            unit: 'cm',
+            controller: TextEditingController(),
+          ),
+        ),
+      );
+      // The name and unit sit on the editable node itself, not on whatever
+      // node happens to lie above the TextField.
+      final node = tester.getSemantics(find.byType(TextField));
+      expect(node, isSemantics(isTextField: true, hint: 'cm'));
+      expect(node.label, startsWith('Height'));
+      // Said once: the visible eyebrow (drawn as 'HEIGHT') and the unit text
+      // are not separate stops repeating what the field already says.
+      expect(
+        find.bySemanticsLabel(RegExp('^height', caseSensitive: false)),
+        findsOneWidget,
+      );
+      expect(find.bySemanticsLabel('HEIGHT'), findsNothing);
+      expect(find.bySemanticsLabel('cm'), findsNothing);
+      h.dispose();
+    });
+
+    testWidgets('FsField with a label names its field and shows the label', (
+      tester,
+    ) async {
+      final h = tester.ensureSemantics();
+      await tester.pumpWidget(
+        host(
+          FsField(
+            label: 'Habit name',
+            hint: 'e.g. Stretch',
+            controller: TextEditingController(text: 'Walk'),
+          ),
+        ),
+      );
+      // Drawn in the eyebrow treatment, which sets its text in capitals.
+      expect(find.text('HABIT NAME'), findsOneWidget);
+      expect(
+        tester.getSemantics(find.byType(TextField)),
+        isSemantics(isTextField: true, label: 'Habit name', value: 'Walk'),
+      );
+      // The visible eyebrow is not a second stop saying the name again.
+      expect(find.bySemanticsLabel('HABIT NAME'), findsNothing);
+      h.dispose();
+    });
+
+    testWidgets('FsLabeledField names its field and says its messages', (
+      tester,
+    ) async {
+      final h = tester.ensureSemantics();
+      await tester.pumpWidget(
+        host(
+          FsLabeledField(
+            label: 'Password',
+            helper: 'At least 8 characters',
+            error: 'Too short',
+            field: FsField(controller: TextEditingController(), hint: ''),
+          ),
+        ),
+      );
+      expect(find.text('Password'), findsOneWidget);
+      expect(find.text('At least 8 characters'), findsOneWidget);
+      expect(find.text('Too short'), findsOneWidget);
+      final data = tester
+          .getSemantics(find.byType(TextField))
+          .getSemanticsData();
+      expect(data.label, contains('Password'));
+      expect(data.hint, contains('Too short. At least 8 characters'));
+      // Said once, on the field: not again as separate lines of text.
+      expect(find.bySemanticsLabel('Too short'), findsNothing);
+      expect(find.bySemanticsLabel('At least 8 characters'), findsNothing);
+      h.dispose();
+    });
+  });
+
+  group('readable controls', () {
+    for (final dark in [false, true]) {
+      testWidgets('an unselected radio ring takes the control outline '
+          '(${dark ? 'dark' : 'light'})', (tester) async {
+        await tester.pumpWidget(
+          host(const FsRadioDot(selected: false), dark: dark),
+        );
+        final box = tester.widget<Container>(
+          find.descendant(
+            of: find.byType(FsRadioDot),
+            matching: find.byType(Container),
+          ),
+        );
+        final border = (box.decoration! as BoxDecoration).border! as Border;
+        final t = dark ? FsTokens.dark : FsTokens.light;
+        expect(border.top.color, t.control);
+      });
+    }
+
+    testWidgets('FsRing reads as one labelled node', (tester) async {
+      final h = tester.ensureSemantics();
+      await tester.pumpWidget(
+        host(
+          const FsRing(
+            semanticLabel: '1,160 of 2,050 kcal eaten',
+            child: Text('1,160'),
+          ),
+        ),
+      );
+      expect(
+        find.bySemanticsLabel('1,160 of 2,050 kcal eaten'),
+        findsOneWidget,
+      );
+      expect(find.bySemanticsLabel('1,160'), findsNothing);
+      h.dispose();
+    });
+  });
+
+  group('FsErrorLine', () {
+    testWidgets('FsErrorLine is a live region', (tester) async {
+      final h = tester.ensureSemantics();
+      await tester.pumpWidget(host(const FsErrorLine('Wrong code')));
+      expect(
+        tester
+            .getSemantics(find.text('Wrong code'))
+            .getSemanticsData()
+            .flagsCollection
+            .isLiveRegion,
+        isTrue,
+      );
+      h.dispose();
+    });
+
+    for (final dark in [false, true]) {
+      testWidgets('reads in red with a red icon (${dark ? 'dark' : 'light'})', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          host(const FsErrorLine('Wrong code'), dark: dark),
+        );
+        final t = dark ? FsTokens.dark : FsTokens.light;
+        expect(
+          tester.widget<Text>(find.text('Wrong code')).style?.color,
+          t.red,
+        );
+        expect(
+          tester.widget<Icon>(find.byIcon(Icons.error_outline)).color,
+          t.red,
+        );
+        expect(contrast(t.red, t.bg), greaterThanOrEqualTo(4.5));
+      });
+    }
+
+    testWidgets('keeps a caller key, so a screen can find it', (tester) async {
+      await tester.pumpWidget(
+        host(const FsErrorLine('Wrong code', key: Key('error'))),
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('error')),
+          matching: find.text('Wrong code'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('wraps at large text on a small screen', (tester) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        host(
+          const FsErrorLine(
+            "Couldn't reach FitSync. Check your connection and try again.",
+          ),
+          textScale: 2.0,
+        ),
+      );
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('FsRetry', () {
+    testWidgets('FsRetry calls back and meets tap-target size', (tester) async {
+      final h = tester.ensureSemantics();
+      var n = 0;
+      await tester.pumpWidget(
+        host(FsRetry(message: "Couldn't load.", onRetry: () => n++)),
+      );
+      await tester.tap(find.text('Try again'));
+      expect(n, 1);
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      h.dispose();
+    });
+
+    testWidgets('shows the message over a small secondary Try again', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        host(
+          FsRetry(
+            message: "Couldn't load.",
+            onRetry: () {},
+            buttonKey: const Key('retry'),
+          ),
+        ),
+      );
+      final button = tester.widget<FsButton>(find.byKey(const Key('retry')));
+      expect(button.label, 'Try again');
+      expect(button.small, isTrue);
+      expect(button.kind, FsButtonKind.secondary);
+      expect(
+        tester.getRect(find.text("Couldn't load.")).bottom,
+        lessThanOrEqualTo(tester.getRect(find.byKey(const Key('retry'))).top),
+      );
+    });
+
+    testWidgets('puts a secondary action below Try again', (tester) async {
+      await tester.pumpWidget(
+        host(
+          FsRetry(
+            message: "Couldn't load.",
+            onRetry: () {},
+            buttonKey: const Key('retry'),
+            secondary: const Text('Sign out'),
+          ),
+        ),
+      );
+      expect(
+        tester.getRect(find.text('Sign out')).top,
+        greaterThanOrEqualTo(
+          tester.getRect(find.byKey(const Key('retry'))).bottom,
+        ),
+      );
+    });
+
+    testWidgets('full screen sits inside the safe area, centred', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: fsLightTheme(),
+          home: Scaffold(
+            body: FsRetry(
+              message: "Couldn't load.",
+              onRetry: () {},
+              fullScreen: true,
+            ),
+          ),
+        ),
+      );
+      expect(
+        find.ancestor(
+          of: find.text("Couldn't load."),
+          matching: find.byType(SafeArea),
+        ),
+        findsOneWidget,
+      );
+      final message = tester.getRect(find.text("Couldn't load."));
+      expect(message.center.dx, closeTo(180, 1));
+      expect(message.top, greaterThan(200));
+    });
+
+    testWidgets('full screen scrolls rather than overflows at large text', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(2.0)),
+          child: MaterialApp(
+            theme: fsLightTheme(),
+            home: Scaffold(
+              body: FsRetry(
+                message:
+                    "Couldn't reach FitSync. Check your connection and try "
+                        'again. ' *
+                    4,
+                onRetry: () {},
+                fullScreen: true,
+                secondary: const Text('Sign out'),
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    // A load error replaced a spinner in silence: nothing told a screen
+    // reader the screen had failed.
+    for (final fullScreen in [false, true]) {
+      testWidgets('the message is announced as it appears '
+          '(${fullScreen ? 'full screen' : 'inline'})', (tester) async {
+        final h = tester.ensureSemantics();
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: fsLightTheme(),
+            home: Scaffold(
+              body: FsRetry(
+                message: "Couldn't load.",
+                onRetry: () {},
+                fullScreen: fullScreen,
+              ),
+            ),
+          ),
+        );
+        expect(
+          tester
+              .getSemantics(find.text("Couldn't load."))
+              .flagsCollection
+              .isLiveRegion,
+          isTrue,
+        );
+        h.dispose();
+      });
+    }
+
+    testWidgets('full screen in an unbounded height falls back to inline', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: fsLightTheme(),
+          home: Scaffold(
+            body: ListView(
+              children: [
+                FsRetry(
+                  message: "Couldn't load.",
+                  onRetry: () {},
+                  fullScreen: true,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+      expect(find.text('Try again'), findsOneWidget);
+    });
+  });
+
+  // AO-13 / NU-10: a field with something wrong looked like every other
+  // field; only the line under it said so.
+  group('fields with an error', () {
+    for (final dark in [false, true]) {
+      final t = dark ? FsTokens.dark : FsTokens.light;
+      final mode = dark ? 'dark' : 'light';
+
+      testWidgets('FsField draws a red border and says the error ($mode)', (
+        tester,
+      ) async {
+        final h = tester.ensureSemantics();
+        final controller = TextEditingController();
+        addTearDown(controller.dispose);
+        await tester.pumpWidget(
+          host(
+            SizedBox(
+              width: 200,
+              child: FsField(
+                controller: controller,
+                hint: 'g',
+                label: 'Protein',
+                fieldKey: const Key('f'),
+                errorText: 'Must be 0–500 g',
+              ),
+            ),
+            dark: dark,
+          ),
+        );
+        final decoration = tester
+            .widget<TextField>(find.byKey(const Key('f')))
+            .decoration!;
+        for (final border in [
+          decoration.enabledBorder,
+          decoration.focusedBorder,
+        ]) {
+          expect((border! as OutlineInputBorder).borderSide.color, t.red);
+        }
+        expect(contrast(t.red, t.surface), greaterThanOrEqualTo(3));
+        expect(
+          tester
+              .getSemantics(find.byKey(const Key('f')))
+              .getSemanticsData()
+              .hint,
+          contains('Must be 0–500 g'),
+        );
+        h.dispose();
+      });
+
+      testWidgets('FsStatField draws a red border with an error ($mode)', (
+        tester,
+      ) async {
+        final controller = TextEditingController();
+        addTearDown(controller.dispose);
+        await tester.pumpWidget(
+          host(
+            SizedBox(
+              width: 200,
+              child: FsStatField(
+                key: const Key('card'),
+                label: 'Height',
+                unit: 'cm',
+                controller: controller,
+                error: true,
+              ),
+            ),
+            dark: dark,
+          ),
+        );
+        final box =
+            tester
+                    .widget<Container>(
+                      find
+                          .descendant(
+                            of: find.byKey(const Key('card')),
+                            matching: find.byType(Container),
+                          )
+                          .first,
+                    )
+                    .decoration!
+                as BoxDecoration;
+        expect((box.border! as Border).top.color, t.red);
+        expect(contrast(t.red, t.surface), greaterThanOrEqualTo(3));
+      });
+    }
+
+    // R11: an error appearing or clearing while typing remounted the field,
+    // so it lost focus and the keyboard closed mid-number.
+    testWidgets(
+      'FsField keeps focus and keyboard as its error comes and goes',
+      (tester) async {
+        final h = tester.ensureSemantics();
+        final controller = TextEditingController();
+        final error = ValueNotifier<String?>(null);
+        addTearDown(controller.dispose);
+        addTearDown(error.dispose);
+        await tester.pumpWidget(
+          host(
+            SizedBox(
+              width: 200,
+              child: ValueListenableBuilder<String?>(
+                valueListenable: error,
+                builder: (_, message, _) => FsField(
+                  controller: controller,
+                  hint: 'kcal',
+                  fieldKey: const Key('f'),
+                  errorText: message,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.showKeyboard(find.byKey(const Key('f')));
+        await tester.pump();
+        final before = tester.state<EditableTextState>(
+          find.byType(EditableText),
+        );
+        expect(before.widget.focusNode.hasFocus, isTrue);
+        expect(tester.testTextInput.isVisible, isTrue);
+
+        Color enabledBorder() =>
+            (tester
+                        .widget<TextField>(find.byKey(const Key('f')))
+                        .decoration!
+                        .enabledBorder!
+                    as OutlineInputBorder)
+                .borderSide
+                .color;
+        String hint() => tester
+            .getSemantics(find.byKey(const Key('f')))
+            .getSemanticsData()
+            .hint;
+
+        for (final message in ['Must be 0–500 g', null, 'Enter a number']) {
+          error.value = message;
+          await tester.pump();
+          final now = tester.state<EditableTextState>(
+            find.byType(EditableText),
+          );
+          expect(
+            identical(now, before),
+            isTrue,
+            reason: 'same field ($message)',
+          );
+          expect(now.widget.focusNode.hasFocus, isTrue, reason: '$message');
+          expect(FocusManager.instance.primaryFocus, before.widget.focusNode);
+          expect(tester.testTextInput.isVisible, isTrue, reason: '$message');
+          if (message == null) {
+            expect(hint(), isEmpty);
+            expect(enabledBorder(), FsTokens.light.line);
+          } else {
+            expect(hint(), message);
+            expect(enabledBorder(), FsTokens.light.red);
+          }
+        }
+        h.dispose();
+      },
+    );
+  });
+
+  group('confirmDiscard', () {
+    /// Opens the dialog from a button and records its answer in [answers].
+    Future<void> pumpAsker(
+      WidgetTester tester,
+      List<bool> answers, {
+      String? message,
+    }) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: fsLightTheme(),
+          home: Builder(
+            builder: (c) => TextButton(
+              onPressed: () async =>
+                  answers.add(await confirmDiscard(c, message: message)),
+              child: const Text('ask'),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('ask'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('Keep editing answers false and Discard true', (tester) async {
+      final answers = <bool>[];
+      await pumpAsker(tester, answers);
+      expect(find.text('Discard your changes?'), findsOneWidget);
+      await tester.tap(find.text('Keep editing'));
+      await tester.pumpAndSettle();
+      expect(find.text('Discard your changes?'), findsNothing);
+
+      await tester.tap(find.text('ask'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Discard'));
+      await tester.pumpAndSettle();
+      expect(answers, [false, true]);
+    });
+
+    testWidgets('a dismissed dialog keeps the edits', (tester) async {
+      final answers = <bool>[];
+      await pumpAsker(tester, answers);
+      await tester.tapAt(const Offset(5, 5)); // the barrier
+      await tester.pumpAndSettle();
+      expect(answers, [false]);
+    });
+
+    testWidgets('Discard is drawn in red', (tester) async {
+      await pumpAsker(tester, []);
+      const t = FsTokens.light;
+      final style = tester
+          .widget<TextButton>(
+            find.ancestor(
+              of: find.text('Discard'),
+              matching: find.byType(TextButton),
+            ),
+          )
+          .style!;
+      expect(style.foregroundColor!.resolve({}), t.red);
+    });
+
+    testWidgets('can say why discarding matters here', (tester) async {
+      await pumpAsker(tester, [], message: 'The photo still counts today.');
+      expect(find.text('The photo still counts today.'), findsOneWidget);
+    });
+  });
+
+  group('FsDiscardGuard', () {
+    Future<void> pumpGuard(WidgetTester tester, {required bool dirty}) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: fsLightTheme(),
+          home: Builder(
+            builder: (c) => TextButton(
+              onPressed: () => Navigator.of(c).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => FsDiscardGuard(
+                    dirty: dirty,
+                    message: 'Nothing here is saved yet.',
+                    child: const Scaffold(body: Text('form')),
+                  ),
+                ),
+              ),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('a clean screen pops straight away', (tester) async {
+      await pumpGuard(tester, dirty: false);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Discard your changes?'), findsNothing);
+      expect(find.text('form'), findsNothing);
+    });
+
+    testWidgets('a dirty screen asks, in its own words, then obeys', (
+      tester,
+    ) async {
+      await pumpGuard(tester, dirty: true);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Discard your changes?'), findsOneWidget);
+      expect(find.text('Nothing here is saved yet.'), findsOneWidget);
+
+      await tester.tap(find.text('Keep editing'));
+      await tester.pumpAndSettle();
+      expect(find.text('form'), findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Discard'));
+      await tester.pumpAndSettle();
+      expect(find.text('form'), findsNothing);
+      expect(find.text('open'), findsOneWidget);
     });
   });
 }

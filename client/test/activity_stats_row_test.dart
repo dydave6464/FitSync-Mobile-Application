@@ -9,6 +9,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:fitsync/core/theme.dart';
 
 import 'package:fitsync/features/activity/data/step_permission.dart';
+import 'package:fitsync/features/activity/data/step_source.dart';
 import 'package:fitsync/features/activity/domain/activity.dart';
 import 'package:fitsync/features/activity/domain/step_readings.dart';
 import 'package:fitsync/features/activity/presentation/activation_screen.dart';
@@ -41,6 +42,27 @@ class _StubActivity extends ActivityController {
   Future<ActivityState> build() async => value;
   @override
   Future<void> sync() async {}
+}
+
+/// Activity whose week never arrives: a slow network on start-up.
+class _SlowActivity extends ActivityController {
+  @override
+  Future<ActivityState> build() => Completer<ActivityState>().future;
+  @override
+  Future<void> sync() async {}
+}
+
+/// The phone's own count, which needs no network.
+class _PhoneSteps implements StepSource {
+  const _PhoneSteps(this.steps);
+  final int steps;
+
+  @override
+  Future<DaySteps> today(DateTime now) async => DaySteps(steps: steps);
+  @override
+  Future<Map<String, int>> earlierDays(DateTime now) async => const {};
+  @override
+  Stream<int> live(DateTime now) => const Stream<int>.empty();
 }
 
 /// Activity that cannot be read.
@@ -397,6 +419,39 @@ void main() {
       expect(find.byKey(const Key('home.activity.usual')), findsNothing);
     });
   });
+
+  testWidgets(
+    "on, the week still loading: the phone's count at once, dashes for the "
+    'estimates, never zeros',
+    (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            stepPermissionProvider.overrideWithValue(
+              _Permission(StepAccess.granted),
+            ),
+            stepSourceProvider.overrideWithValue(const _PhoneSteps(6420)),
+            activityProvider.overrideWith(_SlowActivity.new),
+            liveStepsProvider.overrideWith((ref) => const Stream<int>.empty()),
+          ],
+          child: const MaterialApp(home: Scaffold(body: ActivityStatsRow())),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(tile('steps', '6,420'), findsOneWidget);
+      expect(tile('kcal', '—'), findsOneWidget);
+      expect(tile('km', '—'), findsOneWidget);
+      expect(tile('steps', '0'), findsNothing);
+
+      // And the tile already opens Activity.
+      await tester.tap(find.byKey(const Key('home.activity.steps')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.byType(ActivityScreen), findsOneWidget);
+    },
+  );
 }
 
 /// A permission whose status has not answered yet.

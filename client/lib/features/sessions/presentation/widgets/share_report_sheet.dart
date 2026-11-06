@@ -155,8 +155,9 @@ class _ShareReportSheetState extends ConsumerState<_ShareReportSheet> {
     final t = context.fs;
     final premium = ref.watch(profileProvider).value?.isPremium ?? false;
 
+    // Scrolls once large text makes it taller than the sheet may be.
     return SafeArea(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(
           18,
           10,
@@ -185,11 +186,16 @@ class _ShareReportSheetState extends ConsumerState<_ShareReportSheet> {
                   onChanged: _busy
                       ? null
                       : (on) => setState(() => _include[s.key] = on),
+                  // The label wraps rather than pushing the Pro tag past the
+                  // switch: 'Muscle balance' and its tag need about 270 dp at
+                  // 2.0x text.
                   title: Row(
                     children: [
-                      Text(
-                        s.label,
-                        style: TextStyle(fontSize: 13.5, color: t.text),
+                      Flexible(
+                        child: Text(
+                          s.label,
+                          style: TextStyle(fontSize: 13.5, color: t.text),
+                        ),
                       ),
                       if (s.pro) ...[
                         const SizedBox(width: 8),
@@ -252,9 +258,11 @@ class _LockedSection extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Text(
-                        label,
-                        style: TextStyle(fontSize: 13.5, color: t.text2),
+                      Flexible(
+                        child: Text(
+                          label,
+                          style: TextStyle(fontSize: 13.5, color: t.text2),
+                        ),
                       ),
                       const SizedBox(width: 8),
                       const FsTag('Pro'),

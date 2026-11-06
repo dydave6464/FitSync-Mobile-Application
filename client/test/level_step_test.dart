@@ -686,4 +686,46 @@ void main() {
 
     expect(current().equipmentIds, contains(id));
   });
+
+  group('the training location row at large text', () {
+    for (final (width, height) in [(360.0, 640.0), (320.0, 568.0)]) {
+      testWidgets('reads whole words and fits ${width.toInt()} dp at 2.0x', (
+        tester,
+      ) async {
+        tester.view.physicalSize = Size(width, height);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+        await _pump(
+          tester,
+          value: const LevelAnswers(trainingLocation: 'commercial_gym'),
+        );
+
+        expect(tester.takeException(), isNull);
+        // 13.5 sp at 2x is about 32 dp a line. "Training location" may take
+        // two lines ("Training" / "location"), never the near-letter-per-line
+        // column it was squeezed into beside the value.
+        final label = tester.getSize(find.text('Training location'));
+        expect(label.height, lessThan(32 * 2.5));
+        final value = tester.getSize(find.text('Commercial gym'));
+        expect(value.height, lessThan(32 * 2.5));
+      });
+    }
+
+    testWidgets('keeps the label and the value on one line at normal text', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        value: const LevelAnswers(trainingLocation: 'commercial_gym'),
+      );
+
+      final label = tester.getRect(find.text('Training location'));
+      final value = tester.getRect(find.text('Commercial gym'));
+      expect(value.center.dy, closeTo(label.center.dy, 1));
+      expect(value.left, greaterThanOrEqualTo(label.right));
+    });
+  });
 }

@@ -935,4 +935,20 @@ void main() {
       expect(tester.getSize(tag()).height, greaterThanOrEqualTo(48));
     });
   });
+
+  testWidgets('the month title is a heading that announces a new month '
+      '(PT-6)', (tester) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester);
+
+    final data = tester
+        .getSemantics(find.text('September 2026'))
+        .getSemanticsData();
+    // Its own node: merged into the card, the heading and the live region
+    // would be the weekday letters and the legend too.
+    expect(data.label, 'September 2026');
+    expect(data.flagsCollection.isHeader, isTrue);
+    expect(data.flagsCollection.isLiveRegion, isTrue);
+    handle.dispose();
+  });
 }

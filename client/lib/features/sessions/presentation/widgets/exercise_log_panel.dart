@@ -11,6 +11,7 @@ import '../../../plans/domain/workout_plan.dart';
 import '../../domain/active_session.dart';
 import 'set_drafts.dart';
 import 'set_row.dart';
+import '../../../exercises/domain/exercise_labels.dart';
 
 /// The most rows one exercise's set table grows to with "+ Add set".
 ///
@@ -248,7 +249,8 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                       container: true,
                       button: true,
                       enabled: widget.onOpenDemo != null,
-                      label: 'Watch how to do ${exercise.name}',
+                      label:
+                          'Watch how to do ${exerciseDisplayName(exercise.name)}',
                       child: InkWell(
                         key: Key('logpanel.demo.${exercise.exerciseId}'),
                         onTap: widget.onOpenDemo,
@@ -296,9 +298,11 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          // Two lines: a name cut mid-word can be mistaken
+                          // for its neighbour in the workout.
                           Text(
-                            exercise.name,
-                            maxLines: 1,
+                            exerciseDisplayName(exercise.name),
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 15,
@@ -490,7 +494,7 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                       ),
                     if (widget.onAddSet != null)
                       _AddSet(
-                        exerciseName: exercise.name,
+                        exerciseName: exerciseDisplayName(exercise.name),
                         atCap: rows >= maxSetsPerExercise,
                         onAddSet: widget.onAddSet!,
                       ),

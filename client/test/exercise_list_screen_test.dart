@@ -203,7 +203,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repo.lastEquipment, 'dumbbell');
-    expect(find.text('dumbbell press 1'), findsOneWidget);
+    expect(find.text('Dumbbell press 1'), findsOneWidget);
   });
 
   testWidgets('the button names the equipment in force', (tester) async {
@@ -374,7 +374,7 @@ void main() {
     await search(tester, 'plank');
 
     expect(repo.lastSearch, 'plank');
-    expect(find.text('plank 1'), findsOneWidget);
+    expect(find.text('Plank 1'), findsOneWidget);
   });
 
   testWidgets('a burst of keystrokes costs one request, not one each', (

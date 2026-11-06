@@ -364,16 +364,23 @@ void main() {
     await tester.tap(find.byKey(const Key('tab.progress')));
     await tester.pumpAndSettle();
     expect(find.textContaining('once you have logged'), findsNothing);
-    // skipOffstage: false -- the Progress tab now leads with four real cards
-    // above the history list, so in the test viewport this message sits below
-    // the fold. A default finder treats "clipped by the ListView's viewport"
-    // the same as "not rendered", which is a fact about this window, not
-    // about whether the widget exists -- see nav_shell_test.dart for the same
-    // caveat with IndexedStack.
-    expect(
-      find.byKey(const Key('progress.empty'), skipOffstage: false),
-      findsOneWidget,
+    // The Progress tab leads with the period switch and four real cards
+    // above the history list, so in the test viewport this message sits
+    // below the fold, past the list's build-ahead once the switch is a full
+    // 48 dp. Scroll to it the way a user would, rather than ask whether it
+    // happens to be built -- see nav_shell_test.dart for the same caveat
+    // with IndexedStack.
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('progress.empty')),
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byType(ProgressScreen),
+            matching: find.byType(Scrollable),
+          )
+          .first,
     );
+    expect(find.byKey(const Key('progress.empty')), findsOneWidget);
   });
 
   testWidgets('Recovery still says what is coming rather than nothing', (
@@ -878,5 +885,53 @@ void main() {
     await tester.tap(find.byKey(const Key('tab.recovery')));
     await tester.pumpAndSettle();
     expect(find.byType(RecoveryScreen), findsOneWidget);
+  });
+
+  group('sub-tabs (PT-2)', () {
+    testWidgets('each sub-tab is a 48 dp tall target', (tester) async {
+      await _pump(tester);
+      for (final tab in ['plan', 'progress', 'recovery']) {
+        final size = tester.getSize(find.byKey(Key('tab.$tab')));
+        expect(size.height, greaterThanOrEqualTo(48), reason: tab);
+        expect(size.width, greaterThanOrEqualTo(48), reason: tab);
+      }
+    });
+
+    testWidgets('sub-tabs announce as tabs with the current one selected', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _pump(tester);
+
+      expect(
+        tester.getSemantics(find.byKey(const Key('tab.plan'))),
+        isSemantics(
+          label: 'Plan',
+          hint: 'Tab 1 of 3',
+          isButton: true,
+          hasSelectedState: true,
+          isSelected: true,
+          isInMutuallyExclusiveGroup: true,
+          hasTapAction: true,
+        ),
+      );
+      expect(
+        tester.getSemantics(find.byKey(const Key('tab.progress'))),
+        isSemantics(
+          label: 'Progress',
+          hint: 'Tab 2 of 3',
+          hasSelectedState: true,
+          isSelected: false,
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('tab.progress')));
+      await tester.pumpAndSettle();
+      expect(
+        tester.getSemantics(find.byKey(const Key('tab.progress'))),
+        isSemantics(label: 'Progress', isSelected: true),
+      );
+      handle.dispose();
+    });
   });
 }

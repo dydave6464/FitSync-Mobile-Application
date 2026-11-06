@@ -5,6 +5,8 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/widgets/fs_kit.dart';
+
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/features/auth/data/auth_repository.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
@@ -171,6 +173,23 @@ Future<void> _fillAndSubmit(
   await _tapKey(tester, 'submit');
 }
 
+/// Whether the text [finder] matches is in a live region, which a screen
+/// reader speaks as soon as it appears.
+bool _isLive(WidgetTester tester, Finder finder) =>
+    tester.getSemantics(finder).getSemanticsData().flagsCollection.isLiveRegion;
+
+/// Whether the field keyed [key] has the keyboard focus.
+bool _hasFocus(WidgetTester tester, String key) => tester
+    .state<EditableTextState>(
+      find.descendant(
+        of: find.byKey(Key(key)),
+        matching: find.byType(EditableText),
+      ),
+    )
+    .widget
+    .focusNode
+    .hasFocus;
+
 void main() {
   testWidgets('renders an email and a password field', (tester) async {
     await _pump(tester, FakeAuthRepository());
@@ -256,11 +275,14 @@ void main() {
     expect(find.text('That email is already registered.'), findsOneWidget);
   });
 
-  testWidgets('a NETWORK_ERROR shows its retryable message', (tester) async {
+  testWidgets('a NETWORK_ERROR shows plain words, not the developer text', (
+    tester,
+  ) async {
     final repo = FakeAuthRepository(
       onLogin: () async => throw const ApiException(
         'NETWORK_ERROR',
-        'Could not reach the server.',
+        'Could not reach http://10.0.2.2:3000. Check the server is running, '
+            'and that "adb reverse tcp:3000 tcp:3000" has been run.',
       ),
     );
     await _pump(tester, repo);
@@ -269,7 +291,34 @@ void main() {
     await _fillAndSubmit(tester);
     await tester.pumpAndSettle();
 
-    expect(find.text('Could not reach the server.'), findsOneWidget);
+    expect(
+      find.text("Couldn't reach FitSync. Check your connection and try again."),
+      findsOneWidget,
+    );
+    expect(find.textContaining('adb'), findsNothing);
+    expect(find.textContaining('10.0.2.2'), findsNothing);
+  });
+
+  testWidgets('a non-JSON reply shows plain words, not the HTTP detail', (
+    tester,
+  ) async {
+    final repo = FakeAuthRepository(
+      onLogin: () async => throw const ApiException(
+        'INVALID_RESPONSE',
+        'Server returned a non-JSON body (HTTP 502).',
+      ),
+    );
+    await _pump(tester, repo);
+    await tester.pumpAndSettle();
+
+    await _fillAndSubmit(tester);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Something went wrong on our side. Please try again.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('non-JSON'), findsNothing);
   });
 
   testWidgets('a double tap on register cannot create two accounts', (
@@ -673,8 +722,125 @@ void main() {
     await _tapKey(tester, 'submit');
     await tester.pumpAndSettle();
 
-    expect(find.text('Enter your email.'), findsOneWidget);
+    // The name is drawn first, so it is the field the check names.
+    expect(find.text('Enter your name.'), findsOneWidget);
     expect(find.text('At least 8 characters'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a request error is a red error line that is read aloud', (
+    tester,
+  ) async {
+    final repo = FakeAuthRepository(
+      onLogin: () async => throw const ApiException(
+        'INVALID_CREDENTIALS',
+        'Email or password is incorrect.',
+      ),
+    );
+    final handle = tester.ensureSemantics();
+    await _pump(tester, repo);
+    await _fillAndSubmit(tester);
+    await tester.pumpAndSettle();
+
+    final message = find.descendant(
+      of: find.byKey(const Key('error')),
+      matching: find.text('Email or password is incorrect.'),
+    );
+    expect(message, findsOneWidget);
+    expect(
+      find.ancestor(of: message, matching: find.byType(FsErrorLine)),
+      findsOneWidget,
+    );
+    expect(_isLive(tester, message), isTrue);
+    handle.dispose();
+  });
+
+  testWidgets('a failed check moves to the first field to fix, top down', (
+    tester,
+  ) async {
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+    await _toRegister(tester);
+
+    // Everything empty: the name is drawn first, so it is the one to fix.
+    await _tapKey(tester, 'submit');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Enter your name.'), findsOneWidget);
+    expect(_hasFocus(tester, 'fullName'), isTrue);
+
+    // Name given, email still empty: the cursor moves on to the email.
+    await tester.enterText(find.byKey(const Key('fullName')), 'Juan');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await _tapKey(tester, 'submit');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Enter your email.'), findsOneWidget);
+    expect(_hasFocus(tester, 'email'), isTrue);
+  });
+  testWidgets('a failed check on the field already in use is read aloud', (
+    tester,
+  ) async {
+    // Typed last, so the password field still has focus when Create account
+    // is tapped: focus cannot move, so without an announcement a screen
+    // reader hears nothing at all.
+    final repo = FakeAuthRepository(onRegister: () async {});
+    final handle = tester.ensureSemantics();
+    await _pump(tester, repo);
+    await tester.pumpAndSettle();
+    await _toRegister(tester);
+
+    await tester.enterText(find.byKey(const Key('fullName')), 'Juan');
+    await _fillAndSubmit(tester, password: 'short12');
+    await tester.pumpAndSettle();
+
+    expect(_hasFocus(tester, 'password'), isTrue);
+    expect(
+      tester.takeAnnouncements().map((a) => a.message),
+      contains('Use at least 8 characters.'),
+    );
+    expect(repo.registerCalls, 0);
+    handle.dispose();
+  });
+
+  testWidgets('a bad email typed just before Sign in is read aloud', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('password')), 's3cret-pass');
+    await tester.enterText(find.byKey(const Key('email')), 'juan');
+    await _tapKey(tester, 'submit');
+    await tester.pumpAndSettle();
+
+    expect(_hasFocus(tester, 'email'), isTrue);
+    expect(
+      tester.takeAnnouncements().map((a) => a.message),
+      contains('That does not look like an email.'),
+    );
+    handle.dispose();
+  });
+
+  testWidgets('a failed check that moves focus is not also announced', (
+    tester,
+  ) async {
+    // Moving focus already reads the field and its message; an announcement
+    // as well would say it twice.
+    final handle = tester.ensureSemantics();
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+    await _toRegister(tester);
+
+    await _tapKey(tester, 'submit');
+    await tester.pumpAndSettle();
+
+    expect(_hasFocus(tester, 'fullName'), isTrue);
+    expect(
+      tester.takeAnnouncements().map((a) => a.message),
+      isNot(contains('Enter your name.')),
+    );
+    handle.dispose();
   });
 }

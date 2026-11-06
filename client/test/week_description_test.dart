@@ -290,6 +290,16 @@ void main() {
       expect(parseWeekDescription(text, _options).daysPerWeek, 2);
     });
 
+    test('one chosen day reads "1 day", and still reads back as 1 (PT-18)', () {
+      final text = composeWeekDescription(
+        profile: profileWith(trainingDays: const [3]),
+        plan: plan,
+        options: _options,
+      );
+      expect(text, contains('train 1 day a week'));
+      expect(parseWeekDescription(text, _options).daysPerWeek, 1);
+    });
+
     test('names the injuries being protected, with their sides', () {
       final text = composeWeekDescription(
         profile: profileWith(

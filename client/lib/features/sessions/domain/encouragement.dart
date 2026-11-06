@@ -1,5 +1,6 @@
 import '../../plans/domain/workout_plan.dart';
 import 'active_session.dart';
+import '../../exercises/domain/exercise_labels.dart';
 
 /// What the logger says once the exercise on screen is fully logged.
 class Encouragement {
@@ -47,7 +48,7 @@ Encouragement? encouragementFor({
   }
 
   final next = index + 1 < exercises.length
-      ? 'Up next: ${exercises[index + 1].name}'
+      ? 'Up next: ${exerciseDisplayName(exercises[index + 1].name)}'
       : null;
 
   // Rounded up, so five exercises are halfway at three rather than at two
@@ -61,7 +62,7 @@ Encouragement? encouragementFor({
 
   return Encouragement(
     headline: pick(_exerciseLines)(
-      _SetCount(exercise.name, exercise.targetSets),
+      _SetCount(exerciseDisplayName(exercise.name), exercise.targetSets),
     ),
     detail: next,
   );
@@ -108,10 +109,14 @@ final List<String Function(int done, int total)> _halfwayLines = [
 ];
 
 /// Every set of every exercise logged. Each ends by pointing at Finish,
-/// because the session is not saved until it is tapped.
+/// because an open workout is not counted -- in History, the streak or
+/// Progress -- until it is tapped. "Count", not "save": the sets are saved
+/// already, and saying otherwise made leaving sound like losing them.
 const List<String> _finishedLines = [
-  'Every set done — great session! Tap Finish session to save it.',
-  "That's the whole workout — well done! Tap Finish session to save it.",
+  'Every set done — great session! '
+      'Tap Finish session to count it toward your streak.',
+  "That's the whole workout — well done! "
+      'Tap Finish session to count it toward your streak.',
   'Workout complete — you showed up and did the work. '
-      'Tap Finish session to save it.',
+      'Tap Finish session to count it toward your streak.',
 ];

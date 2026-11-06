@@ -154,6 +154,7 @@ Future<void> _pump(
   VoidCallback? onGoToProfile,
   Set<String> completedDays = const <String>{},
   ProfileNotifier Function()? profile,
+  double textScale = 1.0,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -175,6 +176,13 @@ Future<void> _pump(
         // PlanScreen no longer brings its own Scaffold/AppBar -- the Training
         // shell supplies both now -- so this test supplies a bare Scaffold to
         // stand in for it.
+        builder: textScale == 1.0
+            ? null
+            : (context, child) => MediaQuery(
+                data: MediaQuery.of(context)
+                    .copyWith(textScaler: TextScaler.linear(textScale)),
+                child: child!,
+              ),
         home: Scaffold(body: PlanScreen(onGoToProfile: onGoToProfile)),
       ),
     ),
@@ -267,6 +275,45 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(GeneratorScreen), findsOneWidget);
+  });
+
+  // The library and the logger say 'Barbell bench press' and 'Chest'; the
+  // Plan card said 'barbell bench press · pectorals', as the catalogue
+  // stores them.
+  testWidgets('an exercise reads as it does in the library and logger', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    const plan = WorkoutPlan(
+      planId: 43,
+      name: 'Week 1 — Full body',
+      splitStyle: 'full_body',
+      daysPerWeek: 3,
+      sessionLengthMin: 45,
+      weekNo: 1,
+      exercises: [
+        PlanExercise(
+          planExerciseId: 603,
+          exerciseId: 103,
+          name: 'barbell bench press',
+          muscleGroup: 'pectorals',
+          orderNo: 1,
+          targetSets: 3,
+          targetReps: '8-12',
+        ),
+      ],
+    );
+    await _pump(tester, plan, alternatives: const []);
+
+    expect(find.text('Barbell bench press'), findsOneWidget);
+    expect(find.textContaining('Chest · '), findsOneWidget);
+    expect(find.textContaining('pectorals'), findsNothing);
+    expect(find.bySemanticsLabel('Change Barbell bench press'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('swap.open.603')));
+    await tester.pumpAndSettle();
+    expect(find.text('Replace Barbell bench press'), findsOneWidget);
+    handle.dispose();
   });
 
   testWidgets('every plan exercise offers a way to change it', (tester) async {
@@ -494,5 +541,85 @@ void main() {
     // Full body has a rotation of one; labelling it is noise.
     await _pump(tester, _fullBodyPlan);
     expect(find.text('Full body'), findsNothing);
+  });
+
+  group('the Change button (PT-17)', () {
+    const longName = WorkoutPlan(
+      planId: 45,
+      name: 'Week 1 — Full body',
+      splitStyle: 'full_body',
+      daysPerWeek: 3,
+      sessionLengthMin: 45,
+      weekNo: 1,
+      exercises: [
+        PlanExercise(
+          planExerciseId: 801,
+          exerciseId: 301,
+          name: 'Dumbbell Incline Bench Press',
+          muscleGroup: 'chest',
+          orderNo: 1,
+          targetSets: 3,
+          targetReps: '8-12',
+        ),
+      ],
+    );
+
+    Rect nameRect(WidgetTester tester) =>
+        tester.getRect(find.text('Dumbbell Incline Bench Press'));
+    Rect changeRect(WidgetTester tester) =>
+        tester.getRect(find.byKey(const Key('swap.open.801')));
+
+    testWidgets('names the exercise it changes', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pump(tester, _plan);
+
+      expect(find.bySemanticsLabel('Change Push-up'), findsOneWidget);
+      expect(find.bySemanticsLabel('Change Goblet squat'), findsOneWidget);
+      handle.dispose();
+    });
+
+    testWidgets('sits beside the name at normal text', (tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await _pump(tester, longName);
+
+      expect(changeRect(tester).top, lessThan(nameRect(tester).bottom));
+    });
+
+    testWidgets('moves under the name at 2x text, leaving it the width', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await _pump(tester, longName, textScale: 2.0);
+
+      expect(tester.takeException(), isNull);
+      // Past the list's build-ahead at this size: scroll to it as a user
+      // would.
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('swap.open.801')),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      expect(
+        changeRect(tester).top,
+        greaterThanOrEqualTo(nameRect(tester).bottom),
+      );
+    });
+  });
+
+  testWidgets('the session card counts the days the profile carries (PT-18)', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _plan, // daysPerWeek: 3
+      profile: () => _FakeProfileNotifier(trainingDays: const [1, 2, 4, 6]),
+    );
+
+    expect(find.textContaining('4 days a week'), findsOneWidget);
   });
 }

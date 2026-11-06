@@ -199,12 +199,15 @@ void main() {
       final lines = {for (var id = 0; id < 3; id++) done(id)};
       expect(lines, hasLength(3));
       for (final line in lines) {
-        expect(line, endsWith('Tap Finish session to save it.'));
+        expect(
+          line,
+          endsWith('Tap Finish session to count it toward your streak.'),
+        );
       }
       expect(
         lines,
         contains(
-          'Every set done — great session! Tap Finish session to save it.',
+          'Every set done — great session! Tap Finish session to count it toward your streak.',
         ),
       );
     });

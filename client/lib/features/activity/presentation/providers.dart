@@ -130,6 +130,15 @@ class ActivityController extends AsyncNotifier<ActivityState> {
   }
 }
 
+/// Today's count from the phone alone, with no network: what Home's steps
+/// tile and the Activity screen show at once while [activityProvider] is
+/// still saving and reading the week, which can take several requests on a
+/// slow connection. autoDispose: it is only read until that week arrives,
+/// and a later cold load reads the phone afresh.
+final todayStepsProvider = FutureProvider.autoDispose<DaySteps>(
+  (ref) => ref.watch(stepSourceProvider).today(ref.read(activityClockProvider)()),
+);
+
 /// Today's running total while the Activity screen listens.
 final liveStepsProvider = StreamProvider.autoDispose<int>(
   (ref) => ref.watch(stepSourceProvider).live(ref.read(activityClockProvider)()),

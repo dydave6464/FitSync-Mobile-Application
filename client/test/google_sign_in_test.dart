@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -9,6 +10,9 @@ import 'package:fitsync/features/auth/data/google_sign_in_gateway.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/auth/presentation/sign_in_screen.dart';
+
+const _googleFailed =
+    "Couldn't sign in with Google. Try again, or use your email and password.";
 
 const _user = AuthUser(
   userId: 7,
@@ -23,11 +27,11 @@ const _user = AuthUser(
 class FakeGoogleGateway implements GoogleSignInGateway {
   FakeGoogleGateway(this._result);
 
-  final Future<String?> Function() _result;
+  final Future<GoogleSignInResult> Function() _result;
   int calls = 0;
 
   @override
-  Future<String?> idToken() {
+  Future<GoogleSignInResult> signIn() {
     calls++;
     return _result();
   }
@@ -122,7 +126,9 @@ Future<void> _pump(
 void main() {
   testWidgets('a successful Google sign-in posts its id token', (tester) async {
     final seen = <AuthUser>[];
-    final gateway = FakeGoogleGateway(() async => 'google-id-token');
+    final gateway = FakeGoogleGateway(
+      () async => const GoogleSignInToken('google-id-token'),
+    );
     final repo = FakeAuthRepository(onGoogle: (_) async => _user);
 
     await _pump(tester, gateway: gateway, repo: repo, seen: seen);
@@ -136,7 +142,9 @@ void main() {
   testWidgets('cancelling the Google dialog is not an error', (tester) async {
     // The case people forget. A cancelled sign-in is a decision, not a
     // failure, and showing an error for it is wrong.
-    final gateway = FakeGoogleGateway(() async => null);
+    final gateway = FakeGoogleGateway(
+      () async => const GoogleSignInCancelled(),
+    );
     final repo = FakeAuthRepository();
 
     await _pump(tester, gateway: gateway, repo: repo);
@@ -157,7 +165,9 @@ void main() {
   });
 
   testWidgets('INVALID_GOOGLE_TOKEN shows the server message', (tester) async {
-    final gateway = FakeGoogleGateway(() async => 'stale-token');
+    final gateway = FakeGoogleGateway(
+      () async => const GoogleSignInToken('stale-token'),
+    );
     final repo = FakeAuthRepository(
       onGoogle: (_) async => throw const ApiException(
         'INVALID_GOOGLE_TOKEN',
@@ -175,10 +185,79 @@ void main() {
     );
   });
 
+  testWidgets('a Google sign-in that cannot reach the server says so plainly', (
+    tester,
+  ) async {
+    final gateway = FakeGoogleGateway(
+      () async => const GoogleSignInToken('token'),
+    );
+    final repo = FakeAuthRepository(
+      onGoogle: (_) async => throw const ApiException(
+        'NETWORK_ERROR',
+        'Could not reach http://10.0.2.2:3000. Check the server is running, '
+            'and that "adb reverse tcp:3000 tcp:3000" has been run.',
+      ),
+    );
+
+    await _pump(tester, gateway: gateway, repo: repo);
+    await tester.tap(find.byKey(const Key('google')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text("Couldn't reach FitSync. Check your connection and try again."),
+      findsOneWidget,
+    );
+    expect(find.textContaining('adb'), findsNothing);
+  });
+
+  testWidgets('a failed Google sign-in says so, with another way in', (
+    tester,
+  ) async {
+    final gateway = FakeGoogleGateway(
+      () async => GoogleSignInFailed(StateError('no token')),
+    );
+    final repo = FakeAuthRepository();
+
+    await _pump(tester, gateway: gateway, repo: repo);
+    await tester.tap(find.byKey(const Key('google')));
+    await tester.pumpAndSettle();
+
+    expect(find.text(_googleFailed), findsOneWidget);
+    expect(repo.googleTokens, isEmpty);
+
+    // Still usable: the user can try again.
+    await tester.ensureVisible(find.byKey(const Key('google')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('google')));
+    await tester.pumpAndSettle();
+    expect(gateway.calls, 2);
+  });
+
+  testWidgets('a Google-side error says so, with another way in', (
+    tester,
+  ) async {
+    // No Play Services, a network drop mid-auth, a misconfigured build: the
+    // plugin throws something that is not the server's ApiException.
+    final gateway = FakeGoogleGateway(
+      () async => throw PlatformException(code: 'sign_in_failed'),
+    );
+    final repo = FakeAuthRepository();
+
+    await _pump(tester, gateway: gateway, repo: repo);
+    await tester.tap(find.byKey(const Key('google')));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text(_googleFailed), findsOneWidget);
+    expect(repo.googleTokens, isEmpty);
+  });
+
   testWidgets('the Google button is live, not a coming-soon stub', (
     tester,
   ) async {
-    final gateway = FakeGoogleGateway(() async => null);
+    final gateway = FakeGoogleGateway(
+      () async => const GoogleSignInCancelled(),
+    );
     await _pump(tester, gateway: gateway, repo: FakeAuthRepository());
 
     expect(find.textContaining('coming soon'), findsNothing);

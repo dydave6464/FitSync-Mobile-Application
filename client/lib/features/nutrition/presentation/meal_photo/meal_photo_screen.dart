@@ -17,6 +17,7 @@ import '../error_snack_bar.dart';
 import '../log_food_screen.dart' show pickFood;
 import '../providers.dart';
 import '../widgets/fatsecret_attribution.dart';
+import '../widgets/meal_chips.dart';
 import 'photo_cards.dart';
 import 'providers.dart';
 
@@ -280,37 +281,44 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
   Widget build(BuildContext context) {
     final t = context.fs;
     final toLog = logItemsOf(_cards).length;
-    return PopScope(
-      // Leaving mid-log would hide whether the meal was saved.
-      canPop: !_logging,
-      child: Scaffold(
-        backgroundColor: t.bg,
-        bottomNavigationBar: _phase != _Phase.confirm
-            ? null
-            : SafeArea(
-                minimum: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-                child: FsButton(
-                  key: const Key('snap.log'),
-                  label: logButtonLabel(toLog),
-                  busy: _logging,
-                  onPressed: toLog == 0 ? null : _log,
+    // Back from the confirm list asks first: the server has already
+    // counted this photo, and the photo is not kept, so the list cannot
+    // come back without another one.
+    return FsDiscardGuard(
+      dirty: _phase == _Phase.confirm && !_logging,
+      message: "This photo still counts toward today's limit.",
+      child: PopScope(
+        // Leaving mid-log would hide whether the meal was saved.
+        canPop: !_logging,
+        child: Scaffold(
+          backgroundColor: t.bg,
+          bottomNavigationBar: _phase != _Phase.confirm
+              ? null
+              : SafeArea(
+                  minimum: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                  child: FsButton(
+                    key: const Key('snap.log'),
+                    label: logButtonLabel(toLog),
+                    busy: _logging,
+                    onPressed: toLog == 0 ? null : _log,
+                  ),
                 ),
+          body: ListView(
+            padding: EdgeInsets.zero,
+            children: [
+              _PhotoHeader(photo: _photo, onBack: () => Navigator.of(context).maybePop()),
+              // Mid-log the list is frozen: what is sent is what the user sees,
+              // and no search can open over the screen that is about to close.
+              AbsorbPointer(
+                absorbing: _logging,
+                child: switch (_phase) {
+                  _Phase.analysing => _analysing(context),
+                  _Phase.failed => _failed(context),
+                  _Phase.confirm => _confirm(context),
+                },
               ),
-        body: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            _PhotoHeader(photo: _photo, onBack: () => Navigator.of(context).maybePop()),
-            // Mid-log the list is frozen: what is sent is what the user sees,
-            // and no search can open over the screen that is about to close.
-            AbsorbPointer(
-              absorbing: _logging,
-              child: switch (_phase) {
-                _Phase.analysing => _analysing(context),
-                _Phase.failed => _failed(context),
-                _Phase.confirm => _confirm(context),
-              },
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -389,16 +397,7 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
           const SizedBox(height: 16),
           Text('Meal', style: TextStyle(color: t.text2, fontSize: 12)),
           const SizedBox(height: 6),
-          FsTapRoom(
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final m in mealTypes)
-                  FsChip(key: Key('snap.meal.$m'), label: mealLabel(m), selected: _meal == m, onTap: () => setState(() => _meal = m)),
-              ],
-            ),
-          ),
+          MealChips(keyPrefix: 'snap.meal', selected: _meal, onSelected: (m) => setState(() => _meal = m)),
           const SizedBox(height: 16),
           if (_cards.isEmpty)
             Padding(

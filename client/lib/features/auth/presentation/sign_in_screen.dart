@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
+import '../data/google_sign_in_gateway.dart';
 import 'auth_controller.dart';
 import 'check_email_screen.dart';
 import 'forgot_password_screen.dart';
@@ -33,6 +35,11 @@ enum _Field { fullName, email, password }
 /// (`MIN_PASSWORD_LENGTH` in its auth routes).
 const _minPasswordLength = 8;
 
+/// When Google itself could not sign the user in. Names the other way in,
+/// since retrying may not help on a phone without Play Services.
+const _googleFailedMessage =
+    "Couldn't sign in with Google. Try again, or use your email and password.";
+
 class _SignInScreenState extends ConsumerState<SignInScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
@@ -61,8 +68,12 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   }
 
   /// Returns the first problem and the field it is about, or null when the
-  /// form is usable.
+  /// form is usable. Checked in the order the fields are drawn, so the one
+  /// named is the first a user meets going down the form.
   ({_Field field, String message})? _validate() {
+    if (_registering && _fullName.text.trim().isEmpty) {
+      return (field: _Field.fullName, message: 'Enter your name.');
+    }
     if (_email.text.trim().isEmpty) {
       return (field: _Field.email, message: 'Enter your email.');
     }
@@ -84,10 +95,43 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         message: 'Use at least $_minPasswordLength characters.',
       );
     }
-    if (_registering && _fullName.text.trim().isEmpty) {
-      return (field: _Field.fullName, message: 'Enter your name.');
-    }
     return null;
+  }
+
+  /// One per field, around its [FsLabeledField], so a failed check can put
+  /// the cursor in the field it is about.
+  final _fieldKeys = {for (final field in _Field.values) field: GlobalKey()};
+
+  /// Moves the cursor -- and a screen reader, which then reads the field's
+  /// name and the message now in its hint -- to [field]. Otherwise nothing
+  /// is heard after Sign in, and a failed check sounds like a hang.
+  ///
+  /// When [field] already has focus (typed in last: a phone does not unfocus
+  /// a field on an outside tap) focus cannot move, so nothing would be read.
+  /// [message] is announced instead -- only then, so it is never said twice.
+  void _focus(_Field field, String message) {
+    EditableTextState? editable;
+    void visit(Element element) {
+      if (editable != null) return;
+      if (element is StatefulElement && element.state is EditableTextState) {
+        editable = element.state as EditableTextState;
+        return;
+      }
+      element.visitChildren(visit);
+    }
+
+    (_fieldKeys[field]!.currentContext as Element?)?.visitChildren(visit);
+    final target = editable;
+    if (target == null) return;
+    if (target.widget.focusNode.hasFocus) {
+      SemanticsService.sendAnnouncement(
+        View.of(context),
+        message,
+        Directionality.of(context),
+      );
+      return;
+    }
+    target.requestKeyboard();
   }
 
   String? _errorFor(_Field field) =>
@@ -110,11 +154,20 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     });
 
     try {
-      final idToken = await ref.read(googleSignInGatewayProvider).idToken();
+      final result = await ref.read(googleSignInGatewayProvider).signIn();
       if (!mounted) return;
-      // A cancelled dialog is a decision, not a failure. Leave the screen
-      // exactly as it was so the user can pick another way in.
-      if (idToken == null) return;
+      final String idToken;
+      switch (result) {
+        case GoogleSignInToken(idToken: final token):
+          idToken = token;
+        // A cancelled dialog is a decision, not a failure. Leave the screen
+        // exactly as it was so the user can pick another way in.
+        case GoogleSignInCancelled():
+          return;
+        case GoogleSignInFailed():
+          setState(() => _error = _googleFailedMessage);
+          return;
+      }
 
       final user = await ref
           .read(authRepositoryProvider)
@@ -123,7 +176,12 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       ref.read(authControllerProvider.notifier).onAuthenticated(user);
     } on ApiException catch (error) {
       if (!mounted) return;
-      setState(() => _error = error.message);
+      setState(() => _error = userMessage(error));
+    } catch (_) {
+      // Anything else, so a tap never just stops the spinner and says
+      // nothing: this is the only way in without a password.
+      if (!mounted) return;
+      setState(() => _error = _googleFailedMessage);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -140,6 +198,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         _fieldError = problem;
         _error = null;
       });
+      _focus(problem.field, problem.message);
       return;
     }
 
@@ -183,7 +242,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       } else {
         // The fields keep their text on purpose — a wrong password should
         // cost one character, not the whole form.
-        setState(() => _error = error.message);
+        setState(() => _error = userMessage(error));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -249,7 +308,8 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       if (_registering) ...[
-                        _LabeledField(
+                        FsLabeledField(
+                          key: _fieldKeys[_Field.fullName],
                           label: 'Full name',
                           error: _errorFor(_Field.fullName),
                           field: FsField(
@@ -266,7 +326,8 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                         ),
                         const SizedBox(height: 14),
                       ],
-                      _LabeledField(
+                      FsLabeledField(
+                        key: _fieldKeys[_Field.email],
                         label: 'Email',
                         error: _errorFor(_Field.email),
                         field: FsField(
@@ -281,7 +342,8 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                         ),
                       ),
                       const SizedBox(height: 14),
-                      _LabeledField(
+                      FsLabeledField(
+                        key: _fieldKeys[_Field.password],
                         label: 'Password',
                         // The same minimum the server enforces on register
                         // and on reset, stated before the user picks one
@@ -354,11 +416,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   // Inline rather than a SnackBar: a snack bar times out, and
                   // an error the user needs in order to fix their input should
                   // stay on screen until they do.
-                  Text(
-                    _error!,
-                    key: const Key('error'),
-                    style: TextStyle(fontSize: 12.5, color: t.red),
-                  ),
+                  // A live region, so a screen reader says it as it
+                  // appears: otherwise a failed sign-in sounds like a hang.
+                  FsErrorLine(_error!, key: const Key('error')),
                 ],
                 const SizedBox(height: 18),
                 FsButton(
@@ -499,68 +559,6 @@ class _Logo extends StatelessWidget {
             ),
           ),
         ),
-      ],
-    );
-  }
-}
-
-/// A field with its name above it and its helper or error text below.
-///
-/// The placeholder alone vanishes as soon as the user types, taking the
-/// field's name with it. The visible texts are hidden from screen readers and
-/// given to the field as its label and hint instead, so the field is announced
-/// with its name and any message about it. Not [MergeSemantics]: that would
-/// also swallow the eye button inside the password field, leaving it
-/// unreachable by TalkBack and VoiceOver.
-class _LabeledField extends StatelessWidget {
-  const _LabeledField({
-    required this.label,
-    required this.field,
-    this.helper,
-    this.error,
-  });
-
-  final String label;
-  final Widget field;
-  final String? helper;
-  final String? error;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.fs;
-
-    final hint = [error, helper].nonNulls.join('. ');
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        ExcludeSemantics(
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-              color: t.text2,
-            ),
-          ),
-        ),
-        const SizedBox(height: 6),
-        Semantics(label: label, hint: hint.isEmpty ? null : hint, child: field),
-        if (helper != null) ...[
-          const SizedBox(height: 6),
-          ExcludeSemantics(
-            child: Text(
-              helper!,
-              style: TextStyle(fontSize: 12, color: t.text2),
-            ),
-          ),
-        ],
-        if (error != null) ...[
-          const SizedBox(height: 6),
-          ExcludeSemantics(
-            child: Text(error!, style: TextStyle(fontSize: 12.5, color: t.red)),
-          ),
-        ],
       ],
     );
   }

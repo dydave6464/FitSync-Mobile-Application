@@ -18,7 +18,10 @@ const _resentMessage =
 /// The server answers every code request the same way -- a 202, whatever the
 /// address -- so this screen can never be used to learn who has an account.
 /// It must not undo that: step 1 moves on to step 2 with the same message
-/// whatever happened, a network error included.
+/// whatever the server answered. The one exception is a request that never
+/// reached it (NETWORK_ERROR): no answer came back, so saying so reveals
+/// nothing about the address, and claiming a code was sent would leave the
+/// user waiting for an email nobody asked for.
 class ForgotPasswordScreen extends ConsumerStatefulWidget {
   const ForgotPasswordScreen({super.key});
 
@@ -35,10 +38,21 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   bool _onCodeStep = false;
   bool _busy = false;
 
+  /// Starts hidden, as on sign-in; the eye shows it. A successful reset
+  /// signs in with exactly what was typed, so a typo would otherwise become
+  /// the password without the user ever seeing it.
+  bool _obscurePassword = true;
+
   /// Set once the server accepts the reset. From then on the button only
   /// retries the sign-in: the code is spent.
   bool _resetDone = false;
-  String? _message;
+
+  /// The last outcome, and whether it went wrong: an error is drawn as one
+  /// (red, with an icon) so it cannot be mistaken for "we've sent a code".
+  ({String text, bool isError})? _message;
+
+  void _showError(String text) =>
+      setState(() => _message = (text: text, isError: true));
 
   @override
   void dispose() {
@@ -54,11 +68,11 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     final email = _email.text.trim();
     if (!_onCodeStep) {
       if (email.isEmpty) {
-        setState(() => _message = 'Enter your email.');
+        _showError('Enter your email.');
         return;
       }
       if (!email.contains('@')) {
-        setState(() => _message = 'That does not look like an email.');
+        _showError('That does not look like an email.');
         return;
       }
     }
@@ -71,30 +85,39 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
 
     try {
       await repo.requestPasswordReset(email);
-    } catch (_) {
-      // Deliberately swallowed -- see the class doc.
-    } finally {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _onCodeStep = true;
-          _message = resending ? _resentMessage : _sentMessage;
-        });
+    } on ApiException catch (error) {
+      if (error.code == 'NETWORK_ERROR') {
+        // Nothing was sent: stay where the user is and say why.
+        if (mounted) {
+          setState(() => _busy = false);
+          _showError(userMessage(error));
+        }
+        return;
       }
+      // Any answer the server did give is swallowed -- see the class doc.
+    } catch (_) {
+      // Swallowed too, for the same reason.
     }
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _onCodeStep = true;
+      _message = (
+        text: resending ? _resentMessage : _sentMessage,
+        isError: false,
+      );
+    });
   }
 
   Future<void> _reset() async {
     if (_busy) return;
     if (!_resetDone) {
       if (_code.text.length != 6) {
-        setState(() => _message = 'Enter the 6-digit code from the email.');
+        _showError('Enter the 6-digit code from the email.');
         return;
       }
       if (_password.text.length < 8) {
-        setState(
-          () => _message = 'Use at least 8 characters for your new password.',
-        );
+        _showError('Use at least 8 characters for your new password.');
         return;
       }
     }
@@ -146,11 +169,20 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         }
       }
       if (!mounted) return;
-      setState(() {
-        _message = _resetDone
-            ? 'Your password is reset. Tap to sign in.'
-            : (error.code == 'CODE_INVALID' ? wrongCodeMessage : error.message);
-      });
+      if (_resetDone) {
+        // Good news, drawn in neutral text rather than as an error even
+        // though the sign-in after it failed.
+        setState(
+          () => _message = (
+            text: 'Your password is reset. Tap to sign in.',
+            isError: false,
+          ),
+        );
+        return;
+      }
+      _showError(
+        error.code == 'CODE_INVALID' ? wrongCodeMessage : userMessage(error),
+      );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -160,16 +192,27 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   Widget build(BuildContext context) {
     final t = context.fs;
     final theme = Theme.of(context);
-    final message = _message == null
-        ? const <Widget>[]
-        : [
-            const SizedBox(height: 14),
-            Text(
-              _message!,
-              key: const Key('message'),
-              style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.5),
-            ),
-          ];
+    // Both kinds are live regions, so a screen reader says the outcome of
+    // Send code or Reset password as it appears.
+    final message = switch (_message) {
+      null => const <Widget>[],
+      (:final text, isError: true) => [
+        const SizedBox(height: 14),
+        FsErrorLine(text, key: const Key('message')),
+      ],
+      (:final text, isError: false) => [
+        const SizedBox(height: 14),
+        Semantics(
+          container: true,
+          liveRegion: true,
+          child: Text(
+            text,
+            key: const Key('message'),
+            style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.5),
+          ),
+        ),
+      ],
+    };
 
     return Scaffold(
       backgroundColor: t.bg,
@@ -197,12 +240,16 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                       ),
                     ),
                     const SizedBox(height: 24),
-                    FsField(
-                      fieldKey: const Key('email'),
-                      controller: _email,
-                      hint: 'you@email.com',
-                      icon: Icons.mail_outline,
-                      keyboardType: TextInputType.emailAddress,
+                    FsLabeledField(
+                      label: 'Email',
+                      field: FsField(
+                        fieldKey: const Key('email'),
+                        controller: _email,
+                        hint: 'you@email.com',
+                        icon: Icons.mail_outline,
+                        keyboardType: TextInputType.emailAddress,
+                        autofillHints: const [AutofillHints.email],
+                      ),
                     ),
                     ...message,
                     const SizedBox(height: 18),
@@ -230,15 +277,45 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                     ),
                     const SizedBox(height: 22),
                     if (!_resetDone) ...[
-                      CodeField(controller: _code),
-                      const SizedBox(height: 12),
-                      FsField(
-                        fieldKey: const Key('newPassword'),
-                        controller: _password,
-                        hint: 'New password (8+ characters)',
-                        icon: Icons.lock_outline,
-                        obscure: true,
-                        autofillHints: const [AutofillHints.newPassword],
+                      FsLabeledField(
+                        label: 'Code',
+                        field: CodeField(controller: _code),
+                      ),
+                      const SizedBox(height: 14),
+                      FsLabeledField(
+                        label: 'New password',
+                        // The same minimum the server enforces, kept on
+                        // screen: a placeholder would vanish at the first
+                        // keystroke.
+                        helper: 'At least 8 characters',
+                        field: FsField(
+                          fieldKey: const Key('newPassword'),
+                          controller: _password,
+                          hint: 'Choose a new password',
+                          icon: Icons.lock_outline,
+                          obscure: _obscurePassword,
+                          autofillHints: const [AutofillHints.newPassword],
+                          trailing: IconButton(
+                            key: const Key('toggleNewPassword'),
+                            tooltip: _obscurePassword
+                                ? 'Show password'
+                                : 'Hide password',
+                            constraints: const BoxConstraints(
+                              minWidth: 48,
+                              minHeight: 48,
+                            ),
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                              size: 20,
+                              color: t.text2,
+                            ),
+                            onPressed: () => setState(
+                              () => _obscurePassword = !_obscurePassword,
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                     ...message,

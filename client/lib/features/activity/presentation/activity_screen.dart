@@ -4,9 +4,10 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
+import '../../../core/widgets/fs_charts.dart';
 import '../../../core/widgets/fs_kit.dart';
-import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
 import '../domain/activity.dart';
 import 'providers.dart';
 
@@ -58,22 +59,20 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
       backgroundColor: t.bg,
       appBar: AppBar(title: const Text('Activity')),
       body: ref.watch(activityProvider).when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(describeError(error), textAlign: TextAlign.center),
-                const SizedBox(height: 12),
-                FsButton(
-                  label: 'Try again',
-                  onPressed: () => ref.invalidate(activityProvider),
-                ),
-              ],
-            ),
+        // The week is still on its way; today's count is already on the
+        // phone, so it shows at once. A spinner only until the phone answers.
+        loading: () => switch (ref.watch(todayStepsProvider).value) {
+          final today? => _Body(
+            state: ActivityState(today: today, week: null, offline: false),
+            steps: live ?? today.steps,
+            loadingWeek: true,
           ),
+          null => const Center(child: CircularProgressIndicator()),
+        },
+        error: (error, _) => FsRetry(
+          fullScreen: true,
+          message: userMessage(error),
+          onRetry: () => ref.invalidate(activityProvider),
         ),
         data: (state) => _Body(
           state: state,
@@ -91,11 +90,19 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
 }
 
 class _Body extends StatelessWidget {
-  const _Body({required this.state, required this.steps, this.onGoToProfile});
+  const _Body({
+    required this.state,
+    required this.steps,
+    this.onGoToProfile,
+    this.loadingWeek = false,
+  });
 
   final ActivityState state;
   final int steps;
   final VoidCallback? onGoToProfile;
+
+  /// Today's count is in, the week (the usual and the estimates) is not yet.
+  final bool loadingWeek;
 
   @override
   Widget build(BuildContext context) {
@@ -116,7 +123,9 @@ class _Body extends StatelessWidget {
         FsCard(
           child: Column(
             children: [
-              Text(
+              // One line that shrinks rather than wraps: at large text
+              // '12,345' would otherwise break as '12,34' over '5'.
+              FsOneLine(
                 formatSteps(steps),
                 key: const Key('activity.steps'),
                 style: fsNum(t, size: 44),
@@ -126,7 +135,9 @@ class _Body extends StatelessWidget {
               _UsualBar(today: steps, usual: week?.usual),
               const SizedBox(height: 10),
               Text(
-                usualLine(today: steps, usual: week?.usual),
+                loadingWeek
+                    ? 'Loading your week…'
+                    : usualLine(today: steps, usual: week?.usual),
                 key: const Key('activity.usualLine'),
                 style: TextStyle(fontSize: 13, color: t.text),
               ),
@@ -178,19 +189,27 @@ class _Body extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Text(
-                      'This week',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: t.text),
-                    ),
-                    const Spacer(),
-                    if (week.average != null)
+                // Wraps the average under the title when both won't fit on
+                // one line at large text, rather than overflowing the card.
+                SizedBox(
+                  width: double.infinity,
+                  child: Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    runSpacing: 2,
+                    children: [
                       Text(
-                        'avg ${(week.average! / 1000).toStringAsFixed(1)}k/day',
-                        style: TextStyle(fontSize: 11.5, color: t.text3),
+                        'This week',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: t.text),
                       ),
-                  ],
+                      if (week.average != null)
+                        Text(
+                          'avg ${(week.average! / 1000).toStringAsFixed(1)}k/day',
+                          style: TextStyle(fontSize: 11.5, color: t.text3),
+                        ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 14),
                 _WeekBars(days: week.days, todaySteps: steps),
@@ -275,7 +294,7 @@ class _Figure extends StatelessWidget {
     return Expanded(
       child: Column(
         children: [
-          Text(value, style: fsNum(t, size: 17)),
+          FsOneLine(value, style: fsNum(t, size: 17)),
           const SizedBox(height: 2),
           Text(label, style: TextStyle(fontSize: 11, color: t.text3)),
         ],
@@ -285,8 +304,21 @@ class _Figure extends StatelessWidget {
 }
 
 const _weekdayLetters = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const _weekdays = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+];
 
-/// Seven bars, today's highlighted and showing the live count.
+/// The week as the app's other bar charts draw it, each day's count on touch
+/// and all seven read out to a screen reader. Today carries the live count
+/// and, as in the prototype, stands out in `t.blue`; the six days before it
+/// are `t.text3` rather than the prototype's surface-2, which was barely
+/// there. Both read at 3:1 or better on the card in either theme.
 class _WeekBars extends StatelessWidget {
   const _WeekBars({required this.days, required this.todaySteps});
 
@@ -296,42 +328,30 @@ class _WeekBars extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
-    final values = [
-      for (var i = 0; i < days.length; i++)
-        i == days.length - 1 ? todaySteps : (days[i].steps ?? 0),
-    ];
-    final top = math.max(1, values.reduce(math.max));
-    return SizedBox(
+    return FsBarChart(
+      label: 'Steps this week',
+      color: t.text3,
+      highlightIndex: days.length - 1,
+      highlightColor: t.blue,
       height: 96,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          for (var i = 0; i < days.length; i++)
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Container(
-                    height: 72 * values[i] / top,
-                    margin: const EdgeInsets.symmetric(horizontal: 5),
-                    decoration: BoxDecoration(
-                      color: i == days.length - 1 ? t.blue : t.surface2,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    _weekdayLetters[DateTime.parse(days[i].date).weekday - 1],
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: i == days.length - 1 ? t.text : t.text3,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
+      bars: [
+        for (var i = 0; i < days.length; i++) _bar(i),
+      ],
+    );
+  }
+
+  FsChartBar _bar(int i) {
+    final isToday = i == days.length - 1;
+    final weekday = DateTime.parse(days[i].date).weekday - 1;
+    final steps = isToday ? todaySteps : days[i].steps;
+    final name = isToday ? 'Today' : _weekdays[weekday];
+    return FsChartBar(
+      value: (steps ?? 0).toDouble(),
+      label: _weekdayLetters[weekday],
+      // A day with no count was never synced, not a day of no walking.
+      tooltip: steps == null
+          ? '$name · no steps recorded'
+          : '$name · ${formatSteps(steps)} steps',
     );
   }
 }

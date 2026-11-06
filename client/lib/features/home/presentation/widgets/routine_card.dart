@@ -39,29 +39,54 @@ class RoutineCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  "Today's routine",
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: t.text,
+          // The streak is a small chip, as the design draws it -- a button,
+          // and unlike the count tag beside it. The card's padding above and
+          // the gap below are the room its 48 dp band reaches into, so a
+          // near miss still opens the streak rather than the routine.
+          //
+          // A Wrap, not a Row, as ProgressSnapshotCard's header: at large
+          // text on a small phone the chip and tag left the title too little
+          // room and it broke mid-word, or the row overflowed. Now they move
+          // under it instead. Card-wide, so spaceBetween has room to use.
+          FsTapRoom(
+            reach: 11,
+            child: SizedBox(
+              width: double.infinity,
+              child: Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                runSpacing: 4,
+                children: [
+                  Text(
+                    "Today's routine",
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: t.text,
+                    ),
                   ),
-                ),
+                  if (streak >= 1 || entries.isNotEmpty)
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        if (streak >= 1)
+                          FsChip(
+                            key: const Key('home.routine.streak'),
+                            label: '$streak-day streak',
+                            small: true,
+                            selected: false,
+                            toggle: false,
+                            onTap: onOpenStreak,
+                          ),
+                        if (entries.isNotEmpty)
+                          FsTag('${day.done} / ${day.total}'),
+                      ],
+                    ),
+                ],
               ),
-              if (streak >= 1) ...[
-                GestureDetector(
-                  key: const Key('home.routine.streak'),
-                  behavior: HitTestBehavior.opaque,
-                  onTap: onOpenStreak,
-                  child: FsTag('$streak-day streak'),
-                ),
-                if (entries.isNotEmpty) const SizedBox(width: 6),
-              ],
-              if (entries.isNotEmpty) FsTag('${day.done} / ${day.total}'),
-            ],
+            ),
           ),
           const SizedBox(height: 12),
           if (entries.isEmpty)
@@ -71,42 +96,49 @@ class RoutineCard extends StatelessWidget {
             )
           else ...[
             for (final entry in entries.take(_shown)) ...[
-              Row(
-                children: [
-                  Container(
-                    width: 20,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      color: entry.done ? t.accent : Colors.transparent,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                        color: entry.done ? t.accent : t.line2,
-                        width: 2,
+              // The tick box and strike-through are visual only; a screen
+              // reader hears the state in words.
+              Semantics(
+                label: '${entry.title}, ${entry.done ? 'done' : 'not done'}',
+                excludeSemantics: true,
+                child: Row(
+                  children: [
+                    Container(
+                      width: 20,
+                      height: 20,
+                      decoration: BoxDecoration(
+                        color: entry.done ? t.accent : Colors.transparent,
+                        borderRadius: BorderRadius.circular(6),
+                        // t.control, as the Routine screen's own tick box:
+                        // the outline is what says a box is there (3:1).
+                        border: Border.all(
+                          color: entry.done ? t.accent : t.control,
+                          width: 2,
+                        ),
                       ),
+                      child: entry.done
+                          ? Icon(Icons.check, size: 11, color: t.onAccent)
+                          : null,
                     ),
-                    child: entry.done
-                        ? Icon(Icons.check, size: 11, color: t.onAccent)
-                        : null,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Opacity(
-                      opacity: entry.done ? 0.55 : 1,
+                    const SizedBox(width: 10),
+                    Expanded(
+                      // A done item is quieter by colour, not by opacity: the
+                      // design's 55% fade took the title under 4.5:1 in light.
                       child: Text(
                         entry.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 13,
-                          color: t.text,
+                          color: entry.done ? t.text3 : t.text,
                           decoration: entry.done
                               ? TextDecoration.lineThrough
                               : TextDecoration.none,
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               const SizedBox(height: 8),
             ],

@@ -272,4 +272,91 @@ void main() {
     );
     handle.dispose();
   });
+
+  // The drawn cell is about 37 dp, under the 48 dp minimum. The gap above and
+  // below it is what makes up the band, so a tap there has to land in the
+  // field rather than on nothing (SE-2).
+  group('the band around a field answers a tap', () {
+    bool focused(WidgetTester tester, String key) => tester
+        .widget<EditableText>(
+          find.descendant(
+            of: find.byKey(Key(key)),
+            matching: find.byType(EditableText),
+          ),
+        )
+        .focusNode
+        .hasFocus;
+
+    for (final field in ['weight', 'reps']) {
+      testWidgets('$field: just above and just below the cell', (tester) async {
+        await tester.pumpWidget(
+          _host(SetRow(setNumber: 1, logged: null, drafts: _drafts(tester))),
+        );
+        final cell = tester.getRect(find.byKey(Key('set.1.$field')));
+        expect(cell.height, lessThan(48), reason: 'the cell is drawn small');
+
+        await tester.tapAt(cell.topCenter - const Offset(0, 4));
+        await tester.pump();
+        expect(focused(tester, 'set.1.$field'), isTrue);
+
+        FocusManager.instance.primaryFocus?.unfocus();
+        await tester.pump();
+        expect(focused(tester, 'set.1.$field'), isFalse);
+
+        await tester.tapAt(cell.bottomCenter + const Offset(0, 4));
+        await tester.pump();
+        expect(focused(tester, 'set.1.$field'), isTrue);
+      });
+    }
+
+    // Moving from one field to the next through the band must not close the
+    // keyboard on pointer-down and reopen it on pointer-up: the number pad
+    // would drop and come back, and the screen would relayout mid-workout.
+    // A focused field lets go on a tap outside its group, so the band has to
+    // count as inside it.
+    testWidgets('a tap in the band keeps the keyboard up', (tester) async {
+      await tester.pumpWidget(
+        _host(SetRow(setNumber: 1, logged: null, drafts: _drafts(tester))),
+      );
+      await tester.tap(find.byKey(const Key('set.1.weight')));
+      await tester.pump();
+      expect(focused(tester, 'set.1.weight'), isTrue);
+      tester.testTextInput.log.clear();
+
+      final reps = tester.getRect(find.byKey(const Key('set.1.reps')));
+      final gesture = await tester.startGesture(
+        reps.topCenter - const Offset(0, 4),
+      );
+      await tester.pump();
+      expect(
+        tester.testTextInput.log.map((c) => c.method),
+        isNot(contains('TextInput.hide')),
+        reason: 'pointer-down in the band must not close the keyboard',
+      );
+
+      await gesture.up();
+      await tester.pump();
+      expect(focused(tester, 'set.1.reps'), isTrue);
+      expect(
+        tester.testTextInput.log.map((c) => c.method),
+        isNot(contains('TextInput.hide')),
+      );
+    });
+
+    // The band joins the fields' tap group; the rest of the screen does not.
+    testWidgets('a tap away from the row still closes the keyboard', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _host(SetRow(setNumber: 1, logged: null, drafts: _drafts(tester))),
+      );
+      await tester.tap(find.byKey(const Key('set.1.reps')));
+      await tester.pump();
+      expect(focused(tester, 'set.1.reps'), isTrue);
+
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pump();
+      expect(focused(tester, 'set.1.reps'), isFalse);
+    });
+  });
 }

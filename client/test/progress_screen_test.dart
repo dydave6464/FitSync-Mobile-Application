@@ -293,7 +293,12 @@ void main() {
       ),
     );
 
-    expect(find.textContaining('Could not reach the server.'), findsOneWidget);
+    expect(
+      find.textContaining(
+        "Couldn't reach FitSync. Check your connection and try again.",
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Retry'), findsOneWidget);
     expect(
       find.textContaining('No completed workouts yet'),

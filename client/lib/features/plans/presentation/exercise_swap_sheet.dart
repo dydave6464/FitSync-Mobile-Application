@@ -4,8 +4,10 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
+import '../../exercises/domain/exercise_labels.dart';
 import '../../exercises/presentation/equipment_icon.dart';
 import '../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
@@ -13,6 +15,13 @@ import '../../exercises/presentation/providers.dart'
     show exerciseDetailProvider;
 import '../domain/exercise_alternative.dart';
 import 'providers.dart';
+
+/// An alternative's second line: its equipment, else its muscle, each in
+/// the library's words.
+String _altSubtitle(ExerciseAlternative alt) => switch (alt.equipment) {
+  final equipment? => equipmentLabel(equipment),
+  null => muscleLabel(alt.muscleGroup),
+};
 
 /// Replaces one exercise in the active plan.
 ///
@@ -109,6 +118,14 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
     });
   }
 
+  void _clearSearch() {
+    // Cancelled, or a debounce still pending from the last keystroke would
+    // put the old query back a moment after the box emptied.
+    _timer?.cancel();
+    _controller.clear();
+    setState(() => _query = '');
+  }
+
   Future<void> _choose(ExerciseAlternative alt) async {
     if (_busy) return;
     setState(() {
@@ -134,7 +151,7 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
       // invalidates every element of it, not one keyed instance.
       container.invalidate(alternativesProvider);
       if (!mounted) return;
-      Navigator.of(context).pop(alt.name);
+      Navigator.of(context).pop(exerciseDisplayName(alt.name));
     } catch (err) {
       // Stay open with the message: closing would throw away the choice they
       // just made, exactly as onboarding stays on a rejected step.
@@ -212,6 +229,7 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
           children: [
             IconButton(
               key: const Key('swap.preview.back'),
+              tooltip: 'Back to alternatives',
               icon: const Icon(Icons.arrow_back, size: 20),
               padding: EdgeInsets.zero,
               // A full target: the way back is the one control here that
@@ -226,9 +244,12 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(alt.name, style: theme.textTheme.titleLarge),
                   Text(
-                    alt.equipment ?? alt.muscleGroup,
+                    exerciseDisplayName(alt.name),
+                    style: theme.textTheme.titleLarge,
+                  ),
+                  Text(
+                    _altSubtitle(alt),
                     style: TextStyle(fontSize: 11.5, color: t.text3),
                   ),
                 ],
@@ -356,13 +377,25 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
         style: TextStyle(fontSize: 12.5, color: t.text2),
       ),
       const SizedBox(height: 12),
-      TextField(
-        key: const Key('swap.search'),
-        controller: _controller,
-        onChanged: _onChanged,
-        decoration: const InputDecoration(
-          prefixIcon: Icon(Icons.search),
-          hintText: 'Search all exercises',
+      // The kit's search box, as the library's: filled, rounded, and with a
+      // one-tap clear once something is typed.
+      ValueListenableBuilder<TextEditingValue>(
+        valueListenable: _controller,
+        builder: (context, value, _) => FsField(
+          fieldKey: const Key('swap.search'),
+          controller: _controller,
+          hint: 'Search all exercises',
+          icon: Icons.search,
+          onChanged: _onChanged,
+          textInputAction: TextInputAction.search,
+          trailing: value.text.isEmpty
+              ? null
+              : IconButton(
+                  key: const Key('swap.search.clear'),
+                  icon: const Icon(Icons.close, size: 18),
+                  tooltip: 'Clear search',
+                  onPressed: _clearSearch,
+                ),
         ),
       ),
       if (_error != null) ...[
@@ -382,8 +415,8 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
     Widget tile(ExerciseAlternative alt) => ListTile(
       key: Key('swap.alt.${alt.exerciseId}'),
       contentPadding: EdgeInsets.zero,
-      title: Text(alt.name),
-      subtitle: Text(alt.equipment ?? alt.muscleGroup),
+      title: Text(exerciseDisplayName(alt.name)),
+      subtitle: Text(_altSubtitle(alt)),
       trailing: Icon(Icons.chevron_right, size: 16, color: t.text3),
       // Opens a look at it. The swap itself now waits for the confirm button
       // on the preview: a tap here used to replace an exercise outright,
@@ -401,7 +434,18 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
           ),
           error: (err, _) => Padding(
             padding: const EdgeInsets.all(16),
-            child: Text(describeError(err)),
+            // A way to try again in place: closing the sheet and tapping
+            // Change again was the only one.
+            child: FsRetry(
+              message: userMessage(err),
+              buttonKey: const Key('swap.alternatives.retry'),
+              onRetry: () => ref.invalidate(
+                alternativesProvider((
+                  planExerciseId: widget.planExerciseId,
+                  query: _query,
+                )),
+              ),
+            ),
           ),
           data: (rows) => rows.isEmpty
               ? Padding(
@@ -498,8 +542,17 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
     // the bottom sheet pops its route itself once the drag ends. So while
     // busy, a drag is claimed here first -- the innermost vertical-drag
     // recognizer wins the gesture arena -- and the sheet's own never starts.
+    //
+    // On a preview, back (system back, or a tap on the barrier) returns to
+    // the list that found it, as the arrow does, rather than closing the
+    // sheet and losing the search.
     return PopScope(
-      canPop: !_busy,
+      canPop: !_busy && _previewing == null,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && !_busy && _previewing != null) {
+          setState(() => _previewing = null);
+        }
+      },
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onVerticalDragStart: _busy ? (_) {} : null,

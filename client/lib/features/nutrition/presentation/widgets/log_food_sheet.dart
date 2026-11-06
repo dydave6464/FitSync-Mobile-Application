@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter/semantics.dart';
 
 import '../../../../core/numbers.dart';
 import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
 import '../../domain/nutrition.dart';
 import 'fatsecret_attribution.dart';
+import 'meal_chips.dart';
+import 'number_box.dart';
 
 class LogChoice {
   const LogChoice({required this.mealType, required this.servings, this.edited});
@@ -70,7 +72,17 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
     super.dispose();
   }
 
-  void _step(double by) => setState(() => _servings = (_servings + by).clamp(0.5, 20));
+  /// One step of the servings stepper, read out as servings and what they
+  /// come to. An announcement rather than a live region: the kcal also
+  /// follows the numbers typed under "Edit numbers", and a live region would
+  /// speak again on every keystroke there.
+  void _step(double by, int perKcal) {
+    setState(() => _servings = (_servings + by).clamp(_minServings, _maxServings));
+    SemanticsService.sendAnnouncement(View.of(context), _amountLabel(perKcal), Directionality.of(context));
+  }
+
+  String _amountLabel(int perKcal) =>
+      '${formatServings(_servings)} ${_servings == 1 ? 'serving' : 'servings'} · ${(perKcal * _servings).round()} kcal';
 
   @override
   Widget build(BuildContext context) {
@@ -111,21 +123,16 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
         ? (p: p!, c: c!, f: fat!, fb: fiber, sg: sugar, na: sodium)
         : (p: f.proteinG, c: f.carbsG, f: f.fatG, fb: f.fiberG, sg: f.sugarG, na: f.sodiumMg);
 
-    Widget gramsField(String label, String key, TextEditingController controller, {String hint = 'g'}) => Expanded(
-      child: Column(
+    // Errors only once something changed: a listed value the user left
+    // alone never blocks Log, so it is never marked wrong either.
+    Widget gramsField(String label, String key, TextEditingController controller, {bool sodium = false}) => Expanded(
+      child: NumberBox(
         key: Key(key),
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: TextStyle(color: t.text2, fontSize: 12)),
-          const SizedBox(height: 4),
-          FsField(
-            controller: controller,
-            hint: hint,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
-            onChanged: (_) => setState(() {}),
-          ),
-        ],
+        label: label,
+        controller: controller,
+        hint: sodium ? 'mg' : 'g',
+        error: !touched ? null : (sodium ? sodiumError(controller.text) : gramsError(controller.text)),
+        onChanged: (_) => setState(() {}),
       ),
     );
 
@@ -140,25 +147,47 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
             Text('Per ${f.servingDesc ?? 'serving'}${f.source == 'manual' ? ' · your entry' : ''}',
                 style: TextStyle(color: t.text2, fontSize: 13)),
             const SizedBox(height: 16),
-            FsSegmented(
-              options: [for (final m in mealTypes) (value: m, label: mealLabel(m))],
-              selected: _meal,
-              onSelected: (m) => setState(() => _meal = m),
-            ),
+            MealChips(keyPrefix: 'logSheet.meal', selected: _meal, onSelected: (m) => setState(() => _meal = m)),
             const SizedBox(height: 16),
             Row(
               children: [
                 Expanded(child: Text('Servings', style: TextStyle(color: t.text2))),
-                IconButton(key: const Key('servings.minus'), onPressed: () => _step(-0.5), icon: const Icon(Icons.remove)),
-                SizedBox(
-                  width: 48,
-                  child: Text(formatServings(_servings), textAlign: TextAlign.center, style: theme.textTheme.titleMedium),
+                IconButton(
+                  key: const Key('servings.minus'),
+                  tooltip: 'Fewer servings',
+                  onPressed: _servings > _minServings ? () => _step(-0.5, perKcal) : null,
+                  icon: const Icon(Icons.remove),
                 ),
-                IconButton(key: const Key('servings.plus'), onPressed: () => _step(0.5), icon: const Icon(Icons.add)),
+                // At least 48 dp, and the figure shrinks rather than breaking
+                // "1.5" over two lines at large text. The live region below
+                // speaks it, so it is not a second, bare node.
+                ConstrainedBox(
+                  constraints: const BoxConstraints(minWidth: 48),
+                  child: ExcludeSemantics(
+                    child: Center(
+                      widthFactor: 1,
+                      child: FsOneLine(formatServings(_servings), style: theme.textTheme.titleMedium!),
+                    ),
+                  ),
+                ),
+                IconButton(
+                  key: const Key('servings.plus'),
+                  tooltip: 'More servings',
+                  onPressed: _servings < _maxServings ? () => _step(0.5, perKcal) : null,
+                  icon: const Icon(Icons.add),
+                ),
               ],
             ),
             const SizedBox(height: 8),
-            Text('${(perKcal * _servings).round()} kcal', style: theme.textTheme.titleLarge),
+            // How many servings and what they come to, never a bare number;
+            // _step reads the same words out after every step.
+            Semantics(
+              key: const Key('logSheet.amount'),
+              container: true,
+              label: _amountLabel(perKcal),
+              excludeSemantics: true,
+              child: Text('${(perKcal * _servings).round()} kcal', style: theme.textTheme.titleLarge),
+            ),
             Text(
               'Protein ${_g(shown.p * _servings)} g · Carbs ${_g(shown.c * _servings)} g · Fat ${_g(shown.f * _servings)} g'
               '${shown.fb == null ? '' : ' · Fiber ${_g(shown.fb! * _servings)} g'}',
@@ -194,38 +223,28 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
               const SizedBox(height: 8),
               // Two rows of two, not one row of four: four boxes in a row
               // overflow a narrow phone at large text.
-              Row(children: [
+              // Tops aligned, so an error under one box never shifts its pair.
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 gramsField('Protein (g)', 'logSheet.protein', _protein),
                 const SizedBox(width: 10),
                 gramsField('Carbs (g)', 'logSheet.carbs', _carbs),
               ]),
               const SizedBox(height: 10),
-              Row(children: [
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 gramsField('Fat (g)', 'logSheet.fat', _fat),
                 const SizedBox(width: 10),
                 gramsField('Fiber (g)', 'logSheet.fiber', _fiber),
               ]),
               const SizedBox(height: 10),
-              Row(children: [
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 gramsField('Sugar (g)', 'logSheet.sugar', _sugar),
                 const SizedBox(width: 10),
-                gramsField('Sodium (mg)', 'logSheet.sodium', _sodium, hint: 'mg'),
+                gramsField('Sodium (mg)', 'logSheet.sodium', _sodium, sodium: true),
               ]),
-              if (touched && !gramsOk)
-                Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Text('Each value must be 0–500 g', style: TextStyle(color: t.red, fontSize: 12)),
-                )
-              else if (touched && !sodiumOk)
-                Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Text('Sodium must be 0–20,000 mg', style: TextStyle(color: t.red, fontSize: 12)),
-                )
-              else if (noMacros)
-                Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Text('Add some protein, carbs or fat', style: TextStyle(color: t.red, fontSize: 12)),
-                ),
+              if (noMacros) ...[
+                const SizedBox(height: 8),
+                const FsErrorLine('Add some protein, carbs or fat'),
+              ],
             ],
             const SizedBox(height: 16),
             FsButton(
@@ -266,6 +285,10 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
     );
   }
 }
+
+/// The fewest and most servings the sheet steps between.
+const _minServings = 0.5;
+const _maxServings = 20.0;
 
 /// The longest name and serving a manual entry may have
 /// (server/src/routes/nutrition.js).

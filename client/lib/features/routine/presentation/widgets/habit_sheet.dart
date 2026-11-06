@@ -150,6 +150,36 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
     );
   }
 
+  /// Asks first: a mis-tap just under Save would otherwise remove the habit
+  /// with nothing to say so and no way back.
+  Future<void> _delete(Habit existing) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete this habit?'),
+        content: Text('“${existing.title}” leaves your routine.'),
+        actions: [
+          TextButton(
+            key: const Key('habit.delete.keep'),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Keep it'),
+          ),
+          TextButton(
+            key: const Key('habit.delete.confirm'),
+            style: TextButton.styleFrom(foregroundColor: dialogContext.fs.red),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _run((c) async {
+      await c.remove(existing.habitId);
+      return null;
+    });
+  }
+
   Future<void> _pickTime() async {
     final initial = _time == null
         ? const TimeOfDay(hour: 7, minute: 0)
@@ -195,19 +225,29 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
             FsField(
               controller: _title,
               fieldKey: const Key('habit.title'),
+              label: 'Name',
               hint: 'e.g. Morning mobility',
             ),
             const SizedBox(height: 12),
             Row(
+              // The time button lines up with the duration box, not with
+              // the duration's label above it.
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Expanded(
-                  child: OutlinedButton.icon(
+                  // The kit's secondary button: text-coloured on the
+                  // surface, like the field beside it, where M3's outlined
+                  // button fell back to the brand green (2.87:1 on white).
+                  child: FsButton(
                     key: const Key('habit.time'),
+                    kind: FsButtonKind.secondary,
+                    small: true,
+                    // Grows rather than cutting '7:00 AM' to '7:00 …' at
+                    // large text, which would lose the AM/PM.
+                    wrapLabel: true,
                     onPressed: _busy ? null : _pickTime,
                     icon: const Icon(Icons.schedule, size: 18),
-                    label: Text(
-                      _time == null ? 'Any time' : formatClock(_time!),
-                    ),
+                    label: _time == null ? 'Any time' : formatClock(_time!),
                   ),
                 ),
                 if (_time != null)
@@ -225,7 +265,12 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
                   child: FsField(
                     controller: _duration,
                     fieldKey: const Key('habit.duration'),
-                    hint: 'Minutes',
+                    label: 'Duration',
+                    // No placeholder: the eyebrow names the field, and the
+                    // 'min' suffix keeps its room even while hidden, so in
+                    // 120 dp any word was cut off ('Optional' at 1x).
+                    hint: '',
+                    suffix: 'min',
                     keyboardType: TextInputType.number,
                   ),
                 ),
@@ -258,12 +303,7 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
               const SizedBox(height: 6),
               TextButton(
                 key: const Key('habit.delete'),
-                onPressed: _busy
-                    ? null
-                    : () => _run((c) async {
-                        await c.remove(existing.habitId);
-                        return null;
-                      }),
+                onPressed: _busy ? null : () => _delete(existing),
                 child: Text('Delete habit', style: TextStyle(color: t.red)),
               ),
             ],

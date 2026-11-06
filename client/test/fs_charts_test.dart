@@ -68,6 +68,25 @@ void main() {
       expect(heights, [0, 2400, 0, 3100, 0, 2800, 0]);
     });
 
+    testWidgets('one bar can be drawn in its own colour', (tester) async {
+      await _pump(
+        tester,
+        const FsBarChart(
+          label: 'Steps this week',
+          bars: _week,
+          color: Colors.grey,
+          highlightIndex: 6,
+          highlightColor: Colors.blue,
+        ),
+      );
+
+      final colors = [
+        for (final group in _barData(tester).barGroups)
+          group.barRods.single.color,
+      ];
+      expect(colors, [...List.filled(6, Colors.grey), Colors.blue]);
+    });
+
     testWidgets('every bar with a label shows it', (tester) async {
       // A week thinned to every other day hid the days trained.
       await _pump(
@@ -110,6 +129,17 @@ void main() {
         0,
       );
       expect(item!.text, 'Thu, Oct 15 · 3,100 kg');
+    });
+
+    testWidgets('bars fill in the data green by default', (tester) async {
+      // The light brand green is 2.45:1 on surface2: the bars are the data.
+      await _pump(
+        tester,
+        const FsBarChart(label: 'Training volume', bars: _week),
+      );
+      for (final group in _barData(tester).barGroups) {
+        expect(group.barRods.single.color, FsTokens.light.accentFill);
+      }
     });
 
     testWidgets('a screen reader hears every bar, in words it can say', (
@@ -298,6 +328,14 @@ void main() {
         expect(showing(tester), isEmpty);
       });
     });
+  });
+
+  testWidgets('a bar row fills in the data green by default', (tester) async {
+    await _pump(tester, const FsBarRow(label: 'Chest', fraction: 0.6));
+    final bar = tester.widget<LinearProgressIndicator>(
+      find.byType(LinearProgressIndicator),
+    );
+    expect(bar.color, FsTokens.light.accentFill);
   });
 
   group('FsLineChart', () {

@@ -490,6 +490,8 @@ class FsBarChart extends StatefulWidget {
     this.height = 120,
     this.showLabels = true,
     this.interactive = true,
+    this.highlightIndex,
+    this.highlightColor,
   });
 
   /// What the chart measures, the start of what a screen reader hears.
@@ -499,6 +501,11 @@ class FsBarChart extends StatefulWidget {
 
   /// Null is the accent: training output.
   final Color? color;
+
+  /// One bar drawn in [highlightColor] instead of [color] -- today's, say.
+  /// Each colour must hold 3:1 on the card on its own: the bars are data.
+  final int? highlightIndex;
+  final Color? highlightColor;
 
   final double height;
 
@@ -640,7 +647,9 @@ class FsBarChart extends StatefulWidget {
                           // Thin, never filling its slot: the space between
                           // bars is what keeps them separate.
                           width: rod,
-                          color: color ?? t.accent,
+                          color: i == highlightIndex && highlightColor != null
+                              ? highlightColor
+                              : color ?? t.accentFill,
                           borderRadius: const BorderRadius.vertical(
                             top: Radius.circular(4),
                           ),
@@ -721,7 +730,7 @@ class FsBarRow extends StatelessWidget {
                 value: fraction.clamp(0, 1),
                 minHeight: 8,
                 backgroundColor: t.surface2,
-                color: color ?? t.accent,
+                color: color ?? t.accentFill,
               ),
             ),
           ),
@@ -743,6 +752,7 @@ class FsRing extends StatelessWidget {
     required this.child,
     this.size = 132,
     this.stroke = 11,
+    this.semanticLabel,
   });
 
   /// 0..1. Clamped on the way to the painter -- this is drawn from a server
@@ -754,12 +764,16 @@ class FsRing extends StatelessWidget {
   final double size;
   final double stroke;
 
+  /// When given, the ring is one node a screen reader hears as this, in
+  /// place of the figures in its [child] read one by one.
+  final String? semanticLabel;
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
     final safe = value.isFinite ? value.clamp(0.0, 1.0) : 0.0;
 
-    return SizedBox(
+    final ring = SizedBox(
       width: size,
       height: size,
       child: CustomPaint(
@@ -771,6 +785,14 @@ class FsRing extends StatelessWidget {
         ),
         child: Center(child: child),
       ),
+    );
+    final label = semanticLabel;
+    if (label == null) return ring;
+    return Semantics(
+      container: true,
+      label: label,
+      excludeSemantics: true,
+      child: ring,
     );
   }
 }

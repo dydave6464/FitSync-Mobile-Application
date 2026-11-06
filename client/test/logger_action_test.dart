@@ -409,7 +409,8 @@ void main() {
         tester,
         const ApiException(
           'NETWORK_ERROR',
-          'No connection. Check your internet and try again.',
+          'Could not reach http://localhost:3000. Check the server is '
+              'running, and that "adb reverse tcp:3000 tcp:3000" has been run.',
         ),
       );
 
@@ -418,11 +419,12 @@ void main() {
         find.descendant(
           of: find.byType(SnackBar),
           matching: find.text(
-            'No connection. Check your internet and try again.',
+            "Couldn't reach FitSync. Check your connection and try again.",
           ),
         ),
         findsOneWidget,
       );
+      expect(find.textContaining('adb'), findsNothing);
     });
 
     testWidgets('an unknown error never shows its raw text', (tester) async {
@@ -432,7 +434,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byType(SnackBar),
-          matching: find.text('Something went wrong.'),
+          matching: find.text('Something went wrong. Please try again.'),
         ),
         findsOneWidget,
       );

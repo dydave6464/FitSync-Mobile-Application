@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/api_exception.dart';
 import 'core/theme.dart';
 import 'core/widgets/fs_kit.dart';
 import 'features/auth/presentation/auth_controller.dart';
 import 'features/auth/presentation/sign_in_screen.dart';
-import 'features/exercises/presentation/exercise_list_screen.dart'
-    show describeError;
 import 'features/home/presentation/nav_shell.dart';
 import 'features/onboarding/presentation/onboarding_flow.dart';
 
@@ -26,48 +25,30 @@ class AppShell extends ConsumerWidget {
         backgroundColor: context.fs.bg,
         body: const Center(child: CircularProgressIndicator()),
       ),
-      error: (error, _) => _ShellError(
-        message: describeError(error),
-        onRetry: () => ref.invalidate(authControllerProvider),
+      // The account could not be read. Try again is the usual way on; Sign
+      // out is the way back to sign-in, so someone on the wrong account, or
+      // one the server cannot load, is never stuck pressing Try again.
+      error: (error, _) => Scaffold(
+        backgroundColor: context.fs.bg,
+        body: FsRetry(
+          fullScreen: true,
+          message: userMessage(error),
+          onRetry: () => ref.invalidate(authControllerProvider),
+          secondary: FsButton(
+            key: const Key('signOut'),
+            label: 'Sign out',
+            kind: FsButtonKind.ghost,
+            small: true,
+            onPressed: () =>
+                ref.read(authControllerProvider.notifier).signOut(),
+          ),
+        ),
       ),
       data: (state) => switch (state.status) {
         AuthStatus.signedOut => const SignInScreen(),
         AuthStatus.onboarding => const OnboardingFlow(),
         AuthStatus.ready => const NavShell(),
       },
-    );
-  }
-}
-
-class _ShellError extends StatelessWidget {
-  const _ShellError({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.fs;
-
-    return Scaffold(
-      backgroundColor: t.bg,
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                message,
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.5),
-              ),
-              const SizedBox(height: 20),
-              FsButton(label: 'Retry', small: true, onPressed: onRetry),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

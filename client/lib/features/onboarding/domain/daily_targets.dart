@@ -29,8 +29,16 @@ const _multipliers = <String, double>{
 /// multiplier would tell a very active user to eat half again as much.
 const _proteinPerKg = 1.6;
 
+/// What the main goal (`users.main_goal`) does to maintenance, and the
+/// calories a day the target never goes under. The same numbers as the food
+/// log's target (server/src/lib/nutrition-target.js, GOAL_ADJUST and FLOORS),
+/// so onboarding and Nutrition give one person one number.
+const _goalAdjust = <String, int>{'lose_weight': -500, 'build_muscle': 250};
+const _floors = <String, int>{'female': 1200, 'male': 1500};
+
 /// An estimated daily calorie and protein target, or null when the inputs do
-/// not support one.
+/// not support one. [mainGoal] moves maintenance the way the food log's
+/// target does; null (or any other goal) leaves it at maintenance.
 ///
 /// Null rather than a partial guess, exactly as `estimateSessionKcal` treats
 /// an unknown body weight: every term here comes from something the user
@@ -44,6 +52,7 @@ DailyTargets? estimateDailyTargets({
   required double? heightCm,
   required double? weightKg,
   required String? activityLevel,
+  String? mainGoal,
   DateTime? today,
 }) {
   final sexConstant = _sexConstants[sex];
@@ -71,8 +80,11 @@ DailyTargets? estimateDailyTargets({
   // Rounded off, because the precision is not there: the equation carries a
   // published error of roughly ±10%, so a figure like 2,322 would claim an
   // accuracy this cannot have.
+  final maintenance = ((bmr * multiplier) / 50).round() * 50;
+  final adjusted = maintenance + (_goalAdjust[mainGoal] ?? 0);
+  final floor = _floors[sex]!;
   return DailyTargets(
-    kcal: ((bmr * multiplier) / 50).round() * 50,
+    kcal: adjusted < floor ? floor : adjusted,
     proteinG: ((weightKg * _proteinPerKg) / 5).round() * 5,
   );
 }

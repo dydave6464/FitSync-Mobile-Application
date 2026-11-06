@@ -48,7 +48,11 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
   /// retries the sign-in: the code is spent, and sending it again would come
   /// back CODE_INVALID for an address that is in fact verified.
   bool _verified = false;
-  String? _status;
+
+  /// The last outcome, and whether it went wrong: an error is drawn as one
+  /// (red, with an icon) so it cannot be mistaken for "a new code is on its
+  /// way".
+  ({String text, bool isError})? _status;
 
   @override
   void initState() {
@@ -119,9 +123,16 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
       }
       if (!mounted) return;
       setState(() {
-        _status = _verified
-            ? 'Your email is verified. Tap to sign in.'
-            : (error.code == 'CODE_INVALID' ? wrongCodeMessage : error.message);
+        _status = (
+          text: _verified
+              ? 'Your email is verified. Tap to sign in.'
+              : (error.code == 'CODE_INVALID'
+                    ? wrongCodeMessage
+                    : userMessage(error)),
+          // Verified is good news, drawn in neutral text rather than as an
+          // error even though the sign-in after it failed.
+          isError: !_verified,
+        );
       });
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -142,10 +153,10 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
         password: widget.password,
       );
       if (!mounted) return;
-      setState(() => _status = newCodeMessage);
+      setState(() => _status = (text: newCodeMessage, isError: false));
     } on ApiException catch (error) {
       if (!mounted) return;
-      setState(() => _status = error.message);
+      setState(() => _status = (text: userMessage(error), isError: true));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -187,15 +198,28 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
                   style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.5),
                 ),
                 const SizedBox(height: 22),
-                if (!_verified) CodeField(controller: _code),
-                if (_status != null) ...[
-                  const SizedBox(height: 14),
-                  Text(
-                    _status!,
-                    key: const Key('status'),
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 12.5, color: t.text2),
+                if (!_verified)
+                  FsLabeledField(
+                    label: 'Code',
+                    field: CodeField(controller: _code),
                   ),
+                if (_status case final status?) ...[
+                  const SizedBox(height: 14),
+                  // Both kinds are live regions, so a screen reader says the
+                  // outcome of Verify or Send a new code as it appears.
+                  if (status.isError)
+                    FsErrorLine(status.text, key: const Key('status'))
+                  else
+                    Semantics(
+                      container: true,
+                      liveRegion: true,
+                      child: Text(
+                        status.text,
+                        key: const Key('status'),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 12.5, color: t.text2),
+                      ),
+                    ),
                 ],
                 const SizedBox(height: 18),
                 FsButton(

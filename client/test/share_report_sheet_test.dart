@@ -314,4 +314,31 @@ void main() {
     // two, as the progress card's own comment puts it.
     expect(find.byIcon(Icons.lock_outline), findsNothing);
   });
+
+  // 'Muscle balance' plus the Pro tag needs about 270 dp at 2.0x, and the
+  // label was not allowed to wrap, so the coach-report options overflowed
+  // at the largest text sizes (SE-12).
+  group('fits a small phone at 2.0x text', () {
+    for (final size in const [Size(360, 640), Size(320, 568)]) {
+      for (final premium in [true, false]) {
+        testWidgets(
+          '${size.width.toInt()} dp, ${premium ? 'Pro' : 'free'} account',
+          (tester) async {
+            tester.view.physicalSize = size;
+            tester.view.devicePixelRatio = 1.0;
+            tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+            addTearDown(tester.view.reset);
+            addTearDown(
+              tester.platformDispatcher.clearTextScaleFactorTestValue,
+            );
+
+            await _open(tester, premium: premium);
+
+            expect(tester.takeException(), isNull);
+            expect(find.text('Muscle balance'), findsOneWidget);
+          },
+        );
+      }
+    }
+  });
 }

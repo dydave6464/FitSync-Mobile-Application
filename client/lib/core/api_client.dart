@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show kDebugMode, visibleForTesting;
 import 'package:http/http.dart' as http;
 
 import 'api_exception.dart';
@@ -37,11 +38,18 @@ class ApiClient {
   /// One wording for every unreachable-server failure, read or write.
   ///
   /// The three causes are indistinguishable from here, and the third is by
-  /// far the most common in development, so name it.
-  String get _unreachableMessage =>
-      'Could not reach $_baseUrl. Check the server is running, and that '
-      '"adb reverse tcp:3000 tcp:3000" has been run since the device last '
-      'connected.';
+  /// far the most common in development, so a debug build names it. A
+  /// release build names neither the address nor the adb command: users
+  /// cannot act on either, and screens show [userMessage] in any case.
+  @visibleForTesting
+  static String unreachableMessage(String baseUrl, {bool debug = kDebugMode}) =>
+      debug
+      ? 'Could not reach $baseUrl. Check the server is running, and that '
+            '"adb reverse tcp:3000 tcp:3000" has been run since the device '
+            'last connected.'
+      : 'Could not reach the server.';
+
+  String get _unreachableMessage => unreachableMessage(_baseUrl);
 
   Future<Map<String, String>> _headers({bool json = false}) async {
     final headers = <String, String>{};
@@ -69,9 +77,15 @@ class ApiClient {
 
     final error = body['error'];
     if (error is Map<String, dynamic>) {
+      final details = error['details'];
       throw ApiException(
         error['code'] as String? ?? 'UNKNOWN_ERROR',
         error['message'] as String? ?? 'The request failed.',
+        // Only the `{ field }`-style objects a screen can use; anything else
+        // the server sent there is dropped rather than failing the cast.
+        details: details is List
+            ? details.whereType<Map<String, dynamic>>().toList(growable: false)
+            : const [],
       );
     }
 

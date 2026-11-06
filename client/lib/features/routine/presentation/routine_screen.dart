@@ -195,7 +195,8 @@ class _Row extends ConsumerWidget {
     // Typed explicitly: a bare `() => showHabitSheet(...)` is a
     // Future-returning closure, and the record's LUB with the workout branch's
     // VoidCallback? would not be assignable to InkWell.onTap.
-    final (IconData, String, VoidCallback?, Widget) parts = switch (entry) {
+    final (IconData, String, VoidCallback?, Widget?, Widget?)
+    parts = switch (entry) {
       HabitEntry(:final habit) => (
         Icons.self_improvement,
         habit.subtitle,
@@ -205,33 +206,46 @@ class _Row extends ConsumerWidget {
         _TickBox(
           key: Key('routine.tick.${habit.habitId}'),
           done: habit.done,
+          label: habit.title,
           onTap: () => _toggle(context, ref, habit),
         ),
+        null,
       ),
       WorkoutEntry(:final workout) => (
         Icons.fitness_center,
         workout.done ? 'Finished today' : 'Ticks itself when you finish',
         onOpenPlan,
-        // The box itself cannot be ticked by hand -- the workout is done by
-        // training -- so tapping it does what the rest of the row does.
-        _TickBox(
-          key: const Key('routine.workout.tick'),
-          done: workout.done,
-          onTap: onOpenPlan,
+        null,
+        // Not a tick box: the workout is done by training, not by a tap, and
+        // a box that looked tickable but opened the plan surprised. Its
+        // state is an icon inside the row, which is the one way to the plan,
+        // and the row's button says it along with the title.
+        Icon(
+          workout.done ? Icons.check_circle : Icons.schedule,
+          key: const Key('routine.workout.status'),
+          size: 24,
+          color: workout.done ? t.accentText : t.text3,
+          semanticLabel: workout.done ? 'Workout finished' : 'Not finished yet',
         ),
       ),
     };
-    final (icon, subtitle, onOpen, box) = parts;
+    final (icon, subtitle, onOpen, box, status) = parts;
 
-    return Opacity(
-      opacity: entry.done ? 0.55 : 1,
-      child: FsCard(
-        small: true,
-        child: Row(
-          children: [
-            FsIconTile(icon: icon),
-            const SizedBox(width: 12),
-            Expanded(
+    // A done row steps back by its icon and its struck-through title, not by
+    // fading the whole card: at 55% its text fell below 4.5:1.
+    return FsCard(
+      small: true,
+      child: Row(
+        children: [
+          Opacity(
+            opacity: entry.done ? 0.55 : 1,
+            child: FsIconTile(icon: icon),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Semantics(
+              button: onOpen != null,
+              hint: entry is HabitEntry ? 'Edit habit' : null,
               child: InkWell(
                 key: switch (entry) {
                   HabitEntry(:final habit) => Key(
@@ -240,62 +254,110 @@ class _Row extends ConsumerWidget {
                   WorkoutEntry() => const Key('routine.workout'),
                 },
                 onTap: onOpen,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      entry.title,
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w600,
-                        color: t.text,
-                        decoration: entry.done
-                            ? TextDecoration.lineThrough
-                            : TextDecoration.none,
+                // As tall as the tick box beside it, so the row's own
+                // target is 48 dp too.
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 48),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                entry.title,
+                                style: TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: entry.done ? t.text2 : t.text,
+                                  decoration: entry.done
+                                      ? TextDecoration.lineThrough
+                                      : TextDecoration.none,
+                                ),
+                              ),
+                              if (subtitle.isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  subtitle,
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    color: t.text3,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
-                    if (subtitle.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        style: TextStyle(fontSize: 10.5, color: t.text3),
-                      ),
+                      // In the tick box's 48 dp column, so the rows line up.
+                      if (status != null) ...[
+                        const SizedBox(width: 12),
+                        SizedBox.square(
+                          dimension: 48,
+                          child: Center(child: status),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),
-            const SizedBox(width: 12),
-            box,
-          ],
-        ),
+          ),
+          if (box != null) ...[const SizedBox(width: 12), box],
+        ],
       ),
     );
   }
 }
 
+/// The prototype's 24 dp tick square, in a 48 dp target: a checkbox a
+/// screen reader hears with the habit's name and whether it is ticked.
 class _TickBox extends StatelessWidget {
-  const _TickBox({super.key, required this.done, required this.onTap});
+  const _TickBox({
+    super.key,
+    required this.done,
+    required this.onTap,
+    required this.label,
+  });
 
   final bool done;
   final VoidCallback? onTap;
+  final String label;
 
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    final target = InkResponse(
       onTap: onTap,
-      child: Container(
-        width: 24,
-        height: 24,
-        decoration: BoxDecoration(
-          color: done ? t.accent : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: done ? t.accent : t.line2, width: 2),
+      radius: 24,
+      excludeFromSemantics: true,
+      child: SizedBox.square(
+        dimension: 48,
+        child: Center(
+          child: Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: done ? t.accent : Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
+              // control, not line2: an empty box must read as one (3:1).
+              border: Border.all(color: done ? t.accent : t.control, width: 2),
+            ),
+            child: done ? Icon(Icons.check, size: 14, color: t.onAccent) : null,
+          ),
         ),
-        child: done ? Icon(Icons.check, size: 14, color: t.onAccent) : null,
       ),
+    );
+    return Semantics(
+      container: true,
+      checked: done,
+      enabled: onTap != null,
+      label: label,
+      onTap: onTap,
+      excludeSemantics: true,
+      child: target,
     );
   }
 }
