@@ -12,7 +12,8 @@ import '../providers.dart';
 
 /// Home's steps · kcal · km. Before step counting is on, the same three
 /// tiles show zeros and a tap on any of them is the way in: the activation
-/// screen, or -- once refused -- the OS prompt again and then Settings.
+/// screen, or -- once refused -- the OS prompt again and then, with a word
+/// on what to switch on, Settings.
 class ActivityStatsRow extends ConsumerWidget {
   const ActivityStatsRow({super.key, this.onGoToProfile, this.bottomGap = 0});
 
@@ -42,7 +43,7 @@ class ActivityStatsRow extends ConsumerWidget {
     AsyncValue<StepAccess> access,
   ) {
     return access.when(
-      loading: () => const _Tiles.zero(onTap: null),
+      loading: () => const _Tiles.unknown(),
       error: (_, _) => const SizedBox.shrink(),
       data: (access) => switch (access) {
         StepAccess.notAsked => _Tiles.zero(
@@ -50,16 +51,7 @@ class ActivityStatsRow extends ConsumerWidget {
           onTap: () =>
               _open(context, ActivationScreen(onGoToProfile: onGoToProfile)),
         ),
-        StepAccess.refused => _Tiles.zero(
-          hint: 'Step counting is off — tap to allow',
-          onTap: () async {
-            // Ask again first: after a reinstall the OS may still be able to.
-            final controller = ref.read(stepAccessProvider.notifier);
-            if (await controller.request() != StepAccess.granted) {
-              await controller.openSettings();
-            }
-          },
-        ),
+        StepAccess.refused => const _RefusedTiles(),
         StepAccess.granted => _Stats(
           onOpen: () =>
               _open(context, ActivityScreen(onGoToProfile: onGoToProfile)),
@@ -67,6 +59,73 @@ class ActivityStatsRow extends ConsumerWidget {
       },
     );
   }
+}
+
+/// Step access turned down: the zero tiles, and a tap asks the phone again
+/// -- after a reinstall the OS may still be able to -- and, if it still
+/// cannot, says what to switch on before leaving for Settings.
+class _RefusedTiles extends ConsumerStatefulWidget {
+  const _RefusedTiles();
+
+  @override
+  ConsumerState<_RefusedTiles> createState() => _RefusedTilesState();
+}
+
+class _RefusedTilesState extends ConsumerState<_RefusedTiles> {
+  /// A tap while the phone is still answering would queue a second prompt,
+  /// or a second trip to Settings, behind the first.
+  bool _asking = false;
+
+  Future<void> _allow() async {
+    if (_asking) return;
+    _asking = true;
+    try {
+      final controller = ref.read(stepAccessProvider.notifier);
+      if (await controller.request() == StepAccess.granted) return;
+      if (!mounted) return;
+      if (await _confirmSettings(context)) await controller.openSettings();
+    } finally {
+      _asking = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      _Tiles.zero(hint: 'Step counting is off — tap to allow', onTap: _allow);
+}
+
+/// What to switch on, and where, before the app sends the user to its page
+/// in Settings. True for Open Settings.
+Future<bool> _confirmSettings(BuildContext context) async {
+  final apple = switch (Theme.of(context).platform) {
+    TargetPlatform.iOS || TargetPlatform.macOS => true,
+    _ => false,
+  };
+  final open = await showDialog<bool>(
+    context: context,
+    builder: (dialog) => AlertDialog(
+      title: const Text('Step counting is off for FitSync'),
+      content: Text(
+        apple
+            ? 'In Settings, turn on Motion & Fitness for FitSync.'
+            : 'In Settings, open Permissions, then Physical activity, and '
+                  'choose Allow.',
+      ),
+      actions: [
+        TextButton(
+          key: const Key('activity.settings.notNow'),
+          onPressed: () => Navigator.of(dialog).pop(false),
+          child: const Text('Not now'),
+        ),
+        TextButton(
+          key: const Key('activity.settings.open'),
+          onPressed: () => Navigator.of(dialog).pop(true),
+          child: const Text('Open Settings'),
+        ),
+      ],
+    ),
+  );
+  return open ?? false;
 }
 
 class _Stats extends ConsumerWidget {
@@ -108,7 +167,7 @@ class _Stats extends ConsumerWidget {
                 week == null || week.missingHeight || week.missingWeight;
             return _Tiles(
               steps: formatSteps(state.today.steps),
-              kcal: noKcal ? '—' : '${today!.caloriesBurned ?? 0}',
+              kcal: noKcal ? '—' : formatSteps(today!.caloriesBurned ?? 0),
               km: noKm ? '—' : (today!.distanceKm ?? 0).toStringAsFixed(1),
               todaySteps: state.today.steps,
               usual: week?.usual,
@@ -130,14 +189,25 @@ class _Tiles extends StatelessWidget {
     required this.onTap,
   }) : hint = null;
 
-  /// Before counting is on (or while it loads): zeros, not dashes -- nothing
-  /// is missing yet, there is simply nothing counted.
+  /// Before counting is on: zeros, not dashes -- nothing is missing yet,
+  /// there is simply nothing counted.
   const _Tiles.zero({required this.onTap, this.hint})
     : steps = '0',
       kcal = '0',
       km = '0.0',
       todaySteps = 0,
       usual = null;
+
+  /// While the phone says whether steps may be counted: dashes, not zeros,
+  /// which would flash "0 steps" at someone who has walked thousands.
+  const _Tiles.unknown()
+    : steps = '—',
+      kcal = '—',
+      km = '—',
+      todaySteps = 0,
+      usual = null,
+      onTap = null,
+      hint = null;
 
   final String steps;
   final String kcal;
@@ -152,7 +222,8 @@ class _Tiles extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
-    return Column(
+    final tiles = Column(
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // One height for all three, though only steps carries the bar.
@@ -208,6 +279,19 @@ class _Tiles extends StatelessWidget {
           ),
         ],
       ],
+    );
+    final label = hint;
+    if (label == null) return tiles;
+    // Before counting is on, the three tiles are one way in, and only the
+    // hint says what a tap does: a screen reader hears that once, as one
+    // button, rather than three buttons named "0".
+    return Semantics(
+      container: true,
+      button: true,
+      label: label,
+      onTap: onTap,
+      excludeSemantics: true,
+      child: tiles,
     );
   }
 }

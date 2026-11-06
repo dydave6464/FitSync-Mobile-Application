@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart';
 import '../../../core/numbers.dart';
 import '../../../core/theme.dart';
 import '../../../core/units.dart';
 import '../../../core/widgets/fs_charts.dart'
     show FsRing, FsBarChart, FsChartBar;
 import '../../../core/widgets/fs_kit.dart' hide FsRing;
-import '../../exercises/presentation/exercise_list_screen.dart'
-    show describeError;
 import '../../profile/presentation/providers.dart' show weightUnitProvider;
 import '../../sessions/domain/training_analytics.dart' show VolumeBucket;
 import '../../sessions/domain/volume_labels.dart'
@@ -21,9 +20,8 @@ import 'widgets/checkin_sheet.dart';
 import 'widgets/how_to_read_sheet.dart';
 
 /// The Recovery tab's body: the injury-risk ring with what it means and why,
-/// what feeds it, and the 7-day training load beneath. Mirrors the loading
-/// spinner and describeError + Retry treatment `PlanScreen` uses for its own
-/// top-level provider, rather than inventing a third failure style.
+/// what feeds it, and the 7-day training load beneath. A failed load shows
+/// the kit's FsRetry, as the app's other screens do.
 class RecoveryScreen extends ConsumerWidget {
   const RecoveryScreen({super.key});
 
@@ -33,22 +31,12 @@ class RecoveryScreen extends ConsumerWidget {
 
     return overview.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(describeError(error), textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              FsButton(
-                label: 'Retry',
-                small: true,
-                onPressed: () => ref.invalidate(recoveryOverviewProvider),
-              ),
-            ],
-          ),
-        ),
+      // The tab fills the Training shell's body, so the kit's full-screen
+      // retry: centred, and scrollable at large text.
+      error: (error, _) => FsRetry(
+        fullScreen: true,
+        message: userMessage(error),
+        onRetry: () => ref.invalidate(recoveryOverviewProvider),
       ),
       data: (data) => _RecoveryView(overview: data),
     );
@@ -205,10 +193,16 @@ class _EstimateCard extends StatelessWidget {
       children: [
         Center(
           // One phrase for a screen reader, which would otherwise hear the
-          // bare word in the ring with nothing to say what it measures.
+          // bare word in the ring with nothing to say what it measures. An
+          // earlier day's ring is told apart only by its grey, so its day is
+          // said here too, not just in the box below.
           child: Semantics(
             container: true,
-            label: 'Injury risk: ${estimate.label}',
+            label: isToday
+                ? 'Injury risk: ${estimate.label}'
+                : 'Injury risk: ${estimate.label}, from '
+                      '${formatShareExpiry(DateTime.parse(estimate.checkinDate))}. '
+                      "Not today's estimate.",
             excludeSemantics: true,
             child: FsRing(
               value: estimate.ringValue,
@@ -689,10 +683,18 @@ class _MusclesCard extends StatelessWidget {
           for (final m in muscles)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 5),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
+              // The group at the start and its day at the end while both
+              // fit; at large text the day drops under the group instead,
+              // rather than squeezing the name mid-word or running off the
+              // card.
+              child: SizedBox(
+                width: double.infinity,
+                child: Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 12,
+                  children: [
+                    Text(
                       m.label,
                       style: TextStyle(
                         fontSize: 13.5,
@@ -700,12 +702,12 @@ class _MusclesCard extends StatelessWidget {
                         color: t.text,
                       ),
                     ),
-                  ),
-                  Text(
-                    m.when,
-                    style: TextStyle(fontSize: 12.5, color: t.text2),
-                  ),
-                ],
+                    Text(
+                      m.when,
+                      style: TextStyle(fontSize: 12.5, color: t.text2),
+                    ),
+                  ],
+                ),
               ),
             ),
       ],

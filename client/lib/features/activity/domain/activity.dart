@@ -29,16 +29,21 @@ class ActivityDay {
 }
 
 /// GET /activity: the seven days ending today, oldest first, and the user's
-/// usual (null until three earlier days have steps).
+/// usual (null until [usualMinDays] earlier days have steps).
 class ActivityWeek {
   const ActivityWeek({
     required this.days,
     required this.usual,
     required this.missing,
+    this.usualDays,
   });
 
   final List<ActivityDay> days;
   final int? usual;
+
+  /// How many earlier days of the week have steps: what the usual counts up
+  /// to [usualMinDays] from. Null from a server that does not send it.
+  final int? usualDays;
 
   /// `height` / `weight` absent from the profile, blocking km and/or kcal.
   final List<String> missing;
@@ -47,9 +52,16 @@ class ActivityWeek {
   bool get missingWeight => missing.contains('weight');
   ActivityDay get today => days.last;
 
-  /// Average steps over the days that have any, for "avg N.Nk/day".
+  /// Average steps over the days before today that have any, for "avg
+  /// N.Nk/day": the same days the usual is worked out from, so the header
+  /// and the bar above it measure against one baseline. Today's partial
+  /// count would drag it down every morning.
   int? get average {
-    final withData = [for (final d in days) if (d.steps != null) d.steps!];
+    if (days.isEmpty) return null;
+    final withData = [
+      for (final d in days.take(days.length - 1))
+        if (d.steps != null) d.steps!,
+    ];
     if (withData.isEmpty) return null;
     return (withData.reduce((a, b) => a + b) / withData.length).round();
   }
@@ -59,6 +71,7 @@ class ActivityWeek {
         .map((d) => ActivityDay.fromJson(d as Map<String, dynamic>))
         .toList(growable: false),
     usual: json['usual'] as int?,
+    usualDays: json['usualDays'] as int?,
     missing: (json['missing'] as List<dynamic>).cast<String>(),
   );
 }
@@ -74,15 +87,34 @@ String formatSteps(int n) {
   return out.toString();
 }
 
-/// The line under the Activity screen's bar.
-String usualLine({required int today, required int? usual}) {
-  if (usual == null) return 'Your usual appears after 3 days of walking';
+/// Earlier days with steps the server needs before it works out a usual;
+/// mirrors `USUAL_MIN_DAYS` in server/src/db/activity.js.
+const usualMinDays = 3;
+
+/// The line under the Activity screen's bar. Before there is a usual, it
+/// counts down the days still needed, given [usualDays].
+String usualLine({required int today, required int? usual, int? usualDays}) {
+  if (usual == null) {
+    final left = usualMinDays - (usualDays ?? 0);
+    if (usualDays == null || usualDays <= 0 || left <= 0) {
+      return 'Your usual appears after $usualMinDays days of walking';
+    }
+    return 'Your usual appears after $left more '
+        '${left == 1 ? 'day' : 'days'} of walking';
+  }
   final diff = today - usual;
   if (diff.abs() <= usual * 0.01) return 'Matched your usual';
   return diff > 0
       ? '${formatSteps(diff)} above your usual'
       : '${formatSteps(-diff)} to reach your usual';
 }
+
+/// The week card's per-day average: thousands to one decimal, as the
+/// prototype writes it, and plain steps below a thousand ("avg 420/day"
+/// rather than "avg 0.4k/day").
+String perDayLine(int average) => average < 1000
+    ? 'avg $average/day'
+    : 'avg ${(average / 1000).toStringAsFixed(1)}k/day';
 
 /// 00:00 in Manila on [now]'s Manila day, as a UTC instant: where "today"
 /// starts for the step count, the same day the server saves it under.

@@ -345,6 +345,58 @@ void main() {
     },
   );
 
+  testWidgets(
+    'a save that fails after the sheet was dismissed says so on the screen '
+    'underneath',
+    (tester) async {
+      final completer = Completer<void>();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            recoveryRepositoryProvider.overrideWithValue(
+              _SlowFakeRepo(completer),
+            ),
+            pendingOutcomeProvider.overrideWith((ref) async => null),
+          ],
+          child: MaterialApp(
+            theme: fsLightTheme(),
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: TextButton(
+                  onPressed: () => showCheckinSheet(context),
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      await _answerAll(tester);
+      await tester.tap(find.byKey(const Key('checkin.save')));
+      await tester.pump();
+      // Dismissed while the save is in flight.
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+      expect(find.text('Morning check-in'), findsNothing);
+
+      completer.completeError(Exception('offline'));
+      await tester.pumpAndSettle();
+
+      // The sheet's own error line went with the sheet, so the failure is
+      // said where the user now is, rather than not at all.
+      expect(
+        find.text(
+          "Your check-in wasn't saved. Something went wrong. Please try "
+          'again.',
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
   testWidgets('a new check-in starts with nothing chosen and Save disabled', (
     tester,
   ) async {
@@ -517,6 +569,63 @@ void main() {
     expect(repo.sent, isNotNull);
   });
 
+  testWidgets(
+    'at its fullest the sheet stops short of the status bar, the tab still '
+    'showing above it',
+    (tester) async {
+      // A small phone with a status bar, at large text, with the pain
+      // question and its regions open: more than the screen holds.
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      tester.view.padding = const FakeViewPadding(top: 24);
+      addTearDown(tester.view.reset);
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+      await _open(tester, pending: _pending);
+      await _tapKey(tester, 'checkin.pain.mild');
+      expect(tester.takeException(), isNull);
+
+      // As the How to read sheet does: 90% of the screen at most.
+      final sheet = tester.getRect(find.byType(BottomSheet));
+      expect(sheet.top, greaterThanOrEqualTo(640 * 0.1 - 0.5));
+    },
+  );
+
+  group('like its sibling sheet', () {
+    testWidgets('it has a drag handle and a heading', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await _open(tester);
+
+      expect(find.byKey(const Key('checkin.handle')), findsOneWidget);
+      expect(
+        tester.getSemantics(find.text('Morning check-in')),
+        matchesSemantics(label: 'Morning check-in', isHeader: true),
+      );
+      semantics.dispose();
+    });
+
+    testWidgets('Cancel closes it, so closing never depends on a swipe', (
+      tester,
+    ) async {
+      final repo = await _open(tester);
+
+      await _tapKey(tester, 'checkin.cancel');
+
+      expect(find.text('Morning check-in'), findsNothing);
+      expect(repo.sent, isNull);
+    });
+
+    testWidgets('Cancel with answers given asks first', (tester) async {
+      await _open(tester);
+      await _tapKey(tester, 'checkin.sleepQuality.good');
+
+      await _tapKey(tester, 'checkin.cancel');
+
+      expect(find.text('Discard your changes?'), findsOneWidget);
+    });
+  });
+
   group('closing with answers given', () {
     testWidgets('back with nothing answered closes without asking', (
       tester,
@@ -569,6 +678,25 @@ void main() {
       expect(find.text('Discard your changes?'), findsOneWidget);
     });
 
+    testWidgets('a swipe down with nothing answered just closes', (
+      tester,
+    ) async {
+      final repo = await _open(tester);
+
+      // From the handle: on a sheet taller than the test screen, a swipe on
+      // the questions scrolls them instead, as on a phone.
+      await tester.fling(
+        find.byKey(const Key('checkin.handle')),
+        const Offset(0, 300),
+        1500,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Discard your changes?'), findsNothing);
+      expect(find.text('Morning check-in'), findsNothing);
+      expect(repo.sent, isNull);
+    });
+
     testWidgets('a swipe down asks first rather than closing', (tester) async {
       await _open(tester);
       await _tapKey(tester, 'checkin.energy.high');
@@ -591,13 +719,20 @@ void main() {
       'a screen reader is not offered a scroll that opens the question',
       (tester) async {
         final semantics = tester.ensureSemantics();
+        // A small phone at large text, so the sheet really does scroll: its
+        // own scroll is offered, and that is all a scroll gesture may reach.
+        tester.view.physicalSize = const Size(320, 640);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        tester.platformDispatcher.textScaleFactorTestValue = 2;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
         await _open(tester);
         await _tapKey(tester, 'checkin.energy.high');
 
-        // The sheet fits the test screen, so nothing in it scrolls. The
-        // swipe-down guard must not surface as scroll actions, which a
-        // screen reader's scroll gesture would run straight into the
-        // discard question.
+        // The swipe-down guard must not surface as scroll actions of its
+        // own, which a screen reader's scroll gesture would run straight
+        // into the discard question. Every scroll action on offer is run,
+        // both ways, and none of them may ask.
         final scrollable = <SemanticsNode>[];
         void visit(SemanticsNode node) {
           final data = node.getSemanticsData();
@@ -616,13 +751,21 @@ void main() {
             .owner!
             .semanticsOwner!;
         visit(owner.rootSemanticsNode!);
+        expect(scrollable, isNotEmpty, reason: 'the sheet scrolls here');
         for (final node in scrollable) {
-          owner.performAction(node.id, SemanticsAction.scrollDown);
-          await tester.pumpAndSettle();
+          for (final action in const [
+            SemanticsAction.scrollUp,
+            SemanticsAction.scrollDown,
+          ]) {
+            if (node.getSemanticsData().hasAction(action)) {
+              owner.performAction(node.id, action);
+              await tester.pumpAndSettle();
+            }
+          }
         }
 
         expect(find.text('Discard your changes?'), findsNothing);
-        expect(scrollable, isEmpty);
+        expect(find.text('Morning check-in'), findsOneWidget);
         semantics.dispose();
       },
     );
@@ -949,7 +1092,17 @@ void main() {
       await _open(tester, pending: _pending, regionsFailures: 1);
 
       await _tapKey(tester, 'checkin.pain.mild');
+      // The kit's retry: the reason, then "Try again", as elsewhere.
+      final retry = tester.widget<FsRetry>(find.byType(FsRetry));
+      expect(retry.message, "Couldn't load body regions.");
       expect(find.text("Couldn't load body regions."), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('checkin.regions.retry')),
+          matching: find.text('Try again'),
+        ),
+        findsOneWidget,
+      );
       expect(
         tester.getSize(find.byKey(const Key('checkin.regions.retry'))).height,
         greaterThanOrEqualTo(48),

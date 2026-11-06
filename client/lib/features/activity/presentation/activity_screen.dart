@@ -111,10 +111,17 @@ class _Body extends StatelessWidget {
     final noKm = week == null || week.missingHeight;
     final noKcal = week == null || week.missingHeight || week.missingWeight;
     final today = week?.today;
+    // The server works the estimates out from the count it last saved, up
+    // to five minutes behind the live one. All three grow in step with the
+    // steps, so they are carried along by the same factor until the next
+    // sync, rather than sitting still beside a climbing count. The formula
+    // stays the server's.
+    final saved = today?.steps;
+    final grown = saved != null && saved > 0 ? steps / saved : 1.0;
     final notes = [
       if (state.today.sinceTurnedOn) 'Counting since you turned it on',
       if (state.today.includesEarlierDays)
-        "Steps from days FitSync wasn't opened are added to the next day",
+        "Today's count includes steps from days you didn't open FitSync.",
       if (state.offline) "Updates when you're online",
     ];
     return ListView(
@@ -132,12 +139,22 @@ class _Body extends StatelessWidget {
               ),
               Text('steps today', style: TextStyle(fontSize: 13, color: t.text2)),
               const SizedBox(height: 18),
-              _UsualBar(today: steps, usual: week?.usual),
+              // Only once there is a usual to measure against: without one
+              // the fill sat 80% along a track that meant nothing. Its room
+              // is kept, as on Home, so the usual's arriving moves nothing.
+              switch (week?.usual) {
+                final usual? => _UsualBar(today: steps, usual: usual),
+                null => const SizedBox(height: _UsualBar.height),
+              },
               const SizedBox(height: 10),
               Text(
                 loadingWeek
                     ? 'Loading your week…'
-                    : usualLine(today: steps, usual: week?.usual),
+                    : usualLine(
+                        today: steps,
+                        usual: week?.usual,
+                        usualDays: week?.usualDays,
+                      ),
                 key: const Key('activity.usualLine'),
                 style: TextStyle(fontSize: 13, color: t.text),
               ),
@@ -146,17 +163,23 @@ class _Body extends StatelessWidget {
                 children: [
                   _Figure(
                     key: const Key('activity.kcal'),
-                    value: noKcal ? '—' : '${today!.caloriesBurned ?? 0}',
+                    value: noKcal
+                        ? '—'
+                        : formatSteps(((today!.caloriesBurned ?? 0) * grown).round()),
                     label: 'kcal',
                   ),
                   _Figure(
                     key: const Key('activity.km'),
-                    value: noKm ? '—' : (today!.distanceKm ?? 0).toStringAsFixed(2),
+                    value: noKm
+                        ? '—'
+                        : ((today!.distanceKm ?? 0) * grown).toStringAsFixed(2),
                     label: 'km',
                   ),
                   _Figure(
                     key: const Key('activity.minutes'),
-                    value: today?.activeMinutes == null ? '—' : '${today!.activeMinutes}',
+                    value: today?.activeMinutes == null
+                        ? '—'
+                        : '${(today!.activeMinutes! * grown).round()}',
                     label: 'active min',
                   ),
                 ],
@@ -205,7 +228,7 @@ class _Body extends StatelessWidget {
                       ),
                       if (week.average != null)
                         Text(
-                          'avg ${(week.average! / 1000).toStringAsFixed(1)}k/day',
+                          perDayLine(week.average!),
                           style: TextStyle(fontSize: 11.5, color: t.text3),
                         ),
                     ],
@@ -223,22 +246,24 @@ class _Body extends StatelessWidget {
 }
 
 /// Today's steps filling toward a scale of 1.25 × the larger of today and
-/// the usual, with a marker at the usual.
+/// the usual, with a marker at the usual. Drawn only once there is a usual.
 class _UsualBar extends StatelessWidget {
   const _UsualBar({required this.today, required this.usual});
 
+  static const height = 28.0;
+
   final int today;
-  final int? usual;
+  final int usual;
 
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
-    final scale = math.max(1, math.max(today, usual ?? 0)) * 1.25;
+    final scale = math.max(1, math.max(today, usual)) * 1.25;
     return LayoutBuilder(
       builder: (context, box) {
         final width = box.maxWidth;
         return SizedBox(
-          height: 28,
+          height: height,
           child: Stack(
             clipBehavior: Clip.none,
             children: [
@@ -267,13 +292,12 @@ class _UsualBar extends StatelessWidget {
               // triangle spans y 9-14 of its 24px box, so top 6 puts it right
               // below the bar (which ends at 14) and centring the box centres
               // the tip on the usual.
-              if (usual != null)
-                Positioned(
-                  key: const Key('activity.usualMarker'),
-                  left: width * usual! / scale - 12,
-                  top: 6,
-                  child: Icon(Icons.arrow_drop_up, size: 24, color: t.text),
-                ),
+              Positioned(
+                key: const Key('activity.usualMarker'),
+                left: width * usual / scale - 12,
+                top: 6,
+                child: Icon(Icons.arrow_drop_up, size: 24, color: t.text),
+              ),
             ],
           ),
         );
