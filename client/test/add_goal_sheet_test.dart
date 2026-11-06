@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show SemanticsAction;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -523,6 +524,88 @@ void main() {
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     expect(find.text('New lift goal'), findsNothing);
+  });
+
+  testWidgets('a tap outside the sheet on the target step closes it, as a '
+      'drag down does, rather than stepping back', (tester) async {
+    await _open(tester);
+    await tester.tap(find.byKey(const Key('goal.option.3')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('goal.target')), findsOneWidget);
+
+    // The scrim above the sheet.
+    await tester.tapAt(const Offset(20, 20));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(BottomSheet), findsNothing);
+    expect(find.text('New lift goal'), findsNothing);
+  });
+
+  testWidgets('the scrim still reads as dismissible to a screen reader', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _open(tester);
+
+    final scrim = find.bySemanticsLabel('Scrim');
+    expect(scrim, findsOneWidget);
+    expect(
+      tester
+          .getSemantics(scrim)
+          .getSemanticsData()
+          .hasAction(SemanticsAction.tap),
+      isTrue,
+    );
+    handle.dispose();
+  });
+
+  testWidgets('a search that fails offers Try again, which searches again', (
+    tester,
+  ) async {
+    var calls = 0;
+    final repo = _FakeGoalsRepo(const [_bench]);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          goalsRepositoryProvider.overrideWithValue(repo),
+          weightUnitProvider.overrideWithValue(WeightUnit.kg),
+          goalSearchProvider.overrideWith((ref, query) async {
+            calls += 1;
+            if (calls == 1) {
+              throw const ApiException('SERVER_ERROR', 'Search broke.');
+            }
+            return [_summary(8, 'Deadlift')];
+          }),
+        ],
+        child: MaterialApp(
+          theme: fsLightTheme(),
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () => showAddGoalSheet(context),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    await _search(tester, 'dead');
+
+    expect(
+      find.text(
+        userMessage(const ApiException('SERVER_ERROR', 'Search broke.')),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('goal.search.retry')));
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.text('Deadlift'), findsOneWidget);
   });
 
   group('a lift that already has a goal', () {
