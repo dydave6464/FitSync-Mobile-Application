@@ -195,10 +195,14 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
             FsField(
               controller: _title,
               fieldKey: const Key('habit.title'),
+              label: 'Name',
               hint: 'e.g. Morning mobility',
             ),
             const SizedBox(height: 12),
             Row(
+              // The time button lines up with the duration box, not with
+              // the duration's label above it.
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Expanded(
                   // The kit's secondary button: text-coloured on the
@@ -228,7 +232,9 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
                   child: FsField(
                     controller: _duration,
                     fieldKey: const Key('habit.duration'),
-                    hint: 'Minutes',
+                    label: 'Duration',
+                    hint: 'Optional',
+                    suffix: 'min',
                     keyboardType: TextInputType.number,
                   ),
                 ),

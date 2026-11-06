@@ -380,4 +380,61 @@ void main() {
       expect(find.byType(TimePickerDialog), findsOneWidget);
     });
   });
+
+  group('field labels (PT-10)', () {
+    testWidgets('the name and duration fields keep their names once filled', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _open(tester, existing: _existing);
+
+      expect(
+        tester.getSemantics(find.byKey(const Key('habit.title'))),
+        isSemantics(isTextField: true, label: 'Name', value: 'Run'),
+      );
+      expect(
+        tester.getSemantics(find.byKey(const Key('habit.duration'))),
+        isSemantics(isTextField: true, label: 'Duration', value: '20'),
+      );
+      // Visible too, not only spoken: the placeholder is gone once filled.
+      expect(find.text('NAME'), findsOneWidget);
+      expect(find.text('DURATION'), findsOneWidget);
+      expect(find.text('min'), findsOneWidget);
+      handle.dispose();
+    });
+
+    testWidgets('the sheet fits a small phone at 2x text', (tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final repo = _FakeRepo();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [routineRepositoryProvider.overrideWithValue(repo)],
+          child: MediaQuery(
+            data: const MediaQueryData(
+              size: Size(360, 640),
+              textScaler: TextScaler.linear(2.0),
+            ),
+            child: MaterialApp(
+              theme: fsLightTheme(),
+              home: Builder(
+                builder: (context) => Scaffold(
+                  body: TextButton(
+                    onPressed: () =>
+                        showHabitSheet(context, existing: _existing),
+                    child: const Text('open'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('DURATION'), findsOneWidget);
+    });
+  });
 }
