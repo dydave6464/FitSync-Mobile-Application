@@ -406,6 +406,19 @@ void main() {
       return (reading: reading, adjusts: adjusts, skips: skips);
     }
 
+    // A running rest is titled for itself; "Rest time" is the default's
+    // title, from the menu, with nothing ticking.
+    testWidgets('is titled Rest, not Rest time', (tester) async {
+      await openRunning(tester);
+
+      final header = find.byType(FsSheetHeader);
+      expect(
+        find.descendant(of: header, matching: find.text('Rest')),
+        findsOneWidget,
+      );
+      expect(find.text('Rest time'), findsNothing);
+    });
+
     testWidgets('shows the live time left', (tester) async {
       final h = await openRunning(tester);
       expect(

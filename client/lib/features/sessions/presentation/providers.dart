@@ -233,11 +233,18 @@ final historyPagesProvider = NotifierProvider<HistoryPagesNotifier, int>(
 
 /// Page [page] (2 and on) of the same list as [sessionHistoryProvider],
 /// refetched along with it for the reason [HistoryPagesNotifier] resets.
-final olderHistoryProvider = FutureProvider.autoDispose
-    .family<SessionHistoryPage, int>((ref, page) {
-      ref.watch(sessionHistoryProvider);
-      return ref.watch(sessionRepositoryProvider).history(page: page);
-    }, retry: apiRetryPolicy);
+///
+/// Kept, not autoDispose: the list sits inside the Progress tab's ListView,
+/// which drops it once it is scrolled far away, and coming back must not
+/// fetch the pages already read again. The keys are page numbers, bounded by
+/// how far a person has read, and each is fetched afresh after page 1 is.
+final olderHistoryProvider = FutureProvider.family<SessionHistoryPage, int>((
+  ref,
+  page,
+) {
+  ref.watch(sessionHistoryProvider);
+  return ref.watch(sessionRepositoryProvider).history(page: page);
+}, retry: apiRetryPolicy);
 
 /// The workout the "+" sheet offers to repeat, or null when there is none.
 final lastWorkoutProvider = FutureProvider<LastWorkout?>(
