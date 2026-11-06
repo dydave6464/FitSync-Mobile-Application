@@ -115,7 +115,7 @@ class _Body extends StatelessWidget {
     final noKcal = week == null || week.missingHeight || week.missingWeight;
     // The server's estimates, carried along to the live count (see
     // ActivityDay.grownTo), as Home's tiles show them.
-    final today = week?.today.grownTo(steps);
+    final today = week?.today.grownTo(steps, perStep: week.perStep);
     final notes = [
       if (state.today.sinceTurnedOn) 'Counting since you turned it on',
       if (state.today.includesEarlierDays)
