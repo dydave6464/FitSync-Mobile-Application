@@ -299,9 +299,10 @@ class _Readiness extends ConsumerWidget {
           // estimate on the default 800dp test surface. An earlier day's adds
           // a "From" line, and a narrow phone can wrap the injury-risk line,
           // so either may still land a little taller.
-          loading: () => const SizedBox(
+          loading: () => const Padding(
             key: Key('home.readiness.placeholder'),
-            height: 170,
+            padding: EdgeInsets.only(bottom: 14),
+            child: _LoadingCard(height: 156, label: 'Loading readiness'),
           ),
           error: (_, _) => const SizedBox.shrink(),
           data: (overview) => Padding(
@@ -350,7 +351,11 @@ class _Progress extends ConsumerWidget {
     // standing in for data about to replace it must match.
     // 186 since the bars gained their dates and the labels grew to 12.
     if (s == null || a == null) {
-      return const SizedBox(key: Key('home.progress.placeholder'), height: 186);
+      return const _LoadingCard(
+        key: Key('home.progress.placeholder'),
+        height: 186,
+        label: 'Loading progress',
+      );
     }
     return ProgressSnapshotCard(
       summary: s,
@@ -381,8 +386,11 @@ class _Routine extends ConsumerWidget {
           // The card's with-data height (three rows, "+N more" and the
           // streak chip, which is taller than the title alone), measured the
           // way _Progress's placeholder note describes.
-          loading: () =>
-              const SizedBox(key: Key('home.routine.placeholder'), height: 170),
+          loading: () => const _LoadingCard(
+            key: Key('home.routine.placeholder'),
+            height: 170,
+            label: "Loading today's routine",
+          ),
           error: (_, _) => FsRetry(
             message: "Couldn't load your routine",
             buttonKey: const Key('home.routine.retry'),
@@ -406,5 +414,51 @@ class _Routine extends ConsumerWidget {
             ),
           ),
         );
+  }
+}
+
+/// A card still waiting on its data: the card's outline and a few grey bars,
+/// at the card's own with-data [height] so Home does not jump when it lands.
+/// Still, not shimmering, so it needs no reduced-motion case. A screen
+/// reader hears [label] rather than nothing at all.
+class _LoadingCard extends StatelessWidget {
+  const _LoadingCard({super.key, required this.height, required this.label});
+
+  final double height;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+    Widget bar(double widthFactor, double barHeight) => FractionallySizedBox(
+      widthFactor: widthFactor,
+      child: Container(
+        height: barHeight,
+        decoration: BoxDecoration(
+          color: t.surface2,
+          borderRadius: BorderRadius.circular(FsRadius.pill),
+        ),
+      ),
+    );
+
+    return Semantics(
+      container: true,
+      label: label,
+      child: SizedBox(
+        height: height,
+        child: FsCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              bar(0.4, 14),
+              const SizedBox(height: 14),
+              bar(0.9, 10),
+              const SizedBox(height: 8),
+              bar(0.65, 10),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

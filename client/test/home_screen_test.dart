@@ -885,6 +885,42 @@ void main() {
       expect(placeholder.height, closeTo(card.height, 1));
     });
 
+    testWidgets('a card still loading shows a card-shaped placeholder and '
+        'says it is loading', (tester) async {
+      // Blank space of the right height kept Home from jumping, but drew
+      // and announced nothing, so the wait looked like an empty screen.
+      _tallScreen(tester);
+      final handle = tester.ensureSemantics();
+      await _pumpHome(
+        tester,
+        recoveryFuture: Completer<RecoveryOverview>().future,
+        summaryFuture: Completer<TrainingSummary>().future,
+        routineFuture: Completer<RoutineDay>().future,
+      );
+
+      for (final (key, label) in [
+        ('home.readiness.placeholder', 'Loading readiness'),
+        ('home.progress.placeholder', 'Loading progress'),
+        ('home.routine.placeholder', "Loading today's routine"),
+      ]) {
+        final placeholder = find.byKey(Key(key));
+        expect(
+          find.descendant(of: placeholder, matching: find.byType(FsCard)),
+          findsOneWidget,
+          reason: key,
+        );
+        expect(
+          find.descendant(
+            of: placeholder,
+            matching: find.bySemanticsLabel(label),
+          ),
+          findsOneWidget,
+          reason: key,
+        );
+      }
+      handle.dispose();
+    });
+
     testWidgets('steps that cannot be read leave one gap, not two', (
       tester,
     ) async {
