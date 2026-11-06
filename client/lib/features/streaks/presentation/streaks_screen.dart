@@ -78,6 +78,31 @@ class _StreakSection extends ConsumerWidget {
 }
 
 const _weekLetters = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const _weekNames = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+];
+
+/// "This week: Monday, done; Tuesday, missed; Thursday, today, not yet; ..."
+/// -- each day's state in words, Monday first as the dots are drawn.
+String _weekSentence(List<StreakDay> week, String today) {
+  String state(StreakDay day) {
+    if (day.date == today) return day.active ? 'today, done' : 'today, not yet';
+    if (day.date.compareTo(today) > 0) return 'not yet';
+    return day.active ? 'done' : 'missed';
+  }
+
+  final days = [
+    for (var i = 0; i < week.length && i < 7; i++)
+      '${_weekNames[i]}, ${state(week[i])}',
+  ];
+  return 'This week: ${days.join('; ')}';
+}
 
 class _StreakCard extends StatelessWidget {
   const _StreakCard({required this.streak, required this.today});
@@ -125,19 +150,26 @@ class _StreakCard extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                for (var i = 0; i < streak.week.length && i < 7; i++)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4.5),
-                    child: _WeekDot(
-                      day: streak.week[i],
-                      label: _weekLetters[i],
-                      today: today,
+            // The dots say done or missed by fill and tick alone; a screen
+            // reader hears the whole week as one sentence instead.
+            Semantics(
+              container: true,
+              label: _weekSentence(streak.week, today),
+              excludeSemantics: true,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  for (var i = 0; i < streak.week.length && i < 7; i++)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4.5),
+                      child: _WeekDot(
+                        day: streak.week[i],
+                        label: _weekLetters[i],
+                        today: today,
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
             const SizedBox(height: 4),
           ],

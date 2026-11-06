@@ -71,41 +71,47 @@ class RoutineCard extends StatelessWidget {
             )
           else ...[
             for (final entry in entries.take(_shown)) ...[
-              Row(
-                children: [
-                  Container(
-                    width: 20,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      color: entry.done ? t.accent : Colors.transparent,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                        color: entry.done ? t.accent : t.line2,
-                        width: 2,
+              // The tick box and strike-through are visual only; a screen
+              // reader hears the state in words.
+              Semantics(
+                label: '${entry.title}, ${entry.done ? 'done' : 'not done'}',
+                excludeSemantics: true,
+                child: Row(
+                  children: [
+                    Container(
+                      width: 20,
+                      height: 20,
+                      decoration: BoxDecoration(
+                        color: entry.done ? t.accent : Colors.transparent,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: entry.done ? t.accent : t.line2,
+                          width: 2,
+                        ),
+                      ),
+                      child: entry.done
+                          ? Icon(Icons.check, size: 11, color: t.onAccent)
+                          : null,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      // A done item is quieter by colour, not by opacity: the
+                      // design's 55% fade took the title under 4.5:1 in light.
+                      child: Text(
+                        entry.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: entry.done ? t.text3 : t.text,
+                          decoration: entry.done
+                              ? TextDecoration.lineThrough
+                              : TextDecoration.none,
+                        ),
                       ),
                     ),
-                    child: entry.done
-                        ? Icon(Icons.check, size: 11, color: t.onAccent)
-                        : null,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    // A done item is quieter by colour, not by opacity: the
-                    // design's 55% fade took the title under 4.5:1 in light.
-                    child: Text(
-                      entry.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: entry.done ? t.text3 : t.text,
-                        decoration: entry.done
-                            ? TextDecoration.lineThrough
-                            : TextDecoration.none,
-                      ),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               const SizedBox(height: 8),
             ],

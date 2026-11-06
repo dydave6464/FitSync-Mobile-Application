@@ -169,4 +169,22 @@ void main() {
       expect(contrast(shown, t.surface), greaterThanOrEqualTo(4.5));
     });
   }
+
+  testWidgets('a screen reader hears whether each item is done', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(
+      tester,
+      _day([
+        _habit(1, 'Stretch', time: '06:00', done: true),
+        _habit(2, 'Walk', time: '07:00'),
+      ]),
+    );
+
+    final label = tester.getSemantics(find.byKey(const Key('home.routine')));
+    expect(label.label, contains('Stretch, done'));
+    expect(label.label, contains('Walk, not done'));
+    handle.dispose();
+  });
 }

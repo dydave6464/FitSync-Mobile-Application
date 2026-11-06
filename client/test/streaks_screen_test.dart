@@ -329,4 +329,53 @@ void main() {
       );
     });
   }
+
+  testWidgets('a screen reader hears each day of the week with its state', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester);
+
+    expect(
+      find.bySemanticsLabel(
+        'This week: Monday, done; Tuesday, missed; Wednesday, done; '
+        'Thursday, today, done; Friday, not yet; Saturday, not yet; '
+        'Sunday, not yet',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.bySemanticsLabel('M'),
+      findsNothing,
+      reason: 'the bare letters are replaced by the sentence',
+    );
+    handle.dispose();
+  });
+
+  testWidgets('today not yet active reads as "today, not yet"', (tester) async {
+    final handle = tester.ensureSemantics();
+    await _pump(
+      tester,
+      streak: const Streak(
+        current: 1,
+        best: 1,
+        todayActive: false,
+        week: [
+          StreakDay(date: '2026-09-21', active: false),
+          StreakDay(date: '2026-09-22', active: false),
+          StreakDay(date: '2026-09-23', active: true),
+          StreakDay(date: '2026-09-24', active: false),
+          StreakDay(date: '2026-09-25', active: false),
+          StreakDay(date: '2026-09-26', active: false),
+          StreakDay(date: '2026-09-27', active: false),
+        ],
+      ),
+    );
+
+    expect(
+      find.bySemanticsLabel(RegExp('Thursday, today, not yet;')),
+      findsOneWidget,
+    );
+    handle.dispose();
+  });
 }
