@@ -90,19 +90,18 @@ class RoutineCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Opacity(
-                      opacity: entry.done ? 0.55 : 1,
-                      child: Text(
-                        entry.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: t.text,
-                          decoration: entry.done
-                              ? TextDecoration.lineThrough
-                              : TextDecoration.none,
-                        ),
+                    // A done item is quieter by colour, not by opacity: the
+                    // design's 55% fade took the title under 4.5:1 in light.
+                    child: Text(
+                      entry.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: entry.done ? t.text3 : t.text,
+                        decoration: entry.done
+                            ? TextDecoration.lineThrough
+                            : TextDecoration.none,
                       ),
                     ),
                   ),

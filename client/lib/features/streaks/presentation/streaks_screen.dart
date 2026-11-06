@@ -159,11 +159,14 @@ class _WeekDot extends StatelessWidget {
     final t = context.fs;
     final isToday = day.date == today;
     final isFuture = day.date.compareTo(today) > 0;
-    return Opacity(
-      opacity: isFuture ? 0.4 : 1,
-      child: Column(
-        children: [
-          Container(
+    // Only the circle of a day still to come is dimmed. Its letter stays
+    // whole, in text2: text3 falls under 4.5:1 where the accent card's tint
+    // is strongest.
+    return Column(
+      children: [
+        Opacity(
+          opacity: isFuture ? 0.4 : 1,
+          child: Container(
             key: Key('streaks.day.${day.date}'),
             width: 26,
             height: 26,
@@ -181,10 +184,10 @@ class _WeekDot extends StatelessWidget {
                 ? Icon(Icons.check, size: 13, color: t.onAccent)
                 : null,
           ),
-          const SizedBox(height: 5),
-          Text(label, style: TextStyle(fontSize: 9, color: t.text3)),
-        ],
-      ),
+        ),
+        const SizedBox(height: 5),
+        Text(label, style: TextStyle(fontSize: 9, color: t.text2)),
+      ],
     );
   }
 }

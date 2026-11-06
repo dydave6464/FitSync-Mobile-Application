@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
+import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/units.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart'
     show weightUnitProvider;
@@ -12,6 +13,8 @@ import 'package:fitsync/features/streaks/data/streaks_repository.dart';
 import 'package:fitsync/features/streaks/domain/streaks.dart';
 import 'package:fitsync/features/streaks/presentation/providers.dart';
 import 'package:fitsync/features/streaks/presentation/streaks_screen.dart';
+
+import 'helpers/a11y.dart' show contrast;
 
 /// Noon on Thursday 2026-09-24 in Manila.
 DateTime _now() => DateTime.utc(2026, 9, 24, 4);
@@ -78,6 +81,7 @@ Future<_FakeGoalsRepo> _pump(
   Object? streakError,
   List<LiftGoal> goals = const [_benchGoal],
   int failGoals = 0,
+  bool dark = false,
 }) async {
   final repo = _FakeGoalsRepo(goals)..failListTimes = failGoals;
   await tester.pumpWidget(
@@ -90,7 +94,10 @@ Future<_FakeGoalsRepo> _pump(
         goalsRepositoryProvider.overrideWithValue(repo),
         weightUnitProvider.overrideWithValue(WeightUnit.kg),
       ],
-      child: const MaterialApp(home: StreaksScreen(now: _now)),
+      child: MaterialApp(
+        theme: dark ? fsDarkTheme() : fsLightTheme(),
+        home: const StreaksScreen(now: _now),
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -99,6 +106,18 @@ Future<_FakeGoalsRepo> _pump(
 
 Finder _inDay(String date, Finder f) =>
     find.descendant(of: find.byKey(Key('streaks.day.$date')), matching: f);
+
+/// The product of every [Opacity] above [finder].
+double _opacityOver(WidgetTester tester, Finder finder) => tester
+    .widgetList<Opacity>(
+      find.ancestor(of: finder, matching: find.byType(Opacity)),
+    )
+    .fold(1.0, (a, o) => a * o.opacity);
+
+/// FsCard(accent: true) where its tint is strongest: accent at 0.16 over
+/// the page.
+Color _strongestTint(FsTokens t) =>
+    Color.alphaBlend(t.accent.withValues(alpha: 0.16), t.bg);
 
 void main() {
   testWidgets('the streak card shows the count, the best, and the week', (
@@ -288,4 +307,26 @@ void main() {
 
     expect(find.byKey(const Key('streaks.goal.1')), findsOneWidget);
   });
+
+  for (final dark in [false, true]) {
+    testWidgets('the later days\' letters read at 4.5:1 on the streak card '
+        '(${dark ? 'dark' : 'light'})', (tester) async {
+      await _pump(tester, dark: dark);
+      final t = dark ? FsTokens.dark : FsTokens.light;
+
+      // Friday, a day still to come (the clock is Thursday).
+      final letter = find.text('F');
+      final color = tester.widget<Text>(letter).style!.color!;
+      final shown = color.withValues(
+        alpha: color.a * _opacityOver(tester, letter),
+      );
+
+      expect(contrast(shown, _strongestTint(t)), greaterThanOrEqualTo(4.5));
+      // The circle itself is still dimmed, as the design shows.
+      expect(
+        _opacityOver(tester, find.byKey(const Key('streaks.day.2026-09-25'))),
+        lessThan(1),
+      );
+    });
+  }
 }

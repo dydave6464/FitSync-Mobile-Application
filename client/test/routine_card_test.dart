@@ -6,6 +6,8 @@ import 'package:fitsync/core/widgets/fs_kit.dart' show FsTag;
 import 'package:fitsync/features/home/presentation/widgets/routine_card.dart';
 import 'package:fitsync/features/routine/domain/routine.dart';
 
+import 'helpers/a11y.dart' show contrast;
+
 Habit _habit(int id, String title, {bool done = false, String? time}) => Habit(
   habitId: id,
   title: title,
@@ -22,11 +24,12 @@ Future<List<String>> _pump(
   WidgetTester tester,
   RoutineDay day, {
   int streak = 0,
+  bool dark = false,
 }) async {
   final taps = <String>[];
   await tester.pumpWidget(
     MaterialApp(
-      theme: fsLightTheme(),
+      theme: dark ? fsDarkTheme() : fsLightTheme(),
       home: Scaffold(
         body: RoutineCard(
           day: day,
@@ -39,6 +42,14 @@ Future<List<String>> _pump(
   );
   return taps;
 }
+
+/// The product of every [Opacity] above [finder]: what its paint is
+/// actually multiplied by.
+double _opacityOver(WidgetTester tester, Finder finder) => tester
+    .widgetList<Opacity>(
+      find.ancestor(of: finder, matching: find.byType(Opacity)),
+    )
+    .fold(1.0, (a, o) => a * o.opacity);
 
 void main() {
   testWidgets('several items show the heading, tag, first three titles and a '
@@ -139,4 +150,23 @@ void main() {
 
     expect(taps, ['streak']);
   });
+
+  for (final dark in [false, true]) {
+    testWidgets('a done title reads at 4.5:1 on the card '
+        '(${dark ? 'dark' : 'light'})', (tester) async {
+      await _pump(
+        tester,
+        _day([_habit(1, 'Done habit', time: '06:00', done: true)]),
+        dark: dark,
+      );
+      final t = dark ? FsTokens.dark : FsTokens.light;
+      final title = find.text('Done habit');
+      final color = tester.widget<Text>(title).style!.color!;
+      final shown = color.withValues(
+        alpha: color.a * _opacityOver(tester, title),
+      );
+
+      expect(contrast(shown, t.surface), greaterThanOrEqualTo(4.5));
+    });
+  }
 }
