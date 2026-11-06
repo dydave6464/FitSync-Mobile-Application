@@ -13,6 +13,10 @@ const _plan = WorkoutPlan(
   sessionLengthMin: 45,
   weekNo: 1,
   source: 'custom',
+  days: [
+    PlanDay(dayNo: 1, name: 'Push'),
+    PlanDay(dayNo: 2, name: ''),
+  ],
   exercises: [
     PlanExercise(
       planExerciseId: 1,
@@ -69,9 +73,39 @@ void main() {
   testWidgets('lists the days already in the plan', (tester) async {
     await _open(tester);
 
-    expect(find.text('Day 1'), findsOneWidget);
-    expect(find.text('Day 2'), findsOneWidget);
+    expect(find.byKey(const Key('addToPlan.day.1')), findsOneWidget);
+    expect(find.byKey(const Key('addToPlan.day.2')), findsOneWidget);
     expect(find.byKey(const Key('addToPlan.newDay')), findsOneWidget);
+  });
+
+  testWidgets('names each day as the Plan tab does, with its number under '
+      'it (PT-21)', (tester) async {
+    // "Day 1" says nothing about what is replaced; the Plan tab calls the
+    // same day "Push". A day the plan never named keeps its number.
+    await _open(tester);
+
+    final push = find.byKey(const Key('addToPlan.day.1'));
+    expect(
+      find.descendant(of: push, matching: find.text('Push')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: push,
+        matching: find.text('Day 1 · Replaces 1 exercise'),
+      ),
+      findsOneWidget,
+    );
+
+    final unnamed = find.byKey(const Key('addToPlan.day.2'));
+    expect(
+      find.descendant(of: unnamed, matching: find.text('Day 2')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: unnamed, matching: find.text('Replaces 1 exercise')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('says how much is in each day', (tester) async {

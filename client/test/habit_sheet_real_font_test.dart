@@ -72,15 +72,51 @@ Future<void> _open(
   await tester.pumpAndSettle();
 }
 
-/// True when [finder]'s paragraph is shown whole: not ellipsized or clipped
-/// at its line limit.
-bool _whole(WidgetTester tester, Finder finder) =>
-    !tester.renderObject<RenderParagraph>(finder).didExceedMaxLines;
+/// True when [finder]'s paragraph is shown whole inside [holder].
+///
+/// The time button's label wraps, so it has no line limit to exceed and
+/// `didExceedMaxLines` alone can never fail. Whole also means no word is
+/// wider than the paragraph -- a word that is gets broken mid-word or runs
+/// off -- and the paragraph lies inside the button rather than past its edge.
+bool _whole(WidgetTester tester, Finder finder, Finder holder) {
+  final paragraph = tester.renderObject<RenderParagraph>(finder);
+  if (paragraph.didExceedMaxLines) return false;
+  final widestWord = paragraph.getMinIntrinsicWidth(double.infinity);
+  if (widestWord > paragraph.size.width + 0.5) return false;
+  final inside = tester.getRect(holder).inflate(0.5);
+  final drawn = tester.getRect(finder);
+  return inside.contains(drawn.topLeft) && inside.contains(drawn.bottomRight);
+}
 
 void main() {
   setUpAll(() async {
     await _load('SpaceGrotesk', 'assets/fonts/SpaceGrotesk-Variable.ttf');
     await _load('JetBrainsMono', 'assets/fonts/JetBrainsMono-Variable.ttf');
+  });
+
+  testWidgets('the check fails for a label too narrow to hold a word (L-42)', (
+    tester,
+  ) async {
+    // Guards the guard: a time squeezed into 30 dp breaks "7:00" mid-word,
+    // which the check must call cut off even though nothing exceeds a
+    // line limit.
+    await tester.pumpWidget(
+      const Directionality(
+        textDirection: TextDirection.ltr,
+        child: Center(
+          child: SizedBox(
+            key: Key('narrow'),
+            width: 30,
+            child: Text('7:00 AM', style: TextStyle(fontSize: 13.5)),
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      _whole(tester, find.text('7:00 AM'), find.byKey(const Key('narrow'))),
+      isFalse,
+    );
   });
 
   for (final scale in [1.0, 1.3, 2.0]) {
@@ -94,7 +130,10 @@ void main() {
         matching: find.text('7:00 AM'),
       );
       expect(label, findsOneWidget);
-      expect(_whole(tester, label), isTrue);
+      expect(
+        _whole(tester, label, find.byKey(const Key('habit.time'))),
+        isTrue,
+      );
       expect(tester.takeException(), isNull);
     });
 

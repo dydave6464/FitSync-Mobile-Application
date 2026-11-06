@@ -262,19 +262,10 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
           child: detail.when(
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (err, _) => Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(describeError(err), textAlign: TextAlign.center),
-                  const SizedBox(height: 12),
-                  FsButton(
-                    label: 'Retry',
-                    small: true,
-                    kind: FsButtonKind.secondary,
-                    onPressed: () =>
-                        ref.invalidate(exerciseDetailProvider(alt.exerciseId)),
-                  ),
-                ],
+              child: FsRetry(
+                message: userMessage(err),
+                onRetry: () =>
+                    ref.invalidate(exerciseDetailProvider(alt.exerciseId)),
               ),
             ),
             data: (exercise) => exercise.animationUrl == null
@@ -320,10 +311,7 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
         ),
         if (_error != null) ...[
           const SizedBox(height: 12),
-          Text(
-            _error!,
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
-          ),
+          FsErrorLine(_error!),
         ],
         const SizedBox(height: 12),
         FsButton(
@@ -398,13 +386,7 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
                 ),
         ),
       ),
-      if (_error != null) ...[
-        const SizedBox(height: 12),
-        Text(
-          _error!,
-          style: TextStyle(color: Theme.of(context).colorScheme.error),
-        ),
-      ],
+      if (_error != null) ...[const SizedBox(height: 12), FsErrorLine(_error!)],
       const SizedBox(height: 16),
     ];
     final foot = <Widget>[

@@ -17,6 +17,9 @@ import 'package:fitsync/features/plans/presentation/widgets/training_days_row.da
 import 'package:fitsync/features/profile/data/profile_repository.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
+import 'package:fitsync/features/sessions/domain/active_session.dart';
+import 'package:fitsync/features/sessions/presentation/providers.dart';
+import 'package:fitsync/features/sessions/presentation/session_logger_screen.dart';
 
 import 'helpers/dialog_buttons.dart';
 
@@ -196,6 +199,23 @@ class FakeProfileRepository implements ProfileRepository {
   );
 }
 
+/// The workout in progress, or none: the generator reads it to say up front
+/// that a plan cannot be replaced mid-workout.
+class _SessionController extends ActiveSessionController {
+  _SessionController(this.session);
+
+  final ActiveSession? session;
+
+  @override
+  Future<ActiveSession?> build() async => session;
+}
+
+const _inProgress = ActiveSession(
+  sessionId: 31,
+  status: 'in_progress',
+  sessionDate: '2026-11-06',
+);
+
 /// The profile notifier fake the running test's `_pump` installed. Set fresh
 /// on every call so a test can assert what it recorded -- `_profile.
 /// lastTrainingDays` -- without threading the fake through by hand.
@@ -217,6 +237,7 @@ Future<void> _pump(
   List<int> trainingDays = const [],
   bool failTrainingDays = false,
   _ProfileLoad profileLoad = _ProfileLoad.loaded,
+  ActiveSession? session,
 }) async {
   _profile = _FakeProfileNotifier(
     injuries,
@@ -238,6 +259,7 @@ Future<void> _pump(
         if (profileRepo != null)
           profileRepositoryProvider.overrideWithValue(profileRepo),
         profileProvider.overrideWith(() => _profile),
+        activeSessionProvider.overrideWith(() => _SessionController(session)),
         injuryOptionsProvider.overrideWith((ref) async {
           if (injuryOptionsFail) throw Exception('catalogue down');
           return injuryOptions;
@@ -271,6 +293,66 @@ int _ticked(WidgetTester tester) => tester
 const _generatedMessage = 'New plan generated';
 
 void main() {
+  group('a workout in progress (PT-20)', () {
+    testWidgets('is said before Generate, which waits for it', (tester) async {
+      // The server refuses a new plan mid-workout. Saying so only after the
+      // building screen had come up, and gone again, was a wait for nothing.
+      await _pump(tester, plan: _pplPlan, session: _inProgress);
+
+      expect(
+        find.text(
+          'You have a workout in progress. Finish or discard it first.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Generating replaces your current plan.'), findsNothing);
+      final generate = find.byKey(const Key('gen.generate'));
+      await tester.ensureVisible(generate);
+      expect(tester.widget<FsButton>(generate).onPressed, isNull);
+
+      await tester.tap(generate, warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(_plans.regenerateCalls, 0);
+      expect(find.byType(GeneratingView), findsNothing);
+    });
+
+    testWidgets('offers to resume it', (tester) async {
+      await _pump(tester, plan: _pplPlan, session: _inProgress);
+
+      final resume = find.byKey(const Key('gen.resume'));
+      await tester.scrollUntilVisible(
+        resume,
+        200,
+        scrollable: find
+            .descendant(
+              of: find.byType(ListView),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.tap(resume);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      final logger = tester.widget<SessionLoggerScreen>(
+        find.byType(SessionLoggerScreen),
+      );
+      expect(logger.resume, isTrue);
+    });
+
+    testWidgets('with none, Generate is offered as before', (tester) async {
+      await _pump(tester, plan: _pplPlan);
+
+      expect(
+        find.text('Generating replaces your current plan.'),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('gen.resume')), findsNothing);
+      final generate = find.byKey(const Key('gen.generate'));
+      expect(tester.widget<FsButton>(generate).onPressed, isNotNull);
+    });
+  });
+
   testWidgets('the four split styles are offered', (tester) async {
     await _pump(tester, plan: _pplPlan);
 
@@ -479,10 +561,13 @@ void main() {
     await tester.pump();
 
     expect(_profile.lastTrainingDays, isNull);
+    // The kit's error line: red with its icon, and announced.
     expect(
       tester
-          .widget<Text>(find.byKey(const Key('gen.trainingDays.unavailable')))
-          .data,
+          .widget<FsErrorLine>(
+            find.byKey(const Key('gen.trainingDays.unavailable')),
+          )
+          .message,
       contains("Couldn't load"),
     );
     expect(
@@ -735,9 +820,17 @@ void main() {
 
     expect(find.byType(FsChip), findsNothing);
     expect(find.text('Generating replaces your current plan.'), findsNothing);
-    expect(find.text('Retry'), findsOneWidget);
+    // The kit's retry, in the app's words (L-46).
+    expect(
+      find.widgetWithText(
+        FsRetry,
+        "Couldn't load your current plan. Something went wrong. "
+        'Please try again.',
+      ),
+      findsOneWidget,
+    );
 
-    await tester.tap(find.text('Retry'));
+    await tester.tap(find.text('Try again'));
     await tester.pumpAndSettle();
 
     expect(calls, 2, reason: 'retry must actually refetch');
@@ -1335,7 +1428,10 @@ void main() {
         await apply(tester);
 
         expect(
-          find.byKey(const Key('gen.describe.catalogueError')),
+          find.descendant(
+            of: find.byKey(const Key('gen.describe.catalogueError')),
+            matching: find.byType(FsErrorLine),
+          ),
           findsOneWidget,
         );
         expect(find.byKey(const Key('gen.describe.add.3')), findsNothing);

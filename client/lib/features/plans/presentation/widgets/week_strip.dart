@@ -272,6 +272,7 @@ class WeekStrip extends StatelessWidget {
     // profile lands, and the bare count is already how this row reports a
     // week it cannot set a target for.
     final hasTarget = known && target >= _minTarget && target <= _maxTarget;
+    final tally = done == 1 ? '1 session' : '$done sessions';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -282,15 +283,21 @@ class WeekStrip extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Flexible(child: FsEyebrow('This week')),
-              Text(
-                hasTarget
-                    ? '$done of $target'
-                    : (done == 1 ? '1 session' : '$done sessions'),
-                key: const Key('week.tally'),
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: t.accentText,
+              // Read with what it counts: a bare "1 of 3" is a fraction to a
+              // screen reader.
+              Semantics(
+                label: hasTarget
+                    ? '$done of $target workouts this week'
+                    : '$tally this week',
+                excludeSemantics: true,
+                child: Text(
+                  hasTarget ? '$done of $target' : tally,
+                  key: const Key('week.tally'),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: t.accentText,
+                  ),
                 ),
               ),
             ],

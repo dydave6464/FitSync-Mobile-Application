@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:fitsync/core/widgets/fs_kit.dart' show FsField;
+import 'package:fitsync/core/widgets/fs_kit.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
@@ -472,6 +472,13 @@ void main() {
       reason:
           'the rejected candidate stays on screen to be retried or '
           'backed out of, rather than dumping the user in the list',
+    );
+    expect(
+      find.widgetWithText(
+        FsErrorLine,
+        'That exercise is not available for this plan.',
+      ),
+      findsOneWidget,
     );
     expect(find.textContaining('not available'), findsOneWidget);
   });
@@ -1104,6 +1111,46 @@ void main() {
     expect(find.byKey(const Key('swap.alt.12')), findsOneWidget);
   });
 
+  testWidgets("a demo that can't load offers the kit's Try again", (
+    tester,
+  ) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          planRepositoryProvider.overrideWithValue(_RecordingRepo()),
+          alternativesProvider.overrideWith((ref, key) async => const [_alt]),
+          exerciseDetailProvider.overrideWith((ref, id) async {
+            calls += 1;
+            if (calls == 1) throw Exception('boom');
+            return _detail;
+          }),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: ExerciseSwapSheet(
+              planExerciseId: 77,
+              exerciseName: 'Cable Fly',
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('swap.alt.12')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.widgetWithText(FsRetry, 'Something went wrong. Please try again.'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Try again'));
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.byType(FsRetry), findsNothing);
+  });
+
   group('search box (PT-12)', () {
     testWidgets("is the kit field, with the app's search look", (tester) async {
       await _pump(tester, const [_alt]);
@@ -1131,6 +1178,50 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('push'), findsNothing);
       expect(find.byKey(const Key('swap.search.clear')), findsNothing);
+    });
+
+    testWidgets('clearing resets the search and drops a pending keystroke '
+        '(L-40)', (tester) async {
+      // Only the empty search has a row; anything typed finds nothing.
+      final asked = <String>[];
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            alternativesProvider.overrideWith((ref, key) async {
+              asked.add(key.query);
+              return key.query.isEmpty ? const [_alt] : const [];
+            }),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: ExerciseSwapSheet(
+                planExerciseId: 77,
+                exerciseName: 'Cable Fly',
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final search = find.byKey(const Key('swap.search'));
+
+      await tester.enterText(search, 'push');
+      await tester.pumpAndSettle(const Duration(milliseconds: 400));
+      expect(asked.last, 'push');
+      expect(find.byKey(const Key('swap.alt.12')), findsNothing);
+
+      // A keystroke still inside its debounce when Clear is tapped.
+      await tester.enterText(search, 'pushu');
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.byKey(const Key('swap.search.clear')));
+      await tester.pumpAndSettle(const Duration(milliseconds: 400));
+
+      expect(asked, isNot(contains('pushu')));
+      expect(
+        find.byKey(const Key('swap.alt.12')),
+        findsOneWidget,
+        reason: 'the list is the empty search again',
+      );
     });
   });
 }

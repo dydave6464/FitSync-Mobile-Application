@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/core/api_client.dart';
 import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/features/exercises/presentation/exercise_detail_screen.dart';
@@ -191,6 +192,39 @@ Future<void> _pump(
 }
 
 void main() {
+  testWidgets("a plan that can't load offers the kit's Try again (L-46)", (
+    tester,
+  ) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(_hermeticClient()),
+          activePlanProvider.overrideWith((ref) async {
+            calls += 1;
+            // Not NETWORK_ERROR, which the provider's own retry would chase.
+            if (calls == 1) throw Exception('boom');
+            return _plan;
+          }),
+          activeSessionProvider.overrideWith(() => _NoSessionController()),
+          completedDaysProvider.overrideWith((ref) async => const <String>{}),
+        ],
+        child: const MaterialApp(home: Scaffold(body: PlanScreen())),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.widgetWithText(FsRetry, 'Something went wrong. Please try again.'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Try again'));
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.text('Week 1 — Full body'), findsOneWidget);
+  });
+
   testWidgets('renders the plan summary', (tester) async {
     await _pump(tester, _plan);
 

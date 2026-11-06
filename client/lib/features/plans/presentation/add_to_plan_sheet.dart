@@ -68,12 +68,22 @@ Future<AddToPlanChoice> showAddToPlanSheet(
                   final count = plan.exercises
                       .where((e) => e.dayNo == dayNo)
                       .length;
+                  final replaces =
+                      'Replaces $count ${count == 1 ? 'exercise' : 'exercises'}';
+                  // The name the Plan tab shows for this day ("Push"), with
+                  // its number kept beside what it replaces. A day the plan
+                  // never named is called by its number alone.
+                  final name = plan.days
+                      .where((d) => d.dayNo == dayNo)
+                      .map((d) => d.name)
+                      .firstOrNull;
+                  final named = name != null && name.isNotEmpty;
                   return ListTile(
                     key: Key('addToPlan.day.$dayNo'),
                     leading: Icon(Icons.swap_horiz, size: 20, color: t.text2),
-                    title: Text('Day $dayNo'),
+                    title: Text(named ? name : 'Day $dayNo'),
                     subtitle: Text(
-                      'Replaces $count ${count == 1 ? 'exercise' : 'exercises'}',
+                      named ? 'Day $dayNo · $replaces' : replaces,
                       style: TextStyle(fontSize: 12, color: t.text3),
                     ),
                     onTap: () =>

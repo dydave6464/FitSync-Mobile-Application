@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/features/plans/domain/split_style.dart';
 import 'package:fitsync/features/plans/domain/week_description.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
@@ -252,6 +253,31 @@ void main() {
       expect(text, contains('build muscle'));
       expect(text, contains('4 days'));
       expect(text, contains('push / pull / legs'));
+    });
+
+    test('names every split the choosers offer in their words, and reads it '
+        'back (L-44)', () {
+      // One table of split names: the sentence says what the chips say, so
+      // a renamed chip cannot leave the sentence calling it something else.
+      for (final split in splitStyles) {
+        final text = composeWeekDescription(
+          plan: WorkoutPlan(
+            planId: 1,
+            name: 'Week 1',
+            splitStyle: split.value,
+            daysPerWeek: 3,
+            sessionLengthMin: 45,
+            weekNo: 1,
+            exercises: const [],
+          ),
+        );
+        expect(text, contains(split.label.toLowerCase()), reason: split.value);
+        expect(
+          parseWeekDescription(text, _options).splitStyle,
+          split.value,
+          reason: text,
+        );
+      }
     });
 
     test('counts the chosen days rather than the plan\'s stale label', () {

@@ -55,6 +55,24 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
   bool _busy = false;
   String? _error;
 
+  /// Whether closing now would throw away what was typed or picked: any
+  /// field that differs from what the sheet opened with. Never while a save
+  /// is in flight -- that save still lands after the sheet has gone.
+  bool get _dirty {
+    if (_busy) return false;
+    final existing = widget.existing;
+    final days = existing?.weekdays ?? const [1, 2, 3, 4, 5, 6, 7];
+    return _title.text != (existing?.title ?? '') ||
+        _duration.text != (existing?.durationMin?.toString() ?? '') ||
+        _time != existing?.time ||
+        !(_weekdays.toSet().length == days.toSet().length &&
+            _weekdays.toSet().containsAll(days));
+  }
+
+  /// How far the current drag has pulled the sheet down, while [_dirty]
+  /// holds the drag back from the sheet itself.
+  double _dragDown = 0;
+
   /// The weekday of the day the routine screen was showing when this sheet
   /// opened, 1-7. Read once, in initState, rather than each time it is
   /// needed: the provider may have already moved on to a different day by the
@@ -69,7 +87,13 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
     _openedOnWeekday = DateTime.tryParse(
       ref.read(routineTodayProvider).value?.date ?? '',
     )?.weekday;
+    // The fields are not rebuilt by typing; whether closing asks first
+    // depends on what is in them.
+    _title.addListener(_refresh);
+    _duration.addListener(_refresh);
   }
+
+  void _refresh() => setState(() {});
 
   @override
   void dispose() {
@@ -198,6 +222,40 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
 
   @override
   Widget build(BuildContext context) {
+    // Typed or picked and not saved: back, a tap on the scrim and a swipe
+    // down ask before throwing it away, as the check-in sheet does.
+    // FsDiscardGuard covers back and the scrim, which ask the route to pop.
+    // A drag down never asks -- the bottom sheet pops its route itself once
+    // the drag ends -- so while dirty the drag is claimed here first and a
+    // clear pull down asks the route to pop, which the guard turns into the
+    // question.
+    final dirty = _dirty;
+    return FsDiscardGuard(
+      dirty: dirty,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        // Kept out of semantics, so a dirty sheet does not tell a screen
+        // reader it scrolls; screen readers close it through back or the
+        // scrim, which the guard covers.
+        excludeFromSemantics: true,
+        onVerticalDragStart: dirty ? (_) => _dragDown = 0 : null,
+        onVerticalDragUpdate: dirty
+            ? (details) => _dragDown += details.primaryDelta ?? 0
+            : null,
+        onVerticalDragEnd: dirty
+            ? (details) {
+                final velocity = details.primaryVelocity ?? 0;
+                if (_dragDown > 48 || velocity > 700) {
+                  Navigator.of(context).maybePop();
+                }
+              }
+            : null,
+        child: _content(),
+      ),
+    );
+  }
+
+  Widget _content() {
     final t = context.fs;
     final existing = widget.existing;
 
@@ -286,11 +344,7 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
             ),
             if (_error != null) ...[
               const SizedBox(height: 12),
-              Text(
-                _error!,
-                key: const Key('habit.error'),
-                style: TextStyle(fontSize: 12, color: t.red),
-              ),
+              FsErrorLine(_error!, key: const Key('habit.error')),
             ],
             const SizedBox(height: 18),
             FsButton(

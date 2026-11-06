@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
-import '../../exercises/presentation/exercise_list_screen.dart'
-    show describeError;
 import '../domain/routine.dart';
 import 'providers.dart';
 import 'widgets/habit_sheet.dart';
@@ -40,24 +39,11 @@ class AllHabitsScreen extends ConsumerWidget {
           .watch(allHabitsProvider)
           .when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, _) => Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(describeError(error), textAlign: TextAlign.center),
-                    const SizedBox(height: 12),
-                    FsButton(
-                      key: const Key('allHabits.retry'),
-                      label: 'Retry',
-                      small: true,
-                      kind: FsButtonKind.secondary,
-                      onPressed: () => ref.invalidate(allHabitsProvider),
-                    ),
-                  ],
-                ),
-              ),
+            error: (error, _) => FsRetry(
+              fullScreen: true,
+              message: userMessage(error),
+              buttonKey: const Key('allHabits.retry'),
+              onRetry: () => ref.invalidate(allHabitsProvider),
             ),
             data: (habits) => habits.isEmpty
                 ? _Empty(onAdd: () => open())
