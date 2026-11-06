@@ -127,11 +127,22 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   /// `ref.read` during dispose is not allowed.
   late final RestAlertScheduler _alerts;
 
+  /// Redraws the "min elapsed" caption, and only it. Nothing else rebuilds
+  /// the screen while the user rests or reads a demo -- the rest repaints
+  /// its own tag -- so without this the caption stood still for minutes.
+  /// Every 30 seconds, so a minute turning over shows within half a minute.
+  final _elapsedTick = ValueNotifier<int>(0);
+  Timer? _elapsedTicker;
+
   @override
   void initState() {
     super.initState();
     _alerts = ref.read(restAlertSchedulerProvider);
     WidgetsBinding.instance.addObserver(this);
+    _elapsedTicker = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _elapsedTick.value++,
+    );
   }
 
   @override
@@ -404,6 +415,8 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     _restTicker?.cancel();
     _restOverTimer?.cancel();
     _restReading.dispose();
+    _elapsedTicker?.cancel();
+    _elapsedTick.dispose();
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_alerts.cancel());
     super.dispose();
@@ -446,7 +459,11 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   /// being suspicious of when the number it produces is always the bound.
   int _elapsedMinutes(DateTime? startedAt) {
     if (startedAt == null) return 0;
-    return DateTime.now().difference(startedAt).inMinutes.clamp(0, 1440);
+    return ref
+        .read(wallClockProvider)()
+        .difference(startedAt)
+        .inMinutes
+        .clamp(0, 1440);
   }
 
   /// The session was closed by someone/something else -- another device, an
@@ -1718,12 +1735,16 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                           constraints: BoxConstraints(
                             maxWidth: constraints.maxWidth * 0.45,
                           ),
-                          child: Text(
-                            '${_elapsedMinutes(session.startedAt)} min elapsed',
-                            style: TextStyle(
-                              fontFamily: fsMonoFamily,
-                              fontSize: 11,
-                              color: t.text3,
+                          child: ValueListenableBuilder<int>(
+                            valueListenable: _elapsedTick,
+                            builder: (_, _, _) => Text(
+                              '${_elapsedMinutes(session.startedAt)} '
+                              'min elapsed',
+                              style: TextStyle(
+                                fontFamily: fsMonoFamily,
+                                fontSize: 11,
+                                color: t.text3,
+                              ),
                             ),
                           ),
                         ),

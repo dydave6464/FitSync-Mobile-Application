@@ -55,6 +55,12 @@ const defaultRestSeconds = 90;
 /// is the phone's.
 final restNowProvider = Provider<DateTime Function()>((ref) => DateTime.now);
 
+/// The phone's clock, which a workout's elapsed time is read from. Not
+/// [restNowProvider]: widget tests hand that one the binding's fake clock,
+/// which starts in 2015, while sessions are stamped with real times. A
+/// provider so a test can move this one on by hand.
+final wallClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+
 /// The session being logged right now, or null.
 ///
 /// Writes fold the server's response back into state rather than refetching:

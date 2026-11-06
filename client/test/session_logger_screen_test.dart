@@ -577,6 +577,9 @@ Future<FakeSessionController> _pump(
   // Opens the logger the way Home's card and the Plan tab's Resume do, on
   // where the workout was left rather than on exercise 1's demo.
   bool resume = false,
+  // The phone's clock, which elapsed time is read from. Null is the real
+  // one, which the sessions above are stamped against.
+  DateTime Function()? wallClock,
 }) async {
   final controller = FakeSessionController(session ?? _session());
 
@@ -586,6 +589,7 @@ Future<FakeSessionController> _pump(
         // The rest reads time from here; the binding's fake clock advances
         // with every pump, so a test can run a rest down by pumping.
         restNowProvider.overrideWithValue(() => tester.binding.clock.now()),
+        if (wallClock != null) wallClockProvider.overrideWithValue(wallClock),
         activePlanProvider.overrideWith((ref) async {
           onActivePlanRead?.call();
           // Routed through the fake repository when one is supplied, mirroring
@@ -2548,6 +2552,30 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     });
+  });
+
+  // Nothing else rebuilds the screen while the user rests or reads the demo:
+  // the rest repaints only its own tag. The caption keeps time on its own.
+  testWidgets('the elapsed time moves on while nothing else changes', (
+    tester,
+  ) async {
+    var wall = DateTime(2026, 9, 8, 18, 12);
+    await _pump(
+      tester,
+      wallClock: () => wall,
+      session: ActiveSession(
+        sessionId: 7,
+        status: 'in_progress',
+        sessionDate: '2026-09-08',
+        startedAt: DateTime(2026, 9, 8, 18),
+      ),
+    );
+    expect(find.text('12 min elapsed'), findsOneWidget);
+
+    wall = wall.add(const Duration(minutes: 2));
+    await tester.pump(const Duration(seconds: 30));
+
+    expect(find.text('14 min elapsed'), findsOneWidget);
   });
 
   // Beyond the brief -- startedAt is the SERVER's NOW(). A phone clock behind
