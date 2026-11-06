@@ -195,7 +195,8 @@ class _Row extends ConsumerWidget {
     // Typed explicitly: a bare `() => showHabitSheet(...)` is a
     // Future-returning closure, and the record's LUB with the workout branch's
     // VoidCallback? would not be assignable to InkWell.onTap.
-    final (IconData, String, VoidCallback?, Widget) parts = switch (entry) {
+    final (IconData, String, VoidCallback?, Widget?, Widget?)
+    parts = switch (entry) {
       HabitEntry(:final habit) => (
         Icons.self_improvement,
         habit.subtitle,
@@ -208,24 +209,27 @@ class _Row extends ConsumerWidget {
           label: habit.title,
           onTap: () => _toggle(context, ref, habit),
         ),
+        null,
       ),
       WorkoutEntry(:final workout) => (
         Icons.fitness_center,
         workout.done ? 'Finished today' : 'Ticks itself when you finish',
         onOpenPlan,
-        // The box itself cannot be ticked by hand -- the workout is done by
-        // training -- so tapping it does what the rest of the row does. A
-        // screen reader hears its state, not a checkbox it cannot tick; the
-        // row is the way to the plan.
-        _TickBox(
-          key: const Key('routine.workout.tick'),
-          done: workout.done,
-          status: workout.done ? 'Workout finished' : 'Not finished yet',
-          onTap: onOpenPlan,
+        null,
+        // Not a tick box: the workout is done by training, not by a tap, and
+        // a box that looked tickable but opened the plan surprised. Its
+        // state is an icon inside the row, which is the one way to the plan,
+        // and the row's button says it along with the title.
+        Icon(
+          workout.done ? Icons.check_circle : Icons.schedule,
+          key: const Key('routine.workout.status'),
+          size: 24,
+          color: workout.done ? t.accentText : t.text3,
+          semanticLabel: workout.done ? 'Workout finished' : 'Not finished yet',
         ),
       ),
     };
-    final (icon, subtitle, onOpen, box) = parts;
+    final (icon, subtitle, onOpen, box, status) = parts;
 
     // A done row steps back by its icon and its struck-through title, not by
     // fading the whole card: at 55% its text fell below 4.5:1.
@@ -254,62 +258,73 @@ class _Row extends ConsumerWidget {
                 // target is 48 dp too.
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(minHeight: 48),
-                  child: Align(
-                    alignment: AlignmentDirectional.centerStart,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          entry.title,
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w600,
-                            color: entry.done ? t.text2 : t.text,
-                            decoration: entry.done
-                                ? TextDecoration.lineThrough
-                                : TextDecoration.none,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                entry.title,
+                                style: TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: entry.done ? t.text2 : t.text,
+                                  decoration: entry.done
+                                      ? TextDecoration.lineThrough
+                                      : TextDecoration.none,
+                                ),
+                              ),
+                              if (subtitle.isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  subtitle,
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    color: t.text3,
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                         ),
-                        if (subtitle.isNotEmpty) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            subtitle,
-                            style: TextStyle(fontSize: 10.5, color: t.text3),
-                          ),
-                        ],
+                      ),
+                      // In the tick box's 48 dp column, so the rows line up.
+                      if (status != null) ...[
+                        const SizedBox(width: 12),
+                        SizedBox.square(
+                          dimension: 48,
+                          child: Center(child: status),
+                        ),
                       ],
-                    ),
+                    ],
                   ),
                 ),
               ),
             ),
           ),
-          const SizedBox(width: 12),
-          box,
+          if (box != null) ...[const SizedBox(width: 12), box],
         ],
       ),
     );
   }
 }
 
-/// The prototype's 24 dp tick square, in a 48 dp target.
-///
-/// With a [label] it is a checkbox: a screen reader hears the habit's name
-/// and whether it is ticked. With a [status] instead it only reports a state
-/// it cannot change (the workout, which ticks itself).
+/// The prototype's 24 dp tick square, in a 48 dp target: a checkbox a
+/// screen reader hears with the habit's name and whether it is ticked.
 class _TickBox extends StatelessWidget {
   const _TickBox({
     super.key,
     required this.done,
     required this.onTap,
-    this.label,
-    this.status,
-  }) : assert((label == null) != (status == null));
+    required this.label,
+  });
 
   final bool done;
   final VoidCallback? onTap;
-  final String? label;
-  final String? status;
+  final String label;
 
   @override
   Widget build(BuildContext context) {
@@ -335,15 +350,6 @@ class _TickBox extends StatelessWidget {
         ),
       ),
     );
-    final status = this.status;
-    if (status != null) {
-      return Semantics(
-        container: true,
-        label: status,
-        excludeSemantics: true,
-        child: target,
-      );
-    }
     return Semantics(
       container: true,
       checked: done,

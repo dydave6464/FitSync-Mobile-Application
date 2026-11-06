@@ -291,16 +291,28 @@ void main() {
   );
 
   testWidgets(
-    'tapping the workout tick box opens the plan, like the rest of the row',
+    'the workout shows its state as an icon inside the row, not a box of '
+    'its own to tap (PT-1)',
     (tester) async {
       var opened = false;
       final repo = _FakeRoutineRepo(_fixtureDay);
       await tester.pumpWidget(_harness(repo, onOpenPlan: () => opened = true));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('routine.workout.tick')));
-      await tester.pumpAndSettle();
+      final status = find.byKey(const Key('routine.workout.status'));
+      // An icon, not the habits' tick square: nothing here looks tickable.
+      expect(tester.widget(status), isA<Icon>());
+      expect(find.byKey(const Key('routine.workout.tick')), findsNothing);
+      // Part of the row's one target, with no tap target of its own.
+      final row = find.byKey(const Key('routine.workout'));
+      expect(find.ancestor(of: status, matching: row), findsOneWidget);
+      expect(
+        find.descendant(of: row, matching: find.byType(InkResponse)),
+        findsNothing,
+      );
 
+      await tester.tap(status);
+      await tester.pumpAndSettle();
       expect(opened, isTrue);
       expect(repo.checkCalls, 0);
       expect(repo.uncheckCalls, 0);
@@ -473,24 +485,48 @@ void main() {
       });
     }
 
-    testWidgets('the workout box shows its state, not a checkbox', (
-      tester,
-    ) async {
+    testWidgets('the workout row is one button that says its state, with '
+        'no checkbox (PT-1)', (tester) async {
       final handle = tester.ensureSemantics();
       final repo = _FakeRoutineRepo(_fixtureDay);
       await tester.pumpWidget(_harness(repo, onOpenPlan: () {}));
       await tester.pumpAndSettle();
 
-      final node = tester.getSemantics(
-        find.byKey(const Key('routine.workout.tick')),
-      );
-      expect(node.label, 'Not finished yet');
-      expect(
-        node.getSemanticsData().flagsCollection.isChecked,
-        CheckedState.none,
-      );
+      final data = tester
+          .getSemantics(find.byKey(const Key('routine.workout.status')))
+          .getSemanticsData();
+      expect(data.label, contains('Upper Body'));
+      expect(data.label, contains('Not finished yet'));
+      expect(data.flagsCollection.isButton, isTrue);
+      expect(data.flagsCollection.isChecked, CheckedState.none);
       handle.dispose();
     });
+
+    for (final dark in [false, true]) {
+      testWidgets('a finished workout says so, in a colour that reads '
+          '(${dark ? 'dark' : 'light'}, PT-1)', (tester) async {
+        final handle = tester.ensureSemantics();
+        final repo = _FakeRoutineRepo(
+          const RoutineDay(
+            date: '2026-09-24',
+            habits: [],
+            workout: RoutineWorkout(title: 'Upper Body', done: true),
+          ),
+        );
+        await tester.pumpWidget(_harness(repo, onOpenPlan: () {}, dark: dark));
+        await tester.pumpAndSettle();
+
+        final status = find.byKey(const Key('routine.workout.status'));
+        expect(
+          tester.getSemantics(status).getSemanticsData().label,
+          contains('Workout finished'),
+        );
+        final t = tester.element(status).fs;
+        final icon = tester.widget<Icon>(status);
+        expect(contrast(icon.color!, t.surface), greaterThanOrEqualTo(3));
+        handle.dispose();
+      });
+    }
 
     testWidgets('a habit row says it edits the habit', (tester) async {
       final handle = tester.ensureSemantics();
