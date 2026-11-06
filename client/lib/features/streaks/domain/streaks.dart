@@ -82,6 +82,8 @@ class GoalOption {
     required this.name,
     required this.bestKg,
     required this.sets,
+    this.hasOpenGoal = false,
+    this.goalId,
   });
 
   final int exerciseId;
@@ -89,11 +91,18 @@ class GoalOption {
   final double bestKg;
   final int sets;
 
+  /// The user has an unreached goal for this lift: [goalId]. False and null
+  /// from a server too old to say.
+  final bool hasOpenGoal;
+  final int? goalId;
+
   factory GoalOption.fromJson(Map<String, dynamic> json) => GoalOption(
     exerciseId: json['exerciseId'] as int,
     name: json['name'] as String,
     bestKg: (json['bestKg'] as num).toDouble(),
     sets: json['sets'] as int,
+    hasOpenGoal: json['hasOpenGoal'] as bool? ?? false,
+    goalId: json['goalId'] as int?,
   );
 }
 

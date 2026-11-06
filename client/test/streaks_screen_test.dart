@@ -86,6 +86,32 @@ class _FakeGoalsRepo implements GoalsRepository {
     return goal;
   }
 
+  final changed = <(int, double)>[];
+
+  /// Makes every changeTarget throw it.
+  Object? failChange;
+
+  @override
+  Future<LiftGoal> changeTarget({
+    required int goalId,
+    required double targetKg,
+  }) async {
+    if (failChange != null) throw failChange!;
+    changed.add((goalId, targetKg));
+    final i = goals.indexWhere((g) => g.goalId == goalId);
+    final old = goals[i];
+    final goal = LiftGoal(
+      goalId: old.goalId,
+      exerciseId: old.exerciseId,
+      exerciseName: old.exerciseName,
+      targetKg: targetKg,
+      bestKg: old.bestKg,
+      reachedOn: old.reachedOn,
+    );
+    goals[i] = goal;
+    return goal;
+  }
+
   /// Makes every remove throw it.
   Object? failRemove;
 

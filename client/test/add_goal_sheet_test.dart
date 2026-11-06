@@ -93,6 +93,12 @@ class _FakeGoalsRepo implements GoalsRepository {
   }
 
   @override
+  Future<LiftGoal> changeTarget({
+    required int goalId,
+    required double targetKg,
+  }) => throw UnimplementedError();
+
+  @override
   Future<void> remove(int goalId) async {}
 }
 
