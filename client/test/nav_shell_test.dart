@@ -450,6 +450,34 @@ void main() {
     expect(find.byType(NutritionScreen), findsOneWidget);
   });
 
+  group('Android back (HS-4)', () {
+    for (final tab in const [1, 2, 3]) {
+      testWidgets('on tab $tab returns to Home instead of closing the app', (
+        tester,
+      ) async {
+        await _pumpShell(tester);
+        await tester.tap(find.byKey(Key('nav.$tab')));
+        await tester.pumpAndSettle();
+        expect(find.byType(HomeScreen), findsNothing);
+
+        final handled = await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+
+        expect(handled, isTrue, reason: 'the app must stay open');
+        expect(find.byType(HomeScreen), findsOneWidget);
+      });
+    }
+
+    testWidgets('on Home is left to the system (closes the app)', (
+      tester,
+    ) async {
+      await _pumpShell(tester);
+      await tester.pumpAndSettle();
+      final handled = await tester.binding.handlePopRoute();
+      expect(handled, isFalse);
+    });
+  });
+
   testWidgets('tapping Profile reaches account settings', (tester) async {
     await _pumpShell(tester);
     await tester.tap(find.byKey(const Key('nav.3')));

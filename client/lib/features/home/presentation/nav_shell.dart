@@ -178,49 +178,65 @@ class _NavShellState extends State<NavShell> {
       onOpenRoutine: () => _onReminder('Routine', _openRoutine),
       onOpenRecovery: () =>
           _onReminder('Morning check-in', () => _openTrainAt('recovery')),
-      child: ActivitySync(child: ProSync(child: DayRollover(
-        child: Scaffold(
-          body: IndexedStack(
-            index: _index,
-            children: [
-              _tab(
-                0,
-                () => HomeScreen(
-                  onGoToTrain: () => _openTrainAt('plan'),
-                  onGoToProfile: () => _select(3),
-                  onGoToRecovery: () => _openTrainAt('recovery'),
-                  onGoToProgress: () {
-                    // The card says "Past month"; Progress must open on the
-                    // month, or the numbers the user tapped on vanish.
-                    ProviderScope.containerOf(
-                      context,
-                      listen: false,
-                    ).read(trainingPeriodProvider.notifier).set('month');
-                    _openTrainAt('progress');
-                  },
+      child: ActivitySync(
+        child: ProSync(
+          child: DayRollover(
+            // Android back on Train, Nutrition or Profile goes to Home, as the
+            // platform's bottom-navigation pattern expects; only back on Home
+            // leaves the app. A pushed screen on top handles back itself first.
+            child: PopScope(
+              canPop: _index == 0,
+              onPopInvokedWithResult: (didPop, _) {
+                if (!didPop) _select(0);
+              },
+              child: Scaffold(
+                body: IndexedStack(
+                  index: _index,
+                  children: [
+                    _tab(
+                      0,
+                      () => HomeScreen(
+                        onGoToTrain: () => _openTrainAt('plan'),
+                        onGoToProfile: () => _select(3),
+                        onGoToRecovery: () => _openTrainAt('recovery'),
+                        onGoToProgress: () {
+                          // The card says "Past month"; Progress must open on the
+                          // month, or the numbers the user tapped on vanish.
+                          ProviderScope.containerOf(
+                            context,
+                            listen: false,
+                          ).read(trainingPeriodProvider.notifier).set('month');
+                          _openTrainAt('progress');
+                        },
+                      ),
+                    ),
+                    _tab(
+                      _trainIndex,
+                      () => TrainingShell(
+                        openCount: _trainOpens,
+                        onGoToProfile: () => _select(3),
+                        tabRequest: _trainTab,
+                      ),
+                    ),
+                    _tab(
+                      2,
+                      () => NutritionScreen(onGoToProfile: () => _select(3)),
+                    ),
+                    _tab(3, () => const SettingsScreen()),
+                  ],
+                ),
+                bottomNavigationBar: FsNav(
+                  currentIndex: _index,
+                  onSelect: _select,
+                  items: _items,
+                  onFabTap: () => showStartWorkoutSheet(context),
+                  fabLabel: 'Start a workout',
                 ),
               ),
-              _tab(
-                _trainIndex,
-                () => TrainingShell(
-                  openCount: _trainOpens,
-                  onGoToProfile: () => _select(3),
-                  tabRequest: _trainTab,
-                ),
-              ),
-              _tab(2, () => NutritionScreen(onGoToProfile: () => _select(3))),
-              _tab(3, () => const SettingsScreen()),
-            ],
-          ),
-          bottomNavigationBar: FsNav(
-            currentIndex: _index,
-            onSelect: _select,
-            items: _items,
-            onFabTap: () => showStartWorkoutSheet(context),
-            fabLabel: 'Start a workout',
+            ),
           ),
         ),
-      ))),
+      ),
     );
   }
 }
