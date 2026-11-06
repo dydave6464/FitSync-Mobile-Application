@@ -5,6 +5,8 @@ import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
 import '../../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
+import '../../../nutrition/presentation/error_snack_bar.dart'
+    show saveOrOfferRetry;
 import '../../../plans/presentation/widgets/training_days_row.dart';
 import '../../domain/routine.dart';
 import '../providers.dart';
@@ -130,8 +132,11 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
   /// only a save that repeats on a day other than the one this sheet opened
   /// on gets a snackbar, telling the person what just happened to a habit
   /// that then dropped out of today's list with nothing else to say so.
-  Future<void> _run(Future<Habit?> Function(RoutineController c) action) async {
-    if (_busy) return;
+  ///
+  /// True once [action] has landed, whether or not this sheet is still
+  /// there to close; false when it failed or never ran.
+  Future<bool> _run(Future<Habit?> Function(RoutineController c) action) async {
+    if (_busy) return false;
     setState(() {
       _busy = true;
       _error = null;
@@ -141,7 +146,7 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
     final messenger = ScaffoldMessenger.of(context);
     try {
       final saved = await action(ref.read(routineTodayProvider.notifier));
-      if (!mounted) return;
+      if (!mounted) return true;
       Navigator.of(context).pop();
       if (widget.announceRepeats &&
           saved != null &&
@@ -153,12 +158,14 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
           ),
         );
       }
+      return true;
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted) return false;
       setState(() {
         _busy = false;
         _error = describeError(error);
       });
+      return false;
     }
   }
 
@@ -171,34 +178,43 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
     );
   }
 
-  /// Asks first: a mis-tap just under Save would otherwise remove the habit
-  /// with nothing to say so and no way back.
+  /// Deletes at once and offers Undo for about five seconds, rather than
+  /// asking first: the delete is soft, so a mis-tap just under Save costs
+  /// one tap to put right (PT-11). With a screen reader the bar waits,
+  /// since reaching its action by swiping takes longer than that.
+  ///
+  /// The messenger, the controller and the screen-reader setting are read
+  /// before the await: the sheet has closed by the time the delete lands.
+  /// The controller is not autoDispose, so it outlives the sheet for Undo.
+  /// A failed delete keeps the sheet open, saying why, and offers no Undo.
   Future<void> _delete(Habit existing) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete this habit?'),
-        content: Text('“${existing.title}” leaves your routine.'),
-        actions: [
-          TextButton(
-            key: const Key('habit.delete.keep'),
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Keep it'),
-          ),
-          TextButton(
-            key: const Key('habit.delete.confirm'),
-            style: TextButton.styleFrom(foregroundColor: dialogContext.fs.red),
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    await _run((c) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final controller = ref.read(routineTodayProvider.notifier);
+    final screenReader = MediaQuery.accessibleNavigationOf(context);
+    final deleted = await _run((c) async {
       await c.remove(existing.habitId);
       return null;
     });
+    if (!deleted) return;
+    // Nothing is said when Undo lands: the habit reappearing in the list is
+    // the feedback, as with nutrition's Removed / Undo.
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 5),
+        persist: screenReader,
+        content: const Text('Habit deleted'),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () => saveOrOfferRetry(
+            messenger,
+            save: () => controller.restore(existing.habitId),
+            failure: "Couldn't bring the habit back.",
+            persist: screenReader,
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _pickTime() async {

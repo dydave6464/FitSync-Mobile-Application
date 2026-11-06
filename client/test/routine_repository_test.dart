@@ -141,6 +141,46 @@ void main() {
     });
   });
 
+  test(
+    'restore POSTs to the habit\'s restore route and parses the habit',
+    () async {
+      final calls = <String>[];
+      final bodies = <String>[];
+      final repo = _repo(
+        MockClient((request) async {
+          calls.add('${request.method} ${request.url.path}');
+          bodies.add(request.body);
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'habit': {
+                  'habitId': 12,
+                  'title': 'Morning mobility',
+                  'time': '07:00',
+                  'durationMin': 10,
+                  'weekdays': [1, 3, 5],
+                  'done': true,
+                },
+              },
+            }),
+            200,
+          );
+        }),
+      );
+
+      final habit = await repo.restore(12);
+
+      expect(calls, ['POST /api/v1/routine/habits/12/restore']);
+      expect(jsonDecode(bodies.single), <String, dynamic>{});
+      expect(habit.habitId, 12);
+      expect(habit.title, 'Morning mobility');
+      expect(habit.time, '07:00');
+      expect(habit.durationMin, 10);
+      expect(habit.weekdays, [1, 3, 5]);
+      expect(habit.done, isTrue);
+    },
+  );
+
   test('check and uncheck append the date when the screen gives one', () async {
     final urls = <String>[];
     final repo = _repo(
