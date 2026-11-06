@@ -338,8 +338,9 @@ class _AboutStepState extends State<AboutStep> {
   static double _weightCardMinWidth(TextScaler scaler) =>
       64 + 52 * scaler.scale(12) / 12;
 
+  /// A number card for [field], its API name, which also keys its editable.
   Widget _statField(
-    Key key,
+    String field,
     TextEditingController controller,
     String label,
     String unit, {
@@ -347,13 +348,16 @@ class _AboutStepState extends State<AboutStep> {
     Widget? unitControl,
     FocusNode? focusNode,
   }) => FsStatField(
-    fieldKey: key,
+    fieldKey: Key(field),
     label: label,
     unit: unit,
     controller: controller,
     accent: accent,
     unitControl: unitControl,
     focusNode: focusNode,
+    // The card is marked as well as the message under it, so the answer
+    // that needs checking stands out among six.
+    error: widget.fieldErrors.containsKey(field),
   );
 
   /// [AboutStep.fieldErrors]'s message for [field], under the answer it is
@@ -456,14 +460,9 @@ class _AboutStepState extends State<AboutStep> {
         const SizedBox(height: 14),
         LayoutBuilder(
           builder: (context, constraints) {
-            final height = _statField(
-              const Key('heightCm'),
-              _height,
-              'Height',
-              'cm',
-            );
+            final height = _statField('heightCm', _height, 'Height', 'cm');
             final weight = _statField(
-              const Key('weightKg'),
+              'weightKg',
               _weight,
               'Weight',
               widget.unit.api,
@@ -498,7 +497,7 @@ class _AboutStepState extends State<AboutStep> {
         const SizedBox(height: 10),
         if (_showGoalWeight) ...[
           _statField(
-            const Key('goalWeightKg'),
+            'goalWeightKg',
             _goalWeight,
             'Goal weight',
             widget.unit.api,

@@ -684,6 +684,17 @@ void main() {
         lessThan(40),
         reason: 'under the card, not at the end of the step',
       );
+      // The card itself is marked too, and only that one.
+      bool marked(String key) => tester
+          .widget<FsStatField>(
+            find.ancestor(
+              of: find.byKey(Key(key)),
+              matching: find.byType(FsStatField),
+            ),
+          )
+          .error;
+      expect(marked('heightCm'), isTrue);
+      expect(marked('weightKg'), isFalse);
     });
   });
 

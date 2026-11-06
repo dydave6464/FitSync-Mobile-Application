@@ -253,6 +253,11 @@ void main() {
       expect(fat.label, startsWith('Fat (g)'));
       expect(fat.hint, 'Must be 0–500 g');
       expect(fat.flagsCollection.isTextField, isTrue);
+      // And the box's own border says so.
+      FsField field(String key) =>
+          tester.widget<FsField>(find.ancestor(of: find.byKey(Key(key)), matching: find.byType(FsField)));
+      expect(field('manual.fat').errorText, 'Must be 0–500 g');
+      expect(field('manual.protein').errorText, isNull);
       h.dispose();
     });
 

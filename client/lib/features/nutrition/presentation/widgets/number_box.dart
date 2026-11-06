@@ -52,11 +52,12 @@ class NumberBox extends StatelessWidget {
         const SizedBox(height: 4),
         Semantics(
           label: label,
-          hint: error,
           child: FsField(
             controller: controller,
             fieldKey: fieldKey,
             hint: hint,
+            // A red border, and the message as the box's spoken hint.
+            errorText: error,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
             onChanged: onChanged,
