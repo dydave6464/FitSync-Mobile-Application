@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/token_store.dart' show InMemorySecureStore;
 import 'package:fitsync/features/home/presentation/widgets/reminder_prompt_card.dart';
+import 'package:fitsync/features/nutrition/presentation/meal_photo/providers.dart'
+    show appSettingsOpenerProvider;
 import 'package:fitsync/features/reminders/data/reminder_prompt_store.dart';
 import 'package:fitsync/features/reminders/data/reminder_scheduler.dart';
 import 'package:fitsync/features/reminders/domain/reminders.dart';
@@ -14,12 +16,16 @@ import 'package:fitsync/features/reminders/domain/reminders.dart';
 /// answers `permissionGranted()`, and `pendingRequest`, when set, makes
 /// `requestPermission` wait on a completer instead of answering immediately
 /// so a test can hold the simulated system prompt open while the card is
-/// disposed. The card hides on Turn on regardless of the answer, so no test
-/// here needs `requestPermission` to resolve to anything but `true`.
+/// disposed. `requestAnswer` is what the system prompt answers otherwise.
 class _FakeScheduler implements ReminderScheduler {
-  _FakeScheduler({this.granted = false, this.pendingRequest});
+  _FakeScheduler({
+    this.granted = false,
+    this.pendingRequest,
+    this.requestAnswer = true,
+  });
 
   bool granted;
+  final bool requestAnswer;
   int requestPermissionCalls = 0;
   final Completer<bool>? pendingRequest;
 
@@ -30,7 +36,7 @@ class _FakeScheduler implements ReminderScheduler {
   Future<bool> requestPermission() async {
     requestPermissionCalls += 1;
     if (pendingRequest != null) return pendingRequest!.future;
-    return true;
+    return requestAnswer;
   }
 
   @override
@@ -58,6 +64,7 @@ Future<void> _pump(
   WidgetTester tester, {
   required _FakeScheduler scheduler,
   ReminderPromptStore? store,
+  List<String>? settingsOpened,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -65,6 +72,9 @@ Future<void> _pump(
         reminderSchedulerProvider.overrideWithValue(scheduler),
         reminderPromptStoreProvider.overrideWithValue(
           store ?? ReminderPromptStore(backing: InMemorySecureStore()),
+        ),
+        appSettingsOpenerProvider.overrideWithValue(
+          () async => settingsOpened?.add('opened'),
         ),
       ],
       child: const MaterialApp(home: Scaffold(body: ReminderPromptCard())),
@@ -173,5 +183,46 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Turn on, allowed, says reminders are on and where to change '
+      'them', (tester) async {
+    await _pump(tester, scheduler: _FakeScheduler(granted: false));
+
+    await tester.tap(find.text('Turn on'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        'Reminders on. Change them in Profile › Notifications & reminders.',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('Turn on, refused, says notifications are blocked and offers '
+      'the phone\'s settings', (tester) async {
+    final opened = <String>[];
+    await _pump(
+      tester,
+      scheduler: _FakeScheduler(granted: false, requestAnswer: false),
+      settingsOpened: opened,
+    );
+
+    await tester.tap(find.text('Turn on'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        "Notifications are blocked for FitSync. Allow them in your phone's "
+        'settings to get reminders.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Get reminders for your habits'), findsNothing);
+
+    await tester.tap(find.widgetWithText(SnackBarAction, 'Open settings'));
+    await tester.pumpAndSettle();
+    expect(opened, ['opened']);
   });
 }

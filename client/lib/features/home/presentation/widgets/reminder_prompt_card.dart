@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/widgets/fs_kit.dart';
+import '../../../nutrition/presentation/meal_photo/providers.dart'
+    show appSettingsOpenerProvider;
 import '../../../reminders/data/reminder_prompt_store.dart';
 import '../../../reminders/data/reminder_scheduler.dart';
+import '../../../reminders/presentation/reminders_screen.dart'
+    show remindersBlockedText;
 
 /// Home's one-time nudge to turn reminders on.
 ///
@@ -75,12 +79,35 @@ class _ReminderPromptCardState extends ConsumerState<ReminderPromptCard> {
     setState(() => _show = false);
   }
 
+  /// Asks the phone, then says what came of it before the card goes: the
+  /// phone may show no dialog at all (iOS after a denial, Android after two),
+  /// and a card that just vanished read as "reminders are on" when they were
+  /// not.
   Future<void> _turnOn() async {
-    await ref.read(reminderSchedulerProvider).requestPermission();
+    final granted = await ref
+        .read(reminderSchedulerProvider)
+        .requestPermission();
     // The system prompt this just awaited can outlive the card -- Home
     // rebuilding out from under it, or the app backgrounding -- so nothing
     // below may touch ref once it is gone.
     if (!mounted) return;
+    final openSettings = ref.read(appSettingsOpenerProvider);
+    ScaffoldMessenger.of(context).showSnackBar(
+      granted
+          ? const SnackBar(
+              content: Text(
+                'Reminders on. Change them in Profile › Notifications & '
+                'reminders.',
+              ),
+            )
+          : SnackBar(
+              content: const Text(remindersBlockedText),
+              action: SnackBarAction(
+                label: 'Open settings',
+                onPressed: () => openSettings(),
+              ),
+            ),
+    );
     await _hide();
   }
 
