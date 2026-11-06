@@ -571,4 +571,16 @@ void main() {
       );
     });
   });
+
+  testWidgets('the session card counts the days the profile carries (PT-18)', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _plan, // daysPerWeek: 3
+      profile: () => _FakeProfileNotifier(trainingDays: const [1, 2, 4, 6]),
+    );
+
+    expect(find.textContaining('4 days a week'), findsOneWidget);
+  });
 }

@@ -218,6 +218,7 @@ class _PlanViewState extends ConsumerState<_PlanView> {
         SessionCard(
           plan: plan,
           dayNo: todayDayNo,
+          trainingDays: ref.watch(profileProvider).value?.trainingDays,
           hasActiveSession: ref.watch(activeSessionProvider).value != null,
           starting: _starting && !_asking,
           onStart: _startOrResume,

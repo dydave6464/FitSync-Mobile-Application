@@ -827,4 +827,66 @@ void main() {
       });
     }
   });
+
+  group('session card facts agree with the rest of the tab (PT-18)', () {
+    testWidgets('the day count is the chosen days, not the stale label', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _host(
+          SessionCard(
+            plan: _plan, // daysPerWeek: 3
+            trainingDays: const [1, 2, 4, 6],
+            hasActiveSession: false,
+            onStart: () {},
+          ),
+        ),
+      );
+      expect(find.textContaining('4 days a week'), findsOneWidget);
+      expect(find.textContaining('3 days a week'), findsNothing);
+    });
+
+    testWidgets('one day is singular', (tester) async {
+      await tester.pumpWidget(
+        _host(
+          SessionCard(
+            plan: _plan,
+            trainingDays: const [3],
+            hasActiveSession: false,
+            onStart: () {},
+          ),
+        ),
+      );
+      expect(find.textContaining('1 day a week'), findsOneWidget);
+    });
+
+    testWidgets('no chosen days falls back to the plan count', (tester) async {
+      await tester.pumpWidget(
+        _host(
+          SessionCard(
+            plan: _plan,
+            trainingDays: const [],
+            hasActiveSession: false,
+            onStart: () {},
+          ),
+        ),
+      );
+      expect(find.textContaining('3 days a week'), findsOneWidget);
+    });
+
+    testWidgets('the split is spelled as the choosers spell it', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _host(
+          SessionCard(
+            plan: _rotationPlan, // upper_lower
+            hasActiveSession: false,
+            onStart: () {},
+          ),
+        ),
+      );
+      expect(find.textContaining('Upper / Lower ·'), findsOneWidget);
+    });
+  });
 }

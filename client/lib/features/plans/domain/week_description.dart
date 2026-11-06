@@ -359,7 +359,9 @@ String composeWeekDescription({
   // named-days sentence would resolve back to nothing.
   final chosen = profile?.trainingDays ?? const <int>[];
   final days = chosen.isNotEmpty ? chosen.length : plan?.daysPerWeek;
-  if (days != null) clauses.add('train $days days a week');
+  if (days != null) {
+    clauses.add('train $days ${days == 1 ? 'day' : 'days'} a week');
+  }
 
   final split = _splitLabels[plan?.splitStyle];
   if (split != null) clauses.add(split);
