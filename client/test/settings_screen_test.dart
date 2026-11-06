@@ -408,6 +408,61 @@ void main() {
     handle.dispose();
   });
 
+  // PS-15: fitness level was edited under a row that never named it, and
+  // the plan rows shared one long card with the profile answers.
+  group('rows are grouped and named as the prototype has them', () {
+    Finder cardOf(String key) => find
+        .ancestor(of: find.byKey(Key(key)), matching: find.byType(FsCard))
+        .first;
+
+    testWidgets('the level row and its editor say level', (tester) async {
+      await _pump(tester);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('edit.level')),
+          matching: find.text('Level, equipment & location'),
+        ),
+        findsOneWidget,
+      );
+      await _openRow(tester, const Key('edit.level'));
+      expect(
+        find.descendant(
+          of: find.byType(AppBar),
+          matching: find.text('Level, equipment & location'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('training days, schedule and streaks sit under Plan & '
+        'motivation, apart from the profile answers', (tester) async {
+      tester.view.physicalSize = const Size(800, 3000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await _pump(tester);
+
+      final plan = tester.widget(cardOf('edit.schedule'));
+      expect(tester.widget(cardOf('edit.trainingDays')), same(plan));
+      expect(tester.widget(cardOf('edit.streaks')), same(plan));
+      for (final key in ['edit.goal', 'edit.level', 'edit.health']) {
+        expect(tester.widget(cardOf(key)), isNot(same(plan)), reason: key);
+      }
+      final eyebrow = find.text('PLAN & MOTIVATION');
+      expect(eyebrow, findsOneWidget);
+      // Directly over its card: below the Pro card, above the plan rows.
+      expect(
+        tester.getTopLeft(eyebrow).dy,
+        lessThan(tester.getTopLeft(cardOf('edit.trainingDays')).dy),
+      );
+      expect(
+        tester.getTopLeft(eyebrow).dy,
+        greaterThan(
+          tester.getBottomLeft(find.byKey(const Key('settings.goPro'))).dy,
+        ),
+      );
+    });
+  });
+
   testWidgets('shows who is signed in', (tester) async {
     await _pump(tester, patches: []);
 

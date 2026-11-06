@@ -209,6 +209,37 @@ class _SettingsList extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 22),
+        // The prototype's own grouping: what the plan does with your week
+        // first, then the answers the plan is built from.
+        const FsEyebrow('Plan & motivation'),
+        const SizedBox(height: 10),
+        FsCard(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            children: [
+              _SettingsRow(
+                rowKey: const Key('edit.trainingDays'),
+                icon: Icons.event_available_outlined,
+                label: 'Training days',
+                onTap: () => _open(context, const _TrainingDaysEditor()),
+              ),
+              _SettingsRow(
+                rowKey: const Key('edit.schedule'),
+                icon: Icons.calendar_month_outlined,
+                label: 'Schedule',
+                onTap: () => _open(context, const ScheduleScreen()),
+              ),
+              _SettingsRow(
+                rowKey: const Key('edit.streaks'),
+                icon: Icons.emoji_events_outlined,
+                label: 'Streaks & goals',
+                onTap: () => _open(context, const StreaksScreen()),
+                last: true,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 22),
         const FsEyebrow('Training'),
         const SizedBox(height: 10),
         FsCard(
@@ -230,7 +261,9 @@ class _SettingsList extends ConsumerWidget {
               _SettingsRow(
                 rowKey: const Key('edit.level'),
                 icon: Icons.fitness_center_outlined,
-                label: 'Equipment & location',
+                // Named for all three: the header shows the level, and this
+                // is the one place it is changed.
+                label: _levelTitle,
                 onTap: () => _open(context, const _LevelEditor()),
               ),
               _SettingsRow(
@@ -245,24 +278,6 @@ class _SettingsList extends ConsumerWidget {
                 icon: Icons.health_and_safety_outlined,
                 label: 'Health',
                 onTap: () => _open(context, const _HealthEditor()),
-              ),
-              _SettingsRow(
-                rowKey: const Key('edit.trainingDays'),
-                icon: Icons.event_available_outlined,
-                label: 'Training days',
-                onTap: () => _open(context, const _TrainingDaysEditor()),
-              ),
-              _SettingsRow(
-                rowKey: const Key('edit.schedule'),
-                icon: Icons.calendar_month_outlined,
-                label: 'Schedule',
-                onTap: () => _open(context, const ScheduleScreen()),
-              ),
-              _SettingsRow(
-                rowKey: const Key('edit.streaks'),
-                icon: Icons.emoji_events_outlined,
-                label: 'Streaks & goals',
-                onTap: () => _open(context, const StreaksScreen()),
                 last: true,
               ),
             ],
@@ -338,6 +353,9 @@ Future<void> _confirmSignOut(BuildContext context, WidgetRef ref) async {
   if (confirmed != true || !context.mounted) return;
   await ref.read(authControllerProvider.notifier).signOut();
 }
+
+/// The level editor's row and title: fitness level is changed there too.
+const _levelTitle = 'Level, equipment & location';
 
 /// Saves a kg/lb switch the moment it is tapped, showing the new unit at
 /// once rather than when the server answers (up to the API timeout on a slow
@@ -871,7 +889,7 @@ class _LevelEditorState extends _EditorState<_LevelEditor> {
   bool _seeded = false;
 
   @override
-  String get title => 'Equipment & location';
+  String get title => _levelTitle;
 
   @override
   bool get isDirty =>
