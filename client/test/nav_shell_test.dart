@@ -699,6 +699,10 @@ void main() {
           )
           .first,
     );
+    // scrollUntilVisible stops once any of the card shows; its centre,
+    // where the tap lands, may still be below the fold.
+    await tester.ensureVisible(find.byKey(const Key('home.progress')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('home.progress')));
     await tester.pumpAndSettle();
 
