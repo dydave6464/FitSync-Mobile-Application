@@ -462,6 +462,10 @@ class RecordingPlanRepository implements PlanRepository {
       throw UnimplementedError('${i.memberName} is not used here');
 }
 
+/// The time on the logger's one clock in a test: the binding's fake clock,
+/// which [_pump] hands it and which moves on with every pump.
+DateTime _testNow() => TestWidgetsFlutterBinding.instance.clock.now();
+
 ActiveSession _session({
   int sessionId = 7,
   int? planId,
@@ -472,7 +476,7 @@ ActiveSession _session({
   sessionId: sessionId,
   status: 'in_progress',
   sessionDate: '2026-09-08',
-  startedAt: DateTime.now().subtract(const Duration(minutes: 12)),
+  startedAt: _testNow().subtract(const Duration(minutes: 12)),
   planId: planId,
   sets: sets,
   planDayNo: planDayNo,
@@ -577,8 +581,8 @@ Future<FakeSessionController> _pump(
   // Opens the logger the way Home's card and the Plan tab's Resume do, on
   // where the workout was left rather than on exercise 1's demo.
   bool resume = false,
-  // The phone's clock, which elapsed time is read from. Null is the real
-  // one, which the sessions above are stamped against.
+  // A clock moved on by hand, for the elapsed time. Null is the binding's
+  // fake clock, which the sessions above are stamped against.
   DateTime Function()? wallClock,
   // A controller of the test's own, for a state the default cannot reach --
   // a session that has not loaded yet.
@@ -590,10 +594,12 @@ Future<FakeSessionController> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        // The rest reads time from here; the binding's fake clock advances
-        // with every pump, so a test can run a rest down by pumping.
-        restNowProvider.overrideWithValue(() => tester.binding.clock.now()),
-        if (wallClock != null) wallClockProvider.overrideWithValue(wallClock),
+        // The rest and the elapsed time read time from here; the binding's
+        // fake clock advances with every pump, so a test can run a rest down
+        // by pumping. The fixtures are stamped against it (see _testNow).
+        loggerClockProvider.overrideWithValue(
+          wallClock ?? () => tester.binding.clock.now(),
+        ),
         activePlanProvider.overrideWith((ref) async {
           onActivePlanRead?.call();
           // Routed through the fake repository when one is supplied, mirroring
@@ -2608,7 +2614,7 @@ void main() {
         sessionId: 7,
         status: 'in_progress',
         sessionDate: '2026-09-08',
-        startedAt: DateTime.now().add(const Duration(minutes: 90)),
+        startedAt: _testNow().add(const Duration(minutes: 90)),
       ),
     );
 

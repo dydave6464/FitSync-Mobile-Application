@@ -50,16 +50,13 @@ final restSecondsProvider = AsyncNotifierProvider<RestSecondsController, int>(
 /// could not be read -- the 90 seconds the logger always used.
 const defaultRestSeconds = 90;
 
-/// The clock the rest timer reads. A provider so widget tests can hand it the
-/// binding's fake clock, which advances with every pump; everywhere else it
-/// is the phone's.
-final restNowProvider = Provider<DateTime Function()>((ref) => DateTime.now);
-
-/// The phone's clock, which a workout's elapsed time is read from. Not
-/// [restNowProvider]: widget tests hand that one the binding's fake clock,
-/// which starts in 2015, while sessions are stamped with real times. A
-/// provider so a test can move this one on by hand.
-final wallClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+/// The clock the logger reads: the rest timer and the workout's elapsed time.
+/// One clock, so the two can never disagree. A provider so widget tests can
+/// hand it the binding's fake clock, which advances with every pump;
+/// everywhere else it is the phone's.
+final loggerClockProvider = Provider<DateTime Function()>(
+  (ref) => DateTime.now,
+);
 
 /// The session being logged right now, or null.
 ///
