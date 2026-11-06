@@ -1,4 +1,5 @@
 import '../../../../core/api_exception.dart';
+import '../../../../core/units.dart';
 import 'about_step.dart';
 
 /// The checks onboarding and Settings > Body metrics share around
@@ -24,24 +25,74 @@ const rejectedFieldMessage =
 
 /// The profile field a rejection points at, from the server's `details`.
 /// Null for any other failure, or a `details` that names no field as text.
+/// A weight refused as WEIGHT_OUT_OF_RANGE counts when its details name
+/// the field.
 String? rejectedProfileField(Object error) => switch (error) {
   ApiException(
-    code: 'INVALID_PROFILE_FIELD',
+    code: 'INVALID_PROFILE_FIELD' || 'WEIGHT_OUT_OF_RANGE',
     details: [{'field': final String field}, ...],
   ) =>
     field,
   _ => null,
 };
 
+/// The server's limit for a refused number, said under its card in the
+/// unit on screen: "Enter a height between 50 and 275 cm.", or for a pound
+/// user "Enter a weight between 44 and 1102 lb.".
+///
+/// Read from `details[0]` (`{ field, min, max, unit }`) of an
+/// INVALID_PROFILE_FIELD or WEIGHT_OUT_OF_RANGE. Null when the details carry
+/// no range -- an older server -- and the caller falls back to
+/// [rejectedFieldMessage].
+String? rangeFieldMessage(Object error, WeightUnit unit) {
+  if (error is! ApiException ||
+      (error.code != 'INVALID_PROFILE_FIELD' &&
+          error.code != 'WEIGHT_OUT_OF_RANGE')) {
+    return null;
+  }
+  final range = switch (error.details) {
+    [
+      {
+        'field': final String field,
+        'min': final num min,
+        'max': final num max,
+        'unit': final String sent,
+      },
+      ...,
+    ] =>
+      (field: field, min: min, max: max, unit: sent),
+    _ => null,
+  };
+  final name = profileFieldNames[range?.field];
+  if (range == null || name == null) return null;
+  final (min, max, suffix) = switch (range.unit) {
+    'cm' => (_plain(range.min), _plain(range.max), 'cm'),
+    'kg' => (
+      convertFromKg(range.min.toDouble(), unit).round().toString(),
+      convertFromKg(range.max.toDouble(), unit).round().toString(),
+      unit.api,
+    ),
+    _ => (null, null, null),
+  };
+  if (suffix == null) return null;
+  return 'Enter a $name between $min and $max $suffix.';
+}
+
+/// 50 as "50", 49.5 as "49.5".
+String _plain(num n) =>
+    n == n.roundToDouble() ? n.round().toString() : n.toString();
+
 /// A failure in words a user can act on: [userMessage], except for the
 /// server's rejections of a profile answer, whose message names the API
 /// field ("goalWeightKg must be ...") rather than anything on screen. The
 /// field it sends in `details` is named the way the step names it instead.
 String plainProfileError(Object error) {
-  if (error is! ApiException || error.code != 'INVALID_PROFILE_FIELD') {
+  final field = rejectedProfileField(error);
+  if (error is! ApiException ||
+      (error.code != 'INVALID_PROFILE_FIELD' && field == null)) {
     return userMessage(error);
   }
-  final name = profileFieldNames[rejectedProfileField(error)];
+  final name = profileFieldNames[field];
   return name == null
       ? "One of these answers can't be saved as it is. Check it and try "
             'again.'

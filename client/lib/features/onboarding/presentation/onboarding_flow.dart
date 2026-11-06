@@ -359,7 +359,11 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow>
         // A rejected About answer is also flagged under its own card.
         final field = rejectedProfileField(error);
         if (_index == 1 && field != null && aboutValue(_about, field) != null) {
-          _fieldErrors = {field: rejectedFieldMessage};
+          // The server's limit in the unit on screen, when it sends one.
+          final unit = shownUnit(ref.read(weightUnitProvider));
+          _fieldErrors = {
+            field: rangeFieldMessage(error, unit) ?? rejectedFieldMessage,
+          };
           _queried = _about;
         }
       });

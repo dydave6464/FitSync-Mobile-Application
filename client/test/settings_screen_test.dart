@@ -2090,6 +2090,78 @@ void main() {
       expect(find.textContaining('weightKg'), findsNothing);
     });
 
+    // #30 + #2: the server sends its limit; the card says it.
+    testWidgets('a refused height says the range under its card', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        heightCm: 170,
+        weightKg: 70,
+        patchError: const ApiException(
+          'INVALID_PROFILE_FIELD',
+          'Enter a height between 50 and 275 cm.',
+          details: [
+            {'field': 'heightCm', 'min': 50, 'max': 275, 'unit': 'cm'},
+          ],
+        ),
+      );
+      await _openRow(tester, const Key('edit.about'));
+      await tester.enterText(find.byKey(const Key('heightCm')), '172');
+      await tester.pumpAndSettle();
+      await save(tester);
+
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('error.heightCm')),
+          matching: find.text('Enter a height between 50 and 275 cm.'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          "Your height can't be saved as it is. Check it and try again.",
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a refused weight says the range in pounds to an lb user', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        heightCm: 170,
+        weightKg: 70,
+        weightUnit: WeightUnit.lb,
+        patchError: const ApiException(
+          'WEIGHT_OUT_OF_RANGE',
+          'Enter a weight between 20 and 500 kg.',
+          details: [
+            {'field': 'weightKg', 'min': 20, 'max': 500, 'unit': 'kg'},
+          ],
+        ),
+      );
+      await _openRow(tester, const Key('edit.about'));
+      await tester.enterText(find.byKey(const Key('weightKg')), '160');
+      await tester.pumpAndSettle();
+      await save(tester);
+
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('error.weightKg')),
+          matching: find.text('Enter a weight between 44 and 1102 lb.'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          "Your weight can't be saved as it is. Check it and try again.",
+        ),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('the estimate follows the saved main goal', (tester) async {
       await _pump(
         tester,
