@@ -25,6 +25,7 @@ import 'package:fitsync/features/sessions/data/rest_alerts.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/session_logger_screen.dart';
+import 'package:fitsync/features/sessions/presentation/widgets/encouragement_card.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/rest_timer.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/set_row.dart';
 
@@ -39,7 +40,14 @@ List<String> _recordHaptics(WidgetTester tester) {
   tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
     SystemChannels.platform,
     (call) async {
-      if (call.method.startsWith('HapticFeedback')) calls.add(call.method);
+      if (call.method.startsWith('HapticFeedback')) {
+        // A plain buzz carries no type; a light tap names its own.
+        calls.add(
+          call.arguments == null
+              ? call.method
+              : '${call.method}:${call.arguments}',
+        );
+      }
       return null;
     },
   );
@@ -3703,6 +3711,8 @@ void main() {
         await _pumpLogging(tester);
         await tester.tap(find.byKey(const Key('logger.primary')));
         await tester.pump();
+        // The set's own light tap; this is about the rest's end.
+        haptics.clear();
         tester.takeAnnouncements();
 
         await tester.pump(const Duration(seconds: 90));
@@ -3730,6 +3740,8 @@ void main() {
       await _pumpLogging(tester);
       await tester.tap(find.byKey(const Key('logger.primary')));
       await tester.pump();
+      // The set's own light tap; these are about the rest's end.
+      haptics.clear();
 
       await tester.tap(find.byKey(const Key('rest.open')));
       await tester.pump();
@@ -3748,6 +3760,8 @@ void main() {
       await _pumpLogging(tester);
       await tester.tap(find.byKey(const Key('logger.primary')));
       await tester.pump();
+      // The set's own light tap; these are about the rest's end.
+      haptics.clear();
       await tester.pump(const Duration(seconds: 70));
 
       await tester.tap(find.byKey(const Key('rest.open')));
@@ -3903,6 +3917,8 @@ void main() {
         await _pumpLogging(tester);
         await tester.tap(find.byKey(const Key('logger.primary')));
         await tester.pump();
+        // The set's own light tap; this is about the rest's end.
+        haptics.clear();
         await _background(tester);
 
         await tester.pump(const Duration(seconds: 120));
@@ -4615,6 +4631,53 @@ void main() {
     );
     await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
     semantics.dispose();
+  });
+
+  // The most-used button used to say nothing: the tick, the REST tag and the
+  // next set's label are all visual (SE-4).
+  group('completing a set tells the user', () {
+    testWidgets('a light tap, and "Set 1 logged. Rest ..." spoken', (
+      tester,
+    ) async {
+      final haptics = _recordHaptics(tester);
+      await _pumpLogging(tester);
+      tester.takeAnnouncements();
+
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      expect(haptics, [
+        'HapticFeedback.vibrate:HapticFeedbackType.lightImpact',
+      ]);
+      expect(tester.takeAnnouncements().map((a) => a.message), [
+        'Set 1 logged. Rest 1 minute 30 seconds.',
+      ]);
+    });
+
+    testWidgets('the set that finishes an exercise speaks its praise', (
+      tester,
+    ) async {
+      await _pumpLogging(
+        tester,
+        session: _session(
+          sets: const [
+            LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+            LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
+          ],
+        ),
+      );
+      tester.takeAnnouncements();
+
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      final card = tester.widget<EncouragementCard>(
+        find.byKey(const Key('logger.encouragement')),
+      );
+      expect(tester.takeAnnouncements().map((a) => a.message), [
+        card.message.headline,
+      ]);
+    });
   });
 }
 

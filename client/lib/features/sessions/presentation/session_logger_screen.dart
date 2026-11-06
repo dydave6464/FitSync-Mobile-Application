@@ -278,6 +278,35 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     );
   }
 
+  /// What a set landing feels and sounds like: the tick, the REST tag and
+  /// the next set's label are all visual, so a light tap says it was saved
+  /// and one polite message says what happens now, with no focus move -- the
+  /// pattern 'Rest over' uses. The set that finishes an exercise speaks the
+  /// praise the card shows instead.
+  void _signalSetLogged({
+    required int setNumber,
+    required int restSeconds,
+    required List<PlanExercise> exercises,
+    required int index,
+    required bool wasComplete,
+  }) {
+    HapticFeedback.lightImpact();
+    final session = ref.read(activeSessionProvider).value;
+    final praise = wasComplete || session == null
+        ? null
+        : encouragementFor(
+            exercises: exercises,
+            index: index,
+            session: session,
+          );
+    SemanticsService.sendAnnouncement(
+      View.of(context),
+      praise?.headline ??
+          'Set $setNumber logged. Rest ${spokenRest(restSeconds)}.',
+      Directionality.of(context),
+    );
+  }
+
   /// One store per exercise on screen. Rebuilt when the exercise changes, so
   /// a set number means one thing at a time.
   SetDrafts _drafts = SetDrafts();
@@ -1810,6 +1839,13 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                           // counting.
                           if (!mounted) return;
                           setState(() => _startRest(restSeconds));
+                          _signalSetLogged(
+                            setNumber: setNumber,
+                            restSeconds: restSeconds,
+                            exercises: exercises,
+                            index: index,
+                            wasComplete: encouragement != null,
+                          );
                           if (_appVisible) {
                             unawaited(_askRestAlertPermissionOnce());
                           } else {
