@@ -591,13 +591,20 @@ void main() {
       'a screen reader is not offered a scroll that opens the question',
       (tester) async {
         final semantics = tester.ensureSemantics();
+        // A small phone at large text, so the sheet really does scroll: its
+        // own scroll is offered, and that is all a scroll gesture may reach.
+        tester.view.physicalSize = const Size(320, 640);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        tester.platformDispatcher.textScaleFactorTestValue = 2;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
         await _open(tester);
         await _tapKey(tester, 'checkin.energy.high');
 
-        // The sheet fits the test screen, so nothing in it scrolls. The
-        // swipe-down guard must not surface as scroll actions, which a
-        // screen reader's scroll gesture would run straight into the
-        // discard question.
+        // The swipe-down guard must not surface as scroll actions of its
+        // own, which a screen reader's scroll gesture would run straight
+        // into the discard question. Every scroll action on offer is run,
+        // both ways, and none of them may ask.
         final scrollable = <SemanticsNode>[];
         void visit(SemanticsNode node) {
           final data = node.getSemanticsData();
@@ -616,13 +623,21 @@ void main() {
             .owner!
             .semanticsOwner!;
         visit(owner.rootSemanticsNode!);
+        expect(scrollable, isNotEmpty, reason: 'the sheet scrolls here');
         for (final node in scrollable) {
-          owner.performAction(node.id, SemanticsAction.scrollDown);
-          await tester.pumpAndSettle();
+          for (final action in const [
+            SemanticsAction.scrollUp,
+            SemanticsAction.scrollDown,
+          ]) {
+            if (node.getSemanticsData().hasAction(action)) {
+              owner.performAction(node.id, action);
+              await tester.pumpAndSettle();
+            }
+          }
         }
 
         expect(find.text('Discard your changes?'), findsNothing);
-        expect(scrollable, isEmpty);
+        expect(find.text('Morning check-in'), findsOneWidget);
         semantics.dispose();
       },
     );
