@@ -366,13 +366,26 @@ void main() {
   testWidgets("touching a day's bar shows its count", (tester) async {
     await _pump(tester, ActivityState(today: const DaySteps(steps: 6420), week: _week(), offline: false));
 
-    final chart = tester.widget<BarChart>(find.byType(BarChart));
-    // FsBarChart's tooltips: what a touch shows for each bar.
-    final tooltip = chart.data.barTouchData.touchTooltipData.getTooltipItem(
-      chart.data.barGroups[0], 0, chart.data.barGroups[0].barRods[0], 0,
+    BarChartData data() => tester.widget<BarChart>(find.byType(BarChart)).data;
+    List<int> showing() => [
+      for (final (i, group) in data().barGroups.indexed)
+        if (group.showingTooltipIndicators.isNotEmpty) i,
+    ];
+    expect(showing(), isEmpty);
+
+    // A real tap in the middle of Tuesday's column, the first of seven.
+    await tester.ensureVisible(find.byType(BarChart));
+    await tester.pumpAndSettle();
+    final chart = tester.getRect(find.byType(BarChart));
+    await tester.tapAt(Offset(chart.left + chart.width / 14, chart.top + 30));
+    await tester.pump();
+
+    expect(showing(), [0]);
+    final group = data().barGroups[0];
+    final tooltip = data().barTouchData.touchTooltipData.getTooltipItem(
+      group, 0, group.barRods[0], 0,
     );
     expect(tooltip!.text, 'Tuesday · 3,000 steps');
-    expect(chart.data.barTouchData.enabled, isTrue);
   });
 
   group('large text', () {
