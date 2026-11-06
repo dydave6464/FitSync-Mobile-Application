@@ -83,6 +83,9 @@ test('recovery routes', async (t) => {
 
     assert.equal(post.body.data.estimate.riskLevel, 'moderate');
     assert.equal(post.body.data.checkin.sleepQuality, 'poor');
+    // The estimate carries its own date, so the app can show it as today's
+    // without refetching the tab first.
+    assert.equal(post.body.data.estimate.checkinDate, post.body.data.checkin.checkinDate);
 
     const [[row]] = await pool.query(
       `SELECT e.risk_level, e.checkin_id, c.checkin_date
@@ -542,6 +545,7 @@ test('the check-in answer and the tab agree on drivers for the same row', async 
         .body.data.latestEstimate;
       assert.equal(post.source, source);
       assert.equal(got.source, source);
+      assert.equal(post.checkinDate, got.checkinDate);
       assert.deepEqual(post.drivers, []);
       assert.deepEqual(got.drivers, []);
     });
@@ -640,4 +644,182 @@ test('a load the DECIMAL(5,2) column would round to 1000.00 is never stored', as
       assert.equal(est.loadPct, stored);
     });
   }
+});
+
+const NO_CHECKIN_TODAY =
+  "There's no check-in for today yet. Check in first to get today's estimate.";
+const ESTIMATE_UNAVAILABLE =
+  "Couldn't work out your estimate right now. Your check-in is saved, so try again in a few minutes.";
+
+/// Today's estimate can be asked for again without re-sending the check-in,
+/// for the morning the ML service was down when the user checked in.
+test('POST /recovery/estimate retries today\'s estimate', async (t) => {
+  const pool = createPool(testDbConfig());
+  await dropAllTables(pool);
+  await migrate(testDbConfig());
+  const calls = [];
+  let down = true;
+  const answer = {
+    riskLevel: 'moderate',
+    trainingLoadScore: 47.25,
+    source: 'model',
+    modelVersion: 'risk-rf-sim-1',
+    loadPct: 35,
+    drivers: [{ key: 'sleep', value: 'poor' }, { key: 'injury_history', value: 1 }],
+  };
+  const app = buildTestApp({
+    pool,
+    ml: {
+      async estimateInjuryRisk(req) {
+        calls.push(req);
+        if (down) throw new Error('ECONNREFUSED');
+        return answer;
+      },
+    },
+  });
+  t.after(async () => { await dropAllTables(pool); await pool.end(); });
+
+  const knee = await region(pool, 'Knee (retry test)', 'lower_body');
+  const { userId, auth } = await signIn(app, pool, 'retry@example.com');
+  const estimates = async () => {
+    const [[{ e }]] = await pool.query('SELECT COUNT(*) AS e FROM injury_risk_estimates');
+    return e;
+  };
+  // Something in every input, so comparing the two requests compares real
+  // values: an earlier check-in inside the window, a profile injury and a
+  // recent pain report.
+  await pool.query(
+    `INSERT INTO morning_checkins
+       (user_id, checkin_date, sleep_quality, muscle_soreness, energy, stress)
+     VALUES (?, DATE_SUB(CURDATE(), INTERVAL 1 DAY), 'good', 'mild', 'moderate', 'low')`,
+    [userId],
+  );
+  await pool.query(
+    "INSERT INTO user_injuries (user_id, injury_id, side) VALUES (?, ?, 'left')",
+    [userId, knee],
+  );
+  await painReport(pool, userId, 2, 'mild', knee);
+
+  await t.test('requires a token', async () => {
+    await request(app).post('/api/v1/recovery/estimate').expect(401);
+  });
+
+  await t.test('without a check-in today it is a 409 and the service is not asked', async () => {
+    const res = await request(app).post('/api/v1/recovery/estimate').set(auth).expect(409);
+    assert.equal(res.body.error.code, 'NO_CHECKIN_TODAY');
+    assert.equal(res.body.error.message, NO_CHECKIN_TODAY);
+    assert.equal(calls.length, 0);
+  });
+
+  let checkin;
+  await t.test('while the service is still down it is a 502 and nothing is stored', async () => {
+    const post = await request(app).post('/api/v1/recovery/checkin')
+      .set(auth).send(ANSWERS).expect(201);
+    assert.equal(post.body.data.estimate, null);
+    checkin = post.body.data.checkin;
+
+    const res = await request(app).post('/api/v1/recovery/estimate').set(auth).expect(502);
+    assert.equal(res.body.error.code, 'ESTIMATE_UNAVAILABLE');
+    assert.equal(res.body.error.message, ESTIMATE_UNAVAILABLE);
+    assert.equal(await estimates(), 0);
+  });
+
+  let created;
+  await t.test('once the service is back it computes, stores and returns a dated estimate', async () => {
+    down = false;
+    const res = await request(app).post('/api/v1/recovery/estimate').set(auth).expect(201);
+    created = res.body.data.estimate;
+    assert.deepEqual(created, {
+      riskLevel: 'moderate',
+      trainingLoadScore: 47.25,
+      checkinDate: checkin.checkinDate,
+      source: 'model',
+      modelVersion: 'risk-rf-sim-1',
+      loadPct: 35,
+      drivers: answer.drivers,
+    });
+
+    const [[row]] = await pool.query('SELECT checkin_id FROM injury_risk_estimates');
+    assert.equal(row.checkin_id, checkin.checkinId);
+
+    const got = (await request(app).get('/api/v1/recovery').set(auth).expect(200))
+      .body.data.latestEstimate;
+    const { modelVersion, ...served } = created;
+    assert.deepEqual(got, served);
+  });
+
+  await t.test('the retry sends the service exactly what the check-in sent', async () => {
+    const [atCheckin] = calls;
+    const atRetry = calls.at(-1);
+    assert.equal(atCheckin.checkins.length, 2, 'today and yesterday, inside the 3-day window');
+    assert.deepEqual(atCheckin.injuryHistory, [{ injuryId: knee, regionGroup: 'lower_body' }]);
+    assert.equal(atCheckin.recentPain, 'mild');
+    assert.deepEqual(atRetry, atCheckin);
+  });
+
+  await t.test('asking again once today has an estimate returns it without a new one', async () => {
+    const before = calls.length;
+    // Any body is ignored.
+    const res = await request(app).post('/api/v1/recovery/estimate')
+      .set(auth).send({ riskLevel: 'low' }).expect(200);
+    const { modelVersion, ...stored } = created;
+    assert.deepEqual(res.body.data.estimate, stored);
+    assert.equal(calls.length, before, 'the service is not asked again');
+    assert.equal(await estimates(), 1, 'no duplicate row');
+  });
+});
+
+test('a refused answer on retry is a 502, logged without personal data', async (t) => {
+  const { Writable } = require('node:stream');
+  const { createLogger } = require('../src/lib/logger');
+  let output = '';
+  const destination = new Writable({
+    write(chunk, _encoding, callback) { output += chunk.toString(); callback(); },
+  });
+  // production env avoids the pino-pretty worker thread, which would bypass
+  // this synchronous capture stream.
+  const logger = createLogger({ level: 'warn', env: 'production', destination });
+  const lines = () => output.split('\n').filter(Boolean).map((l) => JSON.parse(l));
+
+  const pool = createPool(testDbConfig());
+  await dropAllTables(pool);
+  await migrate(testDbConfig());
+  let answer = 'not an estimate';
+  const app = buildTestApp({
+    pool,
+    logger,
+    ml: { async estimateInjuryRisk() { return answer; } },
+  });
+  t.after(async () => { await dropAllTables(pool); await pool.end(); });
+  const { auth } = await signIn(app, pool, 'retry-refused@example.com');
+
+  await request(app).post('/api/v1/recovery/checkin').set(auth).send(ANSWERS).expect(201);
+  output = '';
+  answer = {
+    riskLevel: 'extreme',
+    trainingLoadScore: 50,
+    source: 'model',
+    loadPct: 35,
+    drivers: [{ key: 'sleep', value: 'poor' }, { key: 'recent_pain', value: 'severe' }],
+  };
+  const res = await request(app).post('/api/v1/recovery/estimate').set(auth).expect(502);
+  assert.equal(res.body.error.code, 'ESTIMATE_UNAVAILABLE');
+  assert.equal(res.body.error.message, ESTIMATE_UNAVAILABLE);
+
+  const [[{ e }]] = await pool.query('SELECT COUNT(*) AS e FROM injury_risk_estimates');
+  assert.equal(e, 0);
+
+  const line = lines().find((l) => /malformed/.test(l.msg));
+  assert.ok(line, 'expected a warning for the refused answer');
+  assert.deepEqual(line.mlAnswer, {
+    riskLevel: 'extreme',
+    trainingLoadScore: 50,
+    source: 'model',
+    loadPct: 35,
+    driverKeys: ['sleep', 'recent_pain'],
+  });
+  const raw = JSON.stringify(line);
+  assert.ok(!raw.includes('retry-refused@example.com'), 'no email in the log');
+  assert.ok(!raw.includes('"poor"'), 'no driver values (health answers) in the log');
+  assert.ok(!raw.includes('"severe"'), 'no driver values (health answers) in the log');
 });

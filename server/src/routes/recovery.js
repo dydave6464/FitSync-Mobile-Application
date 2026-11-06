@@ -169,6 +169,69 @@ function summarizeAnswer(raw) {
   };
 }
 
+const NO_CHECKIN_TODAY =
+  "There's no check-in for today yet. Check in first to get today's estimate.";
+const ESTIMATE_UNAVAILABLE =
+  "Couldn't work out your estimate right now. Your check-in is saved, so try again in a few minutes.";
+
+/// Estimates today's risk for [checkin] and stores it, answering the stored
+/// estimate in the shape the app reads, or null when there is none to give.
+/// POST /checkin and POST /estimate both come through here, so the two can
+/// never send the service different inputs or describe the result
+/// differently.
+///
+/// No estimate rather than an invented one when the service is down: a
+/// stored 'low' would read on Home as "manageable", indistinguishable from a
+/// real estimate. The check-in is already stored -- it is the user's own
+/// data -- and the screens fall back to the latest real estimate, captioned
+/// with its date. A malformed answer is treated the same way: toEstimate
+/// refuses it, and the check-in stands without an estimate.
+async function computeEstimate(deps, req, userId, checkin) {
+  const [checkins, load, injuryHistory, recentPain] = await Promise.all([
+    recentCheckins(deps.pool, userId, CHECKIN_WINDOW_DAYS),
+    readTrainingLoad(deps.pool, userId),
+    reportedInjuries(deps.pool, userId),
+    worstRecentPain(deps.pool, userId),
+  ]);
+
+  let estimate = null;
+  try {
+    const raw = await deps.ml.estimateInjuryRisk({
+      checkins, load, injuryHistory, recentPain,
+    });
+    estimate = toEstimate(raw);
+    if (!estimate) {
+      req.log?.warn(
+        { mlAnswer: summarizeAnswer(raw) },
+        'injury-risk estimate malformed; check-in saved without one',
+      );
+    }
+  } catch (err) {
+    req.log?.warn({ err }, 'injury-risk estimate failed; check-in saved without one');
+  }
+  if (!estimate) return null;
+
+  await saveEstimate(deps.pool, {
+    userId, checkinId: checkin.checkinId, ...estimate,
+  });
+
+  // drivers is stored as NULL for an answer without a list, which GET then
+  // reads as []. The answer says [] too, so the screen that just asked and
+  // the tab it opens next describe the same row the same way; the client
+  // tells "predates drivers" apart by source, not by drivers. checkinDate is
+  // the date GET's latestEstimate carries, so the app can tell today's
+  // estimate from an older one without refetching the tab.
+  return {
+    riskLevel: estimate.riskLevel,
+    trainingLoadScore: estimate.trainingLoadScore,
+    checkinDate: checkin.checkinDate,
+    source: estimate.source,
+    modelVersion: estimate.modelVersion,
+    loadPct: estimate.loadPct,
+    drivers: estimate.drivers ?? [],
+  };
+}
+
 module.exports = function buildRecoveryRouter(deps = {}) {
   const router = express.Router();
   const auth = requireAuth(deps);
@@ -204,53 +267,40 @@ module.exports = function buildRecoveryRouter(deps = {}) {
       const answers = validateAnswers(req.body || {});
 
       const checkin = await upsertCheckin(deps.pool, userId, answers);
-      const [checkins, load, injuryHistory, recentPain] = await Promise.all([
-        recentCheckins(deps.pool, userId, CHECKIN_WINDOW_DAYS),
-        readTrainingLoad(deps.pool, userId),
-        reportedInjuries(deps.pool, userId),
-        worstRecentPain(deps.pool, userId),
-      ]);
+      const estimate = await computeEstimate(deps, req, userId, checkin);
+      res.status(201).json({ data: { checkin, estimate } });
+    } catch (err) { next(err); }
+  });
 
-      // No estimate rather than an invented one when the service is down: a
-      // stored 'low' would read on Home as "manageable", indistinguishable
-      // from a real estimate. The check-in is already stored -- it is the
-      // user's own data -- and the screens fall back to the latest real
-      // estimate, captioned with its date.
-      //
-      // A malformed answer is treated the same way: toEstimate refuses it,
-      // and the check-in stands without an estimate.
-      let estimate = null;
-      try {
-        const raw = await deps.ml.estimateInjuryRisk({
-          checkins, load, injuryHistory, recentPain,
-        });
-        estimate = toEstimate(raw);
-        if (!estimate) {
-          req.log?.warn(
-            { mlAnswer: summarizeAnswer(raw) },
-            'injury-risk estimate malformed; check-in saved without one',
-          );
-        }
-      } catch (err) {
-        req.log?.warn({ err }, 'injury-risk estimate failed; check-in saved without one');
+  /// Today's estimate again, for the morning the service was down (or sent
+  /// something unusable) when the user checked in. The stored check-in is
+  /// re-estimated as it stands; the body is ignored, and the check-in is not
+  /// rewritten.
+  ///
+  /// A check-in that already has an estimate gets that one back (200) without
+  /// asking the service again, so a double tap, or a retry racing another
+  /// phone, does not append a duplicate. Two retries at the very same moment
+  /// can still both store one; that is harmless, since the table is
+  /// append-only and the newest is the one shown.
+  ///
+  /// An explicit POST rather than a retry inside GET: GET runs on every tab
+  /// open and Home refresh, and should neither wait on the ML service nor
+  /// write.
+  router.post('/estimate', auth, async (req, res, next) => {
+    try {
+      const { userId } = req.user;
+      const checkin = await todayCheckin(deps.pool, userId);
+      if (!checkin) throw AppError.conflict('NO_CHECKIN_TODAY', NO_CHECKIN_TODAY);
+
+      const latest = await latestEstimate(deps.pool, userId);
+      if (latest && latest.checkinDate === checkin.checkinDate) {
+        res.json({ data: { estimate: latest } });
+        return;
       }
 
-      if (estimate) {
-        await saveEstimate(deps.pool, {
-          userId, checkinId: checkin.checkinId, ...estimate,
-        });
-      }
-
-      // drivers is stored as NULL for an answer without a list, which GET then
-      // reads as []. The response says [] too, so the screen that just checked
-      // in and the tab it opens next describe the same row the same way; the
-      // client tells "predates drivers" apart by source, not by drivers.
-      res.status(201).json({
-        data: {
-          checkin,
-          estimate: estimate && { ...estimate, drivers: estimate.drivers ?? [] },
-        },
-      });
+      const estimate = await computeEstimate(deps, req, userId, checkin);
+      if (!estimate) throw new AppError(502, 'ESTIMATE_UNAVAILABLE', ESTIMATE_UNAVAILABLE);
+      res.status(201).json({ data: { estimate } });
     } catch (err) { next(err); }
   });
 
