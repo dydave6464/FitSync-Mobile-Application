@@ -1702,12 +1702,19 @@ void main() {
           ),
         ),
       );
-      expect(find.bySemanticsLabel(RegExp('^Height')), findsOneWidget);
-      final data = tester
-          .getSemantics(find.byType(TextField))
-          .getSemanticsData();
-      expect(data.label, contains('Height'));
-      expect(data.hint, contains('cm'));
+      // The name and unit sit on the editable node itself, not on whatever
+      // node happens to lie above the TextField.
+      final node = tester.getSemantics(find.byType(TextField));
+      expect(node, isSemantics(isTextField: true, hint: 'cm'));
+      expect(node.label, startsWith('Height'));
+      // Said once: the visible eyebrow (drawn as 'HEIGHT') and the unit text
+      // are not separate stops repeating what the field already says.
+      expect(
+        find.bySemanticsLabel(RegExp('^height', caseSensitive: false)),
+        findsOneWidget,
+      );
+      expect(find.bySemanticsLabel('HEIGHT'), findsNothing);
+      expect(find.bySemanticsLabel('cm'), findsNothing);
       h.dispose();
     });
 
@@ -1727,9 +1734,11 @@ void main() {
       // Drawn in the eyebrow treatment, which sets its text in capitals.
       expect(find.text('HABIT NAME'), findsOneWidget);
       expect(
-        tester.getSemantics(find.byType(TextField)).getSemanticsData().label,
-        contains('Habit name'),
+        tester.getSemantics(find.byType(TextField)),
+        isSemantics(isTextField: true, label: 'Habit name', value: 'Walk'),
       );
+      // The visible eyebrow is not a second stop saying the name again.
+      expect(find.bySemanticsLabel('HABIT NAME'), findsNothing);
       h.dispose();
     });
 
