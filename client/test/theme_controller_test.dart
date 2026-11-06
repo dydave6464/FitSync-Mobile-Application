@@ -78,4 +78,72 @@ void main() {
 
     expect(container.read(themeModeProvider), ThemeMode.light);
   });
+
+  group('System, the third choice (D-1)', () {
+    test('a stored System round-trips through the store', () async {
+      final store = ThemeStore(backing: InMemorySecureStore());
+
+      await store.write(ThemeMode.system);
+
+      expect(await store.read(), ThemeMode.system);
+    });
+
+    test('each mode is stored under its own word', () async {
+      final backing = InMemorySecureStore();
+      final store = ThemeStore(backing: backing);
+
+      for (final (mode, word) in [
+        (ThemeMode.system, 'system'),
+        (ThemeMode.light, 'light'),
+        (ThemeMode.dark, 'dark'),
+      ]) {
+        await store.write(mode);
+        expect(await backing.read('fitsync.themeMode'), word);
+      }
+    });
+
+    test('a saved System is restored as ThemeMode.system', () async {
+      final store = ThemeStore(backing: InMemorySecureStore());
+      await store.write(ThemeMode.system);
+      final container = _containerWith(store);
+
+      await container.read(themeModeProvider.notifier).ready;
+
+      expect(container.read(themeModeProvider), ThemeMode.system);
+    });
+
+    test('setMode sets and persists any of the three', () async {
+      final store = ThemeStore(backing: InMemorySecureStore());
+      final container = _containerWith(store);
+      final controller = container.read(themeModeProvider.notifier);
+
+      for (final mode in [ThemeMode.system, ThemeMode.dark, ThemeMode.light]) {
+        await controller.setMode(mode);
+        expect(container.read(themeModeProvider), mode);
+        expect(await store.read(), mode);
+      }
+    });
+
+    test('a fresh install still starts in light, not System', () async {
+      final container = _containerWith(
+        ThemeStore(backing: InMemorySecureStore()),
+      );
+
+      await container.read(themeModeProvider.notifier).ready;
+
+      expect(container.read(themeModeProvider), ThemeMode.light);
+    });
+
+    test('a choice made while the restore is in flight still wins', () async {
+      final store = ThemeStore(backing: InMemorySecureStore());
+      await store.write(ThemeMode.dark);
+      final container = _containerWith(store);
+      final controller = container.read(themeModeProvider.notifier);
+
+      await controller.setMode(ThemeMode.system);
+      await controller.ready;
+
+      expect(container.read(themeModeProvider), ThemeMode.system);
+    });
+  });
 }
