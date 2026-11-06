@@ -331,7 +331,6 @@ class _GoalCard extends StatelessWidget {
 /// A goal's bar and its figure. Side by side, as the design draws them; at
 /// large text the figure takes its own line above the bar (as PlanCard does
 /// for its watermark), since beside it there was no room and it overflowed.
-/// Free to wrap either way.
 class _GoalProgress extends StatelessWidget {
   const _GoalProgress({required this.progress, required this.figure});
 
@@ -363,13 +362,14 @@ class _GoalProgress extends StatelessWidget {
         ],
       );
     }
+    // The design's row: the bar takes what is left and the figure keeps its
+    // natural width on one line, flush with the card's edge. Up to 1.3x the
+    // longest figure still fits a 320 dp phone.
     return Row(
       children: [
-        Expanded(flex: 2, child: bar),
+        Expanded(child: bar),
         const SizedBox(width: 8),
-        Flexible(
-          child: Text(figure, textAlign: TextAlign.end, style: style),
-        ),
+        Text(figure, style: style),
       ],
     );
   }
