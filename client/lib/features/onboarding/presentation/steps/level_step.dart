@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/api_exception.dart';
 import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
-import '../../../exercises/presentation/exercise_list_screen.dart'
-    show describeError;
 import '../../../profile/domain/profile.dart';
 import '../../../profile/presentation/providers.dart';
 
@@ -139,11 +138,27 @@ class LevelStep extends ConsumerWidget {
       builder: (sheet) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SizedBox(height: 8),
+            // Named, so the sheet says what it is choosing; a heading, so a
+            // screen reader lands on it first.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+              child: Semantics(
+                key: const Key('location.title'),
+                container: true,
+                header: true,
+                child: Text(
+                  'Training location',
+                  style: Theme.of(sheet).textTheme.titleMedium,
+                ),
+              ),
+            ),
             for (final location in _locations)
               ListTile(
                 key: Key('location.${location.value}'),
+                // Said as "selected" as well as shown by the tick.
+                selected: location.value == value.trainingLocation,
                 // The app theme insets tile content by 4dp, which reads as
                 // padding only inside a card that brings its own. In a sheet
                 // flush with the screen it puts the labels against the edge,
@@ -274,18 +289,11 @@ class LevelStep extends ConsumerWidget {
             child: Center(child: CircularProgressIndicator()),
           ),
           error: (error, _) => Padding(
-            padding: const EdgeInsets.fromLTRB(0, 24, 0, 16),
-            child: Column(
-              children: [
-                Text(describeError(error), textAlign: TextAlign.center),
-                const SizedBox(height: 12),
-                FsButton(
-                  label: 'Retry',
-                  small: true,
-                  kind: FsButtonKind.secondary,
-                  onPressed: () => ref.invalidate(equipmentOptionsProvider),
-                ),
-              ],
+            padding: const EdgeInsets.only(top: 8),
+            child: FsRetry(
+              message: userMessage(error),
+              buttonKey: const Key('equipment.retry'),
+              onRetry: () => ref.invalidate(equipmentOptionsProvider),
             ),
           ),
           // The server now returns the curated list in display order, and

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -112,8 +114,9 @@ class RecordingAuthController extends AuthController {
 
 Future<List<AuthUser>> _pump(
   WidgetTester tester,
-  FakeAuthRepository repo,
-) async {
+  FakeAuthRepository repo, {
+  String initialEmail = '',
+}) async {
   final seen = <AuthUser>[];
   await tester.pumpWidget(
     ProviderScope(
@@ -129,7 +132,8 @@ Future<List<AuthUser>> _pump(
             body: TextButton(
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                  builder: (_) => const ForgotPasswordScreen(),
+                  builder: (_) =>
+                      ForgotPasswordScreen(initialEmail: initialEmail),
                 ),
               ),
               child: const Text('open'),
@@ -608,5 +612,88 @@ void main() {
 
     expect(find.byKey(const Key('toggleNewPassword')), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('only Send a new code spins while a new code is asked for', (
+    tester,
+  ) async {
+    // AO-18: Reset password used to spin during a resend.
+    var calls = 0;
+    final pending = Completer<void>();
+    final repo = FakeAuthRepository(
+      onRequestReset: () => ++calls == 1 ? Future.value() : pending.future,
+    );
+    await _pump(tester, repo);
+    await _sendCode(tester);
+
+    await tester.tap(find.byKey(const Key('resend')));
+    await tester.pump();
+
+    expect(
+      tester.widget<FsButton>(find.byKey(const Key('resend'))).busy,
+      isTrue,
+    );
+    final reset = tester.widget<FsButton>(find.byKey(const Key('reset')));
+    expect(reset.busy, isFalse);
+    expect(reset.onPressed, isNull, reason: 'one request at a time');
+
+    pending.complete();
+    await tester.pumpAndSettle();
+  });
+
+  group('the email the user already typed', () {
+    // AO-21: reset made the user type again the email just entered on
+    // sign-in, its keyboard key did nothing, and a typo could only be fixed
+    // by leaving the whole flow.
+    testWidgets('is filled in from sign-in', (tester) async {
+      final repo = FakeAuthRepository();
+      await _pump(tester, repo, initialEmail: 'juan@example.com');
+
+      expect(find.text('juan@example.com'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('submit')));
+      await tester.pumpAndSettle();
+      expect(repo.lastEmail, 'juan@example.com');
+    });
+
+    testWidgets("is sent from the keyboard's send key", (tester) async {
+      final repo = FakeAuthRepository();
+      await _pump(tester, repo);
+
+      await tester.enterText(
+        find.byKey(const Key('email')),
+        'juan@example.com',
+      );
+      final field = tester.widget<TextField>(
+        find.descendant(
+          of: find.byKey(const Key('email')),
+          matching: find.byType(TextField),
+          matchRoot: true,
+        ),
+      );
+      expect(field.textInputAction, TextInputAction.send);
+      await tester.testTextInput.receiveAction(TextInputAction.send);
+      await tester.pumpAndSettle();
+
+      expect(repo.requestCalls, 1);
+      expect(find.byKey(const Key('code')), findsOneWidget);
+    });
+
+    testWidgets('can be changed from the code step', (tester) async {
+      final repo = FakeAuthRepository();
+      await _pump(tester, repo);
+      await _sendCode(tester);
+
+      await tester.tap(find.byKey(const Key('changeEmail')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('code')), findsNothing);
+      expect(find.text('juan@example.com'), findsOneWidget);
+      expect(find.text(_sent), findsNothing);
+      await tester.enterText(find.byKey(const Key('email')), 'jd@example.com');
+      await tester.tap(find.byKey(const Key('submit')));
+      await tester.pumpAndSettle();
+      expect(repo.lastEmail, 'jd@example.com');
+      expect(find.byKey(const Key('code')), findsOneWidget);
+    });
   });
 }

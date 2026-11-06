@@ -1,3 +1,5 @@
+import 'dart:ui' show CheckedState, Tristate;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -333,17 +335,57 @@ void main() {
     expect(read().dizziness, isTrue);
   });
 
-  testWidgets('a screen reader still hears one Yes button per question', (
+  testWidgets('a screen reader hears each answer with its question', (
     tester,
   ) async {
+    // AO-23: it heard "Yes" and "No" with nothing to say what they answered,
+    // and nothing tied the two together as one choice.
     final handle = tester.ensureSemantics();
     await _pumpLive(tester, initial: const HealthAnswers(chestPain: true));
 
+    final question = healthQuestions.first.label;
+    final yes = tester
+        .getSemantics(find.byKey(const Key('health.chestPain.yes')))
+        .getSemanticsData();
+    final no = tester
+        .getSemantics(find.byKey(const Key('health.chestPain.no')))
+        .getSemanticsData();
+    expect(yes.label, '$question\nYes');
+    expect(no.label, '$question\nNo');
+    expect(yes.flagsCollection.isButton, isTrue);
+    expect(yes.flagsCollection.isChecked, CheckedState.isTrue);
+    expect(no.flagsCollection.isChecked, CheckedState.isFalse);
+    expect(yes.flagsCollection.isInMutuallyExclusiveGroup, isTrue);
+    expect(yes.flagsCollection.isSelected, Tristate.none);
+    // Said with each answer, so never as a node of its own (nodes merged
+    // into an answer are not read apart from it).
     expect(
-      tester.getSemantics(find.byKey(const Key('health.chestPain.yes'))),
-      isSemantics(label: 'Yes', isButton: true, isSelected: true),
+      find.semantics.byPredicate(
+        (node) =>
+            node.getSemanticsData().label == question &&
+            !node.isMergedIntoParent,
+      ),
+      findsNothing,
     );
     handle.dispose();
+  });
+
+  testWidgets('each question reads under its lead-in', (tester) async {
+    // RH-23: "In the last 12 months, have you had: A doctor tell you to
+    // exercise only with medical supervision?" is not a sentence.
+    await _pumpLive(tester);
+
+    expect(find.text('In the last 12 months:'), findsOneWidget);
+    expect(
+      find.text(
+        'Has a doctor told you to exercise only with medical supervision?',
+      ),
+      findsOneWidget,
+    );
+    // The other two are noun phrases, which read under the shorter lead-in
+    // as they did under the old one.
+    expect(find.text('Chest pain during physical activity?'), findsOneWidget);
+    expect(find.text('Dizziness or fainting?'), findsOneWidget);
   });
 
   testWidgets('opting out takes back the gentler-plan promise', (tester) async {

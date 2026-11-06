@@ -344,4 +344,67 @@ void main() {
     expect(tester.widget<PopScope>(find.byType(PopScope)).canPop, isTrue);
     await _close(tester);
   });
+
+  group('a screen reader', () {
+    // AO-19: the rows said done or pending only by their fill and an
+    // unlabelled tick, the pending lead row already claimed "Profile saved",
+    // and nothing announced the screen.
+    Future<void> pumpOnboarding(WidgetTester tester, {bool saved = false}) =>
+        tester.pumpWidget(
+          _host(
+            GeneratingView(
+              title: 'Building your plan…',
+              subtitle: 'Matching exercises.',
+              leadLabel: 'Profile saved',
+              leadPendingLabel: 'Saving your profile',
+              leadDone: saved,
+              planReady: false,
+              avoiding: const [],
+            ),
+          ),
+        );
+
+    testWidgets('hears each row with whether it is done', (tester) async {
+      final handle = tester.ensureSemantics();
+      await pumpOnboarding(tester, saved: true);
+
+      expect(
+        find.bySemanticsLabel('Saving your profile, in progress'),
+        findsOneWidget,
+      );
+      expect(
+        find.bySemanticsLabel('Choosing your exercises, in progress'),
+        findsOneWidget,
+      );
+
+      await tester.pump(_justAfter(0));
+      expect(find.bySemanticsLabel('Profile saved, done'), findsOneWidget);
+      expect(find.text('Saving your profile'), findsNothing);
+
+      await _close(tester);
+      handle.dispose();
+    });
+
+    testWidgets('hears the title as it appears', (tester) async {
+      final handle = tester.ensureSemantics();
+      await pumpOnboarding(tester);
+
+      final title = tester
+          .getSemantics(find.text('Building your plan…'))
+          .getSemanticsData();
+      expect(title.flagsCollection.isLiveRegion, isTrue);
+
+      await _close(tester);
+      handle.dispose();
+    });
+  });
+
+  testWidgets('without a pending wording, the lead row keeps its one', (
+    tester,
+  ) async {
+    await _pump(tester);
+
+    expect(find.text('Profile saved'), findsOneWidget);
+    await _close(tester);
+  });
 }

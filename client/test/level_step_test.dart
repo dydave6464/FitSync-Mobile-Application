@@ -1,3 +1,4 @@
+import 'dart:ui' show Tristate;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/onboarding/presentation/steps/level_step.dart';
@@ -727,5 +729,87 @@ void main() {
       expect(value.center.dy, closeTo(label.center.dy, 1));
       expect(value.left, greaterThanOrEqualTo(label.right));
     });
+  });
+
+  group('the location picker', () {
+    // AO-22: four rows with no heading, and the current one marked only by an
+    // unlabelled tick.
+    testWidgets('has a heading a screen reader can find', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pump(tester);
+      await _tapKey(tester, const Key('trainingLocation'));
+
+      final title = find.byKey(const Key('location.title'));
+      expect(
+        find.descendant(of: title, matching: find.text('Training location')),
+        findsOneWidget,
+      );
+      expect(
+        tester.getSemantics(title).getSemanticsData().flagsCollection.isHeader,
+        isTrue,
+      );
+      expect(
+        tester.getTopLeft(title).dy,
+        lessThan(
+          tester.getTopLeft(find.byKey(const Key('location.home_gym'))).dy,
+        ),
+      );
+      handle.dispose();
+    });
+
+    testWidgets('says which place is chosen now', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pump(tester, value: const LevelAnswers(trainingLocation: 'both'));
+      await _tapKey(tester, const Key('trainingLocation'));
+
+      bool selected(String value) =>
+          tester
+              .getSemantics(find.byKey(Key('location.$value')))
+              .getSemanticsData()
+              .flagsCollection
+              .isSelected ==
+          Tristate.isTrue;
+      expect(selected('both'), isTrue);
+      expect(selected('home_gym'), isFalse);
+      handle.dispose();
+    });
+  });
+
+  testWidgets('a failed equipment lookup says why and offers Try again', (
+    tester,
+  ) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          equipmentOptionsProvider.overrideWith((ref) async {
+            calls++;
+            if (calls == 1) {
+              throw const ApiException('INVALID_RESPONSE', 'HTTP 502 <html>');
+            }
+            return _serverEquipment;
+          }),
+        ],
+        child: MaterialApp(
+          theme: fsLightTheme(),
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: LevelStep(value: const LevelAnswers(), onChanged: (_) {}),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(FsRetry), findsOneWidget);
+    expect(
+      find.text(userMessage(const ApiException('INVALID_RESPONSE', ''))),
+      findsOneWidget,
+    );
+    await _tapKey(tester, const Key('equipment.retry'));
+
+    expect(calls, 2);
+    expect(find.text('Resistance band'), findsOneWidget);
   });
 }

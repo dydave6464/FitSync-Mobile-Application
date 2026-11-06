@@ -1,6 +1,9 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
@@ -31,6 +34,11 @@ class SignInScreen extends ConsumerStatefulWidget {
 /// Which field a validation message belongs under.
 enum _Field { fullName, email, password }
 
+/// Which request is on its way, so only the button that started it spins
+/// (and is announced as loading). The others are disabled without one: one
+/// request at a time.
+enum _Pending { none, email, google }
+
 /// The shortest password the server accepts on register and on reset
 /// (`MIN_PASSWORD_LENGTH` in its auth routes).
 const _minPasswordLength = 8;
@@ -40,13 +48,19 @@ const _minPasswordLength = 8;
 const _googleFailedMessage =
     "Couldn't sign in with Google. Try again, or use your email and password.";
 
+/// Registering an address that already has an account. The server's own
+/// words ("already registered") leave the user stuck in Create account mode,
+/// so this says what to do, and a link under it does it.
+const _emailTakenMessage = 'That email already has an account.';
+
 class _SignInScreenState extends ConsumerState<SignInScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _fullName = TextEditingController();
 
   bool _registering = false;
-  bool _busy = false;
+  _Pending _pending = _Pending.none;
+  bool get _busy => _pending != _Pending.none;
 
   /// Starts hidden, as any password field does; the eye reveals it so a
   /// mistyped character can be found without retyping the whole thing.
@@ -148,7 +162,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     if (_busy) return;
 
     setState(() {
-      _busy = true;
+      _pending = _Pending.google;
       _error = null;
       _fieldError = null;
     });
@@ -164,7 +178,10 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         // exactly as it was so the user can pick another way in.
         case GoogleSignInCancelled():
           return;
-        case GoogleSignInFailed():
+        case GoogleSignInFailed(:final cause):
+          // Never shown -- the message names another way in instead -- but
+          // without it a broken build gives no clue why Google failed.
+          debugPrint('Google sign-in failed: $cause');
           setState(() => _error = _googleFailedMessage);
           return;
       }
@@ -177,13 +194,14 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() => _error = userMessage(error));
-    } catch (_) {
+    } catch (error) {
       // Anything else, so a tap never just stops the spinner and says
       // nothing: this is the only way in without a password.
+      debugPrint('Google sign-in failed: $error');
       if (!mounted) return;
       setState(() => _error = _googleFailedMessage);
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _pending = _Pending.none);
     }
   }
 
@@ -203,7 +221,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     }
 
     setState(() {
-      _busy = true;
+      _pending = _Pending.email;
       _error = null;
       _fieldError = null;
     });
@@ -239,15 +257,25 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         // leave the user guessing what the code means. The code from back
         // then has most likely expired, so the screen asks for a fresh one.
         _pushCheckEmail(email, password, sendCodeOnOpen: true);
+      } else if (_registering && error.code == 'EMAIL_TAKEN') {
+        setState(() => _error = _emailTakenMessage);
       } else {
         // The fields keep their text on purpose — a wrong password should
         // cost one character, not the whole form.
         setState(() => _error = userMessage(error));
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _pending = _Pending.none);
     }
   }
+
+  /// Switches between signing in and creating an account. The email and
+  /// password stay: they are the same two fields in both modes.
+  void _setRegistering(bool registering) => setState(() {
+    _registering = registering;
+    _error = null;
+    _fieldError = null;
+  });
 
   void _pushCheckEmail(
     String email,
@@ -267,7 +295,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
 
   void _openForgotPassword() {
     Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const ForgotPasswordScreen()),
+      MaterialPageRoute<void>(
+        builder: (_) => ForgotPasswordScreen(initialEmail: _email.text.trim()),
+      ),
     );
   }
 
@@ -419,12 +449,28 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   // A live region, so a screen reader says it as it
                   // appears: otherwise a failed sign-in sounds like a hang.
                   FsErrorLine(_error!, key: const Key('error')),
+                  if (_error == _emailTakenMessage)
+                    Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: _TextLink(
+                        key: const Key('signInInstead'),
+                        onTap: _busy ? null : () => _setRegistering(false),
+                        child: Text(
+                          'Sign in instead',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: t.accentText,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
                 const SizedBox(height: 18),
                 FsButton(
                   key: const Key('submit'),
                   label: _registering ? 'Create account' : 'Sign in',
-                  busy: _busy,
+                  busy: _pending == _Pending.email,
                   onPressed: _busy ? null : _submit,
                 ),
                 const SizedBox(height: 18),
@@ -452,20 +498,17 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   label: 'Continue with Google',
                   kind: FsButtonKind.secondary,
                   small: true,
-                  icon: const Icon(Icons.g_mobiledata),
+                  // Google's own G, as the prototype draws it, in the
+                  // button's text colour.
+                  icon: const FaIcon(FontAwesomeIcons.google),
+                  busy: _pending == _Pending.google,
                   onPressed: _busy ? null : _signInWithGoogle,
                 ),
                 const SizedBox(height: 8),
                 Center(
                   child: _TextLink(
                     key: const Key('toggleMode'),
-                    onTap: _busy
-                        ? null
-                        : () => setState(() {
-                            _registering = !_registering;
-                            _error = null;
-                            _fieldError = null;
-                          }),
+                    onTap: _busy ? null : () => _setRegistering(!_registering),
                     child: Text.rich(
                       TextSpan(
                         style: TextStyle(fontSize: 12.5, color: t.text2),
@@ -538,7 +581,13 @@ class _Logo extends StatelessWidget {
             color: t.accent,
             borderRadius: BorderRadius.circular(11),
           ),
-          child: Icon(Icons.bolt, size: 22, color: t.onAccent),
+          alignment: Alignment.center,
+          // The prototype's FitBlades at two thirds of the tile.
+          child: CustomPaint(
+            key: const Key('logo.blades'),
+            size: const Size.square(22),
+            painter: _BladesPainter(t.onAccent),
+          ),
         ),
         const SizedBox(width: 9),
         // Shrinks rather than overflowing on a narrow phone at large text: a
@@ -562,4 +611,44 @@ class _Logo extends StatelessWidget {
       ],
     );
   }
+}
+
+/// FitSync's mark, the prototype's `FitBlades` (kit.jsx): one blade drawn
+/// three times, turned 0, 120 and 240 degrees about the centre, each fainter
+/// than the last.
+class _BladesPainter extends CustomPainter {
+  const _BladesPainter(this.color);
+
+  final Color color;
+
+  static const _opacities = [1.0, 0.6, 0.32];
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // The SVG's 100-unit box, scaled to [size].
+    final scale = size.shortestSide / 100;
+    final blade = Path()
+      ..moveTo(50, 50)
+      ..cubicTo(52, 30, 62, 18, 80, 22)
+      ..cubicTo(70, 38, 66, 46, 50, 50)
+      ..close();
+
+    canvas
+      ..save()
+      ..scale(scale);
+    for (var i = 0; i < _opacities.length; i++) {
+      canvas.drawPath(
+        blade,
+        Paint()..color = color.withValues(alpha: _opacities[i]),
+      );
+      canvas
+        ..translate(50, 50)
+        ..rotate(2 * math.pi / 3)
+        ..translate(-50, -50);
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_BladesPainter old) => old.color != color;
 }

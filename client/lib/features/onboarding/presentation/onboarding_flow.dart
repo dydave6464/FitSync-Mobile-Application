@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
+import '../../../core/units.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../health/domain/health_answers.dart';
@@ -48,6 +49,10 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
 
   int _index = 0;
   bool _busy = false;
+
+  /// A kg/lb choice on its way to the server, shown at once rather than when
+  /// the server answers. Null once the save has landed or failed.
+  WeightUnit? _pendingUnit;
   String? _error;
   bool _seeded = false;
 
@@ -134,11 +139,12 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
   /// Skip's save: the answers already given on this step, and nothing else.
   ///
   /// Skip used to advance without saving, which threw away whatever had been
-  /// typed before the user decided to move on. This sends the same patch as
-  /// Continue -- [_patchForCurrentStep] already leaves out fields that are
-  /// empty or did not parse -- plus the step's own lists when anything is
-  /// picked in them. An empty list stays unsent here, unlike on Continue:
-  /// skipping is not an answer of "none".
+  /// typed before the user decided to move on. This sends Continue's patch --
+  /// [_patchForCurrentStep] already leaves out fields that are empty or did
+  /// not parse -- less any number Continue would stop on (see below), plus
+  /// the step's own lists when anything is picked in them. An empty list
+  /// stays unsent here, unlike on Continue: skipping is not an answer of
+  /// "none".
   Future<void> _saveTypedAnswers() async {
     final notifier = ref.read(profileProvider.notifier);
 
@@ -146,8 +152,15 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     // FsStatField's formatter already stops anything from 1000 up. A typed 0
     // is the one value left that it would reject, and a rejection would keep
     // Skip on the step, so it is dropped like any other unusable answer.
+    // So is a number Continue would query as a likely slip (17 cm): Skip
+    // asks nothing, and saving it would feed it to the plan and the targets.
+    final slips = _index == 1
+        ? aboutRangeProblems(_about, ref.read(weightUnitProvider)).keys
+        : const <String>[];
     final fields = {..._patchForCurrentStep()}
-      ..removeWhere((_, value) => value is num && value <= 0);
+      ..removeWhere(
+        (key, value) => (value is num && value <= 0) || slips.contains(key),
+      );
     if (fields.isNotEmpty) await notifier.patch(fields);
 
     if (_index == 0 && _goals.goals.isNotEmpty) {
@@ -327,6 +340,26 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
 
   Future<void> _skip() => _save(_saveTypedAnswers);
 
+  /// Saves a kg/lb switch the moment it is tapped, as Settings does: the new
+  /// unit shows at once, further taps wait for the answer, and a refused
+  /// switch goes back and says so.
+  Future<void> _switchUnit(WeightUnit unit) async {
+    if (_pendingUnit != null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _pendingUnit = unit);
+    try {
+      await ref.read(profileProvider.notifier).patch({'weightUnit': unit.api});
+    } catch (_) {
+      messenger.showSnackBar(
+        SnackBar(content: Text("Couldn't switch to ${unit.api}. Try again.")),
+      );
+    } finally {
+      // The profile now holds the new unit, or still the old one, which is
+      // what goes back on screen.
+      if (mounted) setState(() => _pendingUnit = null);
+    }
+  }
+
   /// Runs one of the two saves, then moves on -- or, if it failed, stays put
   /// and says why.
   Future<void> _save(Future<void> Function() write) async {
@@ -464,9 +497,8 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
       // Saved to the account as it is tapped rather than held with the
       // rest of the step: it changes what the two cards on screen say
       // right now, so it cannot wait for Continue.
-      unit: ref.watch(weightUnitProvider),
-      onUnitChanged: (unit) =>
-          ref.read(profileProvider.notifier).patch({'weightUnit': unit.api}),
+      unit: _pendingUnit ?? ref.watch(weightUnitProvider),
+      onUnitChanged: _switchUnit,
     ),
     2 => LevelStep(
       value: _level,
@@ -526,6 +558,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
                 'Matching exercises to your goals, equipment, '
                 'and injury history.',
             leadLabel: 'Profile saved',
+            leadPendingLabel: 'Saving your profile',
             leadDone: _saved,
             avoiding: _avoidingNames(),
             planReady: _planReady,
