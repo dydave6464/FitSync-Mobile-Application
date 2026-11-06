@@ -153,6 +153,27 @@ test('activity endpoints', async (t) => {
     assert.deepEqual((await get(token).expect(200)).body.data.missing, ['weight']);
   });
 
+  await t.test('the week carries the per-step factors of the current profile', async () => {
+    const near = (actual, expected) => assert.ok(
+      Math.abs(actual - expected) < 1e-12, `${actual} is not ${expected}`,
+    );
+    const { userId, token } = await freshUser();
+    await setBody(userId, 170, 70);
+    let { perStep } = (await get(token).expect(200)).body.data;
+    near(perStep.distanceKm, 0.00070380);
+    near(perStep.caloriesBurned, 0.024633);
+    assert.equal(perStep.activeMinutes, 0.01);
+
+    await setBody(userId, null, 70);
+    ({ perStep } = (await get(token).expect(200)).body.data);
+    assert.deepEqual(perStep, { distanceKm: null, caloriesBurned: null, activeMinutes: 0.01 });
+
+    await setBody(userId, 170, null);
+    ({ perStep } = (await get(token).expect(200)).body.data);
+    near(perStep.distanceKm, 0.00070380);
+    assert.equal(perStep.caloriesBurned, null);
+  });
+
   await t.test("one user never sees another's days", async () => {
     const a = await freshUser();
     const b = await freshUser();
