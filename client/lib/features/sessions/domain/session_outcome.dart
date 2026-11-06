@@ -1,4 +1,4 @@
-import '../../exercises/domain/muscle_regions.dart';
+import 'session_history.dart';
 
 /// The four answers to "any pain since?", in the order the sheet shows them.
 ///
@@ -27,9 +27,9 @@ class PendingOutcome {
   /// Empty from a server that does not send them yet.
   final List<String> muscleGroups;
 
-  /// The same name the Progress list and the "+" sheet give a session.
-  String get title =>
-      planName ?? manualWorkoutName(muscleGroups) ?? 'Your own workout';
+  /// The same name the Progress list and the "+" sheet give a session --
+  /// History's own rule, not a copy of it.
+  String get title => sessionTitle(planName, muscleGroups);
 
   factory PendingOutcome.fromJson(Map<String, dynamic> json) => PendingOutcome(
     sessionId: json['sessionId'] as int,
