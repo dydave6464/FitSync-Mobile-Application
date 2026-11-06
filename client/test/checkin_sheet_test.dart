@@ -597,6 +597,13 @@ void main() {
       await _open(tester);
 
       expect(find.byKey(const Key('checkin.handle')), findsOneWidget);
+      // P-19/P-23: the kit's handle, drag claim and height cap, not copies.
+      expect(
+        tester.widget(find.byKey(const Key('checkin.handle'))),
+        isA<FsSheetHandle>(),
+      );
+      expect(find.byType(FsSheetDiscardGuard), findsOneWidget);
+      expect(find.byType(FsSheetHeightCap), findsOneWidget);
       // Its own, inside the discard guard, and not Material's as well:
       // Material's sits outside the sheet's child, where a drag on it would
       // close the sheet without asking (PT-22).

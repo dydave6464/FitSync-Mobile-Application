@@ -1990,6 +1990,104 @@ class FsSheetHandle extends StatelessWidget {
   );
 }
 
+/// [FsDiscardGuard] for a bottom sheet: back, a tap on the scrim and a
+/// swipe down all ask before throwing away what is [dirty].
+///
+/// FsDiscardGuard covers back and the scrim, which ask the route to pop. A
+/// drag down never asks: the bottom sheet pops its route itself once the
+/// drag ends. So while dirty the drag is claimed here first -- the innermost
+/// vertical-drag recognizer wins the arena -- and a clear pull down asks the
+/// route to pop, which the guard turns into the question. A sheet that uses
+/// this draws its own [FsSheetHandle] inside it (`showDragHandle: false`):
+/// Material's handle sits outside the sheet's child, past this claim.
+///
+/// One copy for the check-in and habit sheets, which each held their own.
+class FsSheetDiscardGuard extends StatefulWidget {
+  const FsSheetDiscardGuard({
+    super.key,
+    required this.dirty,
+    required this.child,
+    this.title,
+    this.message,
+  });
+
+  final bool dirty;
+  final Widget child;
+
+  /// Passed to [confirmDiscard].
+  final String? title;
+
+  /// Passed to [confirmDiscard].
+  final String? message;
+
+  /// How far down a drag must pull, or how fast it must fling, to ask.
+  static const minPull = 48.0;
+  static const minFlingVelocity = 700.0;
+
+  @override
+  State<FsSheetDiscardGuard> createState() => _FsSheetDiscardGuardState();
+}
+
+class _FsSheetDiscardGuardState extends State<FsSheetDiscardGuard> {
+  /// How far the current drag has pulled the sheet down.
+  double _dragDown = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final dirty = widget.dirty;
+    return FsDiscardGuard(
+      dirty: dirty,
+      title: widget.title,
+      message: widget.message,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        // Kept out of semantics: otherwise a dirty sheet tells a screen
+        // reader it scrolls, and a scroll gesture runs these callbacks into
+        // the discard question. Screen readers close the sheet through back,
+        // escape or the scrim, which the guard already covers.
+        excludeFromSemantics: true,
+        onVerticalDragStart: dirty ? (_) => _dragDown = 0 : null,
+        onVerticalDragUpdate: dirty
+            ? (details) => _dragDown += details.primaryDelta ?? 0
+            : null,
+        onVerticalDragEnd: dirty
+            ? (details) {
+                final velocity = details.primaryVelocity ?? 0;
+                if (_dragDown > FsSheetDiscardGuard.minPull ||
+                    velocity > FsSheetDiscardGuard.minFlingVelocity) {
+                  Navigator.of(context).maybePop();
+                }
+              }
+            : null,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+/// The tallest a scroll-controlled sheet grows: 0.9 of the screen, so a
+/// strip of the screen behind stays in view above it (it reads as a sheet,
+/// not a new screen) and its top never slides under the status bar.
+///
+/// The theme cannot say this (`bottomSheetTheme.constraints` takes sizes,
+/// not a share of the screen), so a sheet opened with
+/// `isScrollControlled: true` wraps its contents in this.
+class FsSheetHeightCap extends StatelessWidget {
+  const FsSheetHeightCap({super.key, required this.child});
+
+  static const maxHeightFraction = 0.9;
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => ConstrainedBox(
+    constraints: BoxConstraints(
+      maxHeight: MediaQuery.sizeOf(context).height * maxHeightFraction,
+    ),
+    child: child,
+  );
+}
+
 /// The top of a bottom sheet, as the prototype draws every sheet
 /// (ScreenStartSheet, ScreenShareProgress): a 38 x 4 handle, the title, and
 /// an × that closes it.
