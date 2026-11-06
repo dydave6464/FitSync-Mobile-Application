@@ -179,6 +179,7 @@ class GoalStep extends StatelessWidget {
                       key: Key('focus.${goal.value}'),
                       label: goal.label,
                       selected: value.mainGoal == goal.value,
+                      exclusive: true,
                       small: true,
                       onTap: () => onChanged(
                         GoalAnswers(goals: value.goals, mainGoal: goal.value),

@@ -603,6 +603,7 @@ class _AboutStepState extends State<AboutStep> {
                     key: Key('activity.${option.value}'),
                     label: option.label,
                     selected: _activityLevel == option.value,
+                    exclusive: true,
                     onTap: () {
                       setState(() => _activityLevel = option.value);
                       _emit();

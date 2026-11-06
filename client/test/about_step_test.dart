@@ -1,4 +1,7 @@
+import 'dart:ui' show CheckedState;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show SemanticsData;
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 
@@ -67,6 +70,14 @@ Future<AboutAnswers?> _pumpAndEdit(
   await tester.pumpAndSettle();
   return emitted;
 }
+
+/// The semantics a single-choice chip reports (P-1a): one of a group where
+/// picking one unpicks the rest, checked or not checked.
+SemanticsData _chipData(WidgetTester tester, Key key) => tester
+    .getSemantics(
+      find.descendant(of: find.byKey(key), matching: find.byType(Text)),
+    )
+    .getSemanticsData();
 
 void main() {
   testWidgets('offers the two sexes the design shows', (tester) async {
@@ -951,6 +962,23 @@ void main() {
 
       expect(dialog.initialDate, dialog.lastDate);
     });
+  });
+
+  // P-1a: picking an activity level unpicks the others, so a screen reader
+  // hears a radio group, not five independent toggles.
+  testWidgets('the activity levels are one single choice', (tester) async {
+    final handle = tester.ensureSemantics();
+    await _pumpAndEdit(tester, (_) async {}, value: _complete);
+
+    for (final value in _activityValues) {
+      final data = _chipData(tester, Key('activity.$value'));
+      expect(data.flagsCollection.isInMutuallyExclusiveGroup, isTrue);
+      expect(
+        data.flagsCollection.isChecked,
+        value == 'light' ? CheckedState.isTrue : CheckedState.isFalse,
+      );
+    }
+    handle.dispose();
   });
 }
 
