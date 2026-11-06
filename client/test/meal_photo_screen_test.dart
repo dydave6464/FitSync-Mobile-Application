@@ -281,6 +281,38 @@ void main() {
     },
   );
 
+  // The wait can last up to 45 s (NU-14): after 8 s the words change once,
+  // so it is clear the app has not stuck; Cancel stays.
+  testWidgets('a long wait says so once, and a new try starts over', (tester) async {
+    final h = _Harness()..repo.gate = Completer();
+    await _open(tester, h: h, settle: false);
+    const still = 'Still looking — this can take up to half a minute.';
+    await tester.pump(const Duration(seconds: 7));
+    expect(find.text('Looking at your meal…'), findsOneWidget);
+    expect(find.text(still), findsNothing);
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text(still), findsOneWidget);
+    expect(find.text('Looking at your meal…'), findsNothing);
+    expect(
+      tester.getSemantics(find.byKey(const Key('snap.analysing'))),
+      isSemantics(isLiveRegion: true, label: still),
+    );
+    expect(find.byKey(const Key('snap.cancel')), findsOneWidget);
+
+    // It fails; Try again is a new wait, from the first words.
+    h.repo.gate!.completeError(const ApiException('VISION_BUSY', 'x'));
+    await tester.pumpAndSettle();
+    h.repo.gate = Completer();
+    await tester.tap(find.byKey(const Key('snap.retry')));
+    await tester.pump();
+    expect(find.text('Looking at your meal…'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 8));
+    expect(find.text(still), findsOneWidget);
+    h.repo.gate!.complete(_answer);
+    await tester.pumpAndSettle();
+    expect(find.text('White rice'), findsOneWidget);
+  });
+
   testWidgets(
     'the confirm list: every item, the one not on the list, the meal, the total and Log N items',
     (tester) async {

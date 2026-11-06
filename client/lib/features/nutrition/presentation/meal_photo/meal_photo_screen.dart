@@ -99,6 +99,12 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
   /// at, so the server stops and does not count it.
   Completer<void>? _cancel;
 
+  /// The answer can take up to 45 s: after [_slowAfter] the wait says so,
+  /// once, so it does not look stuck.
+  static const _slowAfter = Duration(seconds: 8);
+  Timer? _slowTimer;
+  bool _slow = false;
+
   ScaffoldMessengerState? _messenger;
   int _undoToken = 0;
   bool _undoShowing = false;
@@ -117,6 +123,7 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
 
   @override
   void dispose() {
+    _slowTimer?.cancel();
     // A "Removed … · Undo" left up would act on a screen that is gone.
     if (_undoShowing) _messenger?.hideCurrentSnackBar();
     // Has no effect once the answer has arrived.
@@ -131,9 +138,15 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
     final previous = _cancel;
     if (previous != null && !previous.isCompleted) previous.complete();
     final cancel = _cancel = Completer<void>();
+    _slow = false;
+    _slowTimer?.cancel();
+    _slowTimer = Timer(_slowAfter, () {
+      if (mounted && attempt == _attempt) setState(() => _slow = true);
+    });
     try {
       final r = await ref.read(mealPhotoRepositoryProvider).recognize(_photo.bytes, _photo.mimeType, cancel: cancel.future);
       if (!mounted || attempt != _attempt) return;
+      _slowTimer?.cancel();
       setState(() {
         _recognition = r;
         if (r.isEmpty) {
@@ -150,6 +163,7 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
       });
     } catch (e) {
       if (!mounted || attempt != _attempt) return;
+      _slowTimer?.cancel();
       if (e is ApiException && e.code == 'PRO_REQUIRED') {
         final navigator = Navigator.of(context);
         navigator.pop(false);
@@ -335,7 +349,11 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
         Semantics(
           key: const Key('snap.analysing'),
           liveRegion: true,
-          child: Text('Looking at your meal…', textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium),
+          child: Text(
+            _slow ? 'Still looking — this can take up to half a minute.' : 'Looking at your meal…',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
         ),
         const SizedBox(height: 8),
         TextButton(
