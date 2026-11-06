@@ -12,6 +12,14 @@ import '../units.dart';
 ///
 /// Screens compose these instead of styling Material widgets inline, which is
 /// what keeps the look consistent and the screens readable.
+///
+/// Field labels follow one rule, so a form does not mix four styles:
+///
+/// * In the app, a field's name is an eyebrow above it, given as
+///   `FsField(label:)`, wherever the prototype draws an eyebrow there.
+/// * The auth forms (sign in, check email, forgot password) use
+///   [FsLabeledField]: a sentence-case name above, helper or error below.
+/// * [FsStatField] carries its own name, the dim label in its card.
 
 /// `box-shadow: 0 10px 24px -10px` in the accent — the glow the design puts
 /// under anything raised and accent-coloured. `.btn.primary` and the nav's
@@ -422,7 +430,12 @@ class FsField extends StatelessWidget {
 
   /// The field's name, drawn as an eyebrow above it and given to the field
   /// as its spoken label. [hint] stays the placeholder, which vanishes as
-  /// soon as the user types and takes the name with it.
+  /// soon as the user types and takes the name with it. The app's way of
+  /// naming a field; see the label rule at the top of this file.
+  ///
+  /// With a label the eyebrow and field stretch to the width they are
+  /// given, so it needs a bounded one: in a Row, wrap it in Expanded or a
+  /// SizedBox. Unbounded, layout fails.
   final String? label;
 
   /// Applied to the inner [TextField] rather than to this wrapper, so
@@ -532,6 +545,9 @@ class FsField extends StatelessWidget {
 /// with its name and any message about it. Not [MergeSemantics]: that would
 /// also swallow the eye button inside the password field, leaving it
 /// unreachable by TalkBack and VoiceOver.
+///
+/// For the auth forms only; everywhere else a field is named with
+/// `FsField(label:)` (the label rule at the top of this file).
 class FsLabeledField extends StatelessWidget {
   const FsLabeledField({
     super.key,
