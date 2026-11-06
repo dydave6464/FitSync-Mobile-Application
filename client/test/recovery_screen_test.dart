@@ -838,6 +838,18 @@ void main() {
     expect(chart.label, '7-day training load');
   });
 
+  testWidgets('Check in and Update are full-size tap targets', (tester) async {
+    final semantics = tester.ensureSemantics();
+    for (final overview in [
+      const RecoveryOverview(todayCheckin: null, latestEstimate: null, load: []),
+      _withToday(_todays()),
+    ]) {
+      await _pump(tester, overview);
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+    }
+    semantics.dispose();
+  });
+
   testWidgets('a week of no workouts says what fills the load card', (
     tester,
   ) async {
