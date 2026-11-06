@@ -203,6 +203,21 @@ test('body weight routes', async (t) => {
     assert.equal(await u.profileWeight(), 80);
   });
 
+  // Two days left, so the newest remaining weigh-in differs from the oldest.
+  // Logged out of date order, so neither an ascending sort nor the insert
+  // order can pass for "newest day".
+  await t.test('deleting the newest day moves the profile weight to the newest day left', async () => {
+    const u = await freshUser();
+    await u.log(B, 79).expect(201);
+    await u.log(A, 80).expect(201);
+    await u.log(C, 78).expect(201);
+
+    const res = await u.del(C).expect(200);
+    assert.equal(res.body.data.entries, 2);
+    assert.equal(res.body.data.weightKg, 79, "B's weight, not A's");
+    assert.equal(await u.profileWeight(), 79);
+  });
+
   await t.test('deleting the earliest day moves the start to the next one', async () => {
     const u = await freshUser();
     await u.log(A, 80).expect(201);

@@ -228,6 +228,20 @@ test('body weight db', async (t) => {
     assert.equal(await weightOf(userId), 79, 'the newest remaining weigh-in');
   });
 
+  // Two days left, so the newest remaining day differs from the oldest; logged
+  // out of date order, so the insert order can't pass for the newest day.
+  await t.test('deleteEntry syncs users.weight_kg to the newest of several days left', async () => {
+    const userId = await makeUser(pool, 'del-newest-left@example.com');
+    await bw.writeEntry(pool, userId, { weightKg: 79, loggedOn: '2026-03-02' });
+    await bw.writeEntry(pool, userId, { weightKg: 80, loggedOn: '2026-03-01' });
+    await bw.writeEntry(pool, userId, { weightKg: 78, loggedOn: '2026-03-03' });
+
+    const res = await bw.deleteEntry(pool, userId, '2026-03-03');
+    assert.equal(res.entries, 2);
+    assert.equal(res.weightKg, 79);
+    assert.equal(await weightOf(userId), 79, 'the newest day left, not the oldest');
+  });
+
   await t.test('deleteEntry refuses the only weigh-in day', async () => {
     const userId = await makeUser(pool, 'del-only@example.com');
     await bw.writeEntry(pool, userId, { weightKg: 80, loggedOn: '2026-03-01' });
