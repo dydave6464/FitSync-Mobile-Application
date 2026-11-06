@@ -66,7 +66,9 @@ class ReadinessCard extends StatelessWidget {
             ? Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const FsEyebrow('Readiness'),
+                  // Folds into the card's one button node, which a screen
+                  // reader then also offers as a heading.
+                  Semantics(header: true, child: const FsEyebrow('Readiness')),
                   const SizedBox(height: 8),
                   Text(
                     'Check in this morning to get your first score.',

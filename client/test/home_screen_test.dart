@@ -828,6 +828,43 @@ void main() {
       expect(isHeader(tester, 'WORKOUT IN PROGRESS'), isTrue);
       handle.dispose();
     });
+
+    testWidgets('with no readiness score yet, that card is headed too', (
+      tester,
+    ) async {
+      _tallScreen(tester);
+      final handle = tester.ensureSemantics();
+      await _pumpHome(
+        tester,
+        recovery: const RecoveryOverview(
+          todayCheckin: null,
+          latestEstimate: null,
+          load: [],
+        ),
+      );
+      // The title folds into the card's one button node (as Progress and
+      // Routine do), so that node is the heading; the check-in chip is its
+      // own button and stays out of it.
+      expect(isHeader(tester, 'READINESS'), isTrue);
+      expect(isHeader(tester, 'Check in'), isFalse);
+      handle.dispose();
+    });
+
+    testWidgets('a plan just built is headed too', (tester) async {
+      _tallScreen(tester);
+      final handle = tester.ensureSemantics();
+      await _pumpHome(tester, planReady: true);
+      expect(isHeader(tester, 'YOUR PLAN IS READY'), isTrue);
+      handle.dispose();
+    });
+
+    testWidgets('the profile nudge is headed too', (tester) async {
+      _tallScreen(tester);
+      final handle = tester.ensureSemantics();
+      await _pumpHome(tester, profile: _profile(mainGoal: null));
+      expect(isHeader(tester, 'Finish your profile'), isTrue);
+      handle.dispose();
+    });
   });
 
   group('readiness and progress', () {

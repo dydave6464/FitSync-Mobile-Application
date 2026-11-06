@@ -71,14 +71,19 @@ class PlanReadyCard extends StatelessWidget {
                           ),
                           const SizedBox(width: 6),
                           Flexible(
-                            child: Text(
-                              'YOUR PLAN IS READY',
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              // The eyebrow's type in the words' green: the
-                              // brand green is under 3:1 as text on its own
-                              // tint.
-                              style: fsEyebrow(t).copyWith(color: t.accentText),
+                            child: Semantics(
+                              container: true,
+                              header: true,
+                              child: Text(
+                                'YOUR PLAN IS READY',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                // The eyebrow's type in the words' green: the
+                                // brand green is under 3:1 as text on its own
+                                // tint.
+                                style: fsEyebrow(t)
+                                    .copyWith(color: t.accentText),
+                              ),
                             ),
                           ),
                         ],

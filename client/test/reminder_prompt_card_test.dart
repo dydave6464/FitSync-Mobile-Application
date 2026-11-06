@@ -118,6 +118,22 @@ void main() {
     },
   );
 
+  testWidgets('its title is a heading, so moving by heading finds it', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester, scheduler: _FakeScheduler(granted: false));
+    expect(
+      tester
+          .getSemantics(find.text('Get reminders for your habits'))
+          .getSemanticsData()
+          .flagsCollection
+          .isHeader,
+      isTrue,
+    );
+    handle.dispose();
+  });
+
   testWidgets('hidden when permission is already granted', (tester) async {
     await _pump(tester, scheduler: _FakeScheduler(granted: true));
 

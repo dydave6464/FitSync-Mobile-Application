@@ -142,9 +142,13 @@ class _ReminderPromptCardState extends ConsumerState<ReminderPromptCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Get reminders for your habits',
-                style: theme.textTheme.titleMedium,
+              Semantics(
+                container: true,
+                header: true,
+                child: Text(
+                  'Get reminders for your habits',
+                  style: theme.textTheme.titleMedium,
+                ),
               ),
               const SizedBox(height: 12),
               Wrap(
