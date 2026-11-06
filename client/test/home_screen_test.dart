@@ -523,7 +523,7 @@ void main() {
     expect(find.byType(PlanCard), findsOneWidget);
   });
 
-  testWidgets('start workout and the nudge each select their tab', (
+  testWidgets('the plan button and the nudge each select their tab', (
     tester,
   ) async {
     final selected = <String>[];
@@ -536,7 +536,7 @@ void main() {
 
     await tester.tap(find.text('Finish your profile'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Start workout'));
+    await tester.tap(find.byKey(const Key('home.plan.open')));
     await tester.pumpAndSettle();
 
     expect(selected, [
@@ -549,7 +549,7 @@ void main() {
     tester,
   ) async {
     await _pumpHome(tester, plan: null);
-    expect(find.text('Start workout'), findsNothing);
+    expect(find.byKey(const Key('home.plan.open')), findsNothing);
     expect(find.textContaining('no active plan'), findsOneWidget);
     expect(
       find.byKey(const Key('home.noPlan')),
@@ -734,7 +734,7 @@ void main() {
       expect(container.read(planReadyProvider), isFalse);
     });
 
-    testWidgets('Start workout on the plan card puts it away too', (
+    testWidgets("View today's plan on the plan card puts it away too", (
       tester,
     ) async {
       _tallScreen(tester);
@@ -743,7 +743,7 @@ void main() {
 
       // The usual first move: straight to the plan card's own button. The
       // plan has been found, so the welcome has done its job.
-      await tester.tap(find.text('Start workout'));
+      await tester.tap(find.byKey(const Key('home.plan.open')));
       await tester.pumpAndSettle();
 
       expect(trains, 1);

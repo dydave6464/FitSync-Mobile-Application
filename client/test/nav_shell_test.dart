@@ -729,7 +729,7 @@ void main() {
     tester,
   ) async {
     // Opening Train at Recovery (via the readiness card) and then going
-    // back to Home must not leave "Start workout" landing on Recovery,
+    // back to Home must not leave "View today's plan" landing on Recovery,
     // which has no start button.
     await _pumpShell(tester, plan: _plan);
     await tester.pumpAndSettle();
@@ -745,9 +745,9 @@ void main() {
 
     await tester.tap(find.byKey(const Key('nav.0')));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Start workout'));
+    await tester.ensureVisible(find.byKey(const Key('home.plan.open')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Start workout'));
+    await tester.tap(find.byKey(const Key('home.plan.open')));
     await tester.pumpAndSettle();
 
     expect(find.byType(PlanScreen), findsOneWidget);

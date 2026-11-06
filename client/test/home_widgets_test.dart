@@ -952,4 +952,28 @@ void main() {
       );
     });
   }
+
+  testWidgets('the plan card\'s button says it opens the plan, and does', (
+    tester,
+  ) async {
+    // It switches to Train's Plan tab; it does not start a session, so it
+    // must not promise one with "Start workout" and a play icon.
+    var opened = 0;
+    await tester.pumpWidget(
+      _host(
+        PlanCard(
+          plan: _plan(sessionLengthMin: 48, equipment: const ['Barbell']),
+          weightKg: 70,
+          onStart: () => opened++,
+        ),
+      ),
+    );
+
+    expect(find.text('Start workout'), findsNothing);
+    expect(find.byIcon(Icons.play_arrow), findsNothing);
+    expect(find.text("View today's plan"), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('home.plan.open')));
+    expect(opened, 1);
+  });
 }
