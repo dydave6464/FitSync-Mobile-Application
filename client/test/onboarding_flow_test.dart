@@ -1614,6 +1614,10 @@ void main() {
     await tester.enterText(find.byKey(const Key('weightKg')), '72');
     await tester.enterText(find.byKey(const Key('heightCm')), '0');
     await tester.pumpAndSettle();
+    // The first Continue queries the 0; the second keeps it.
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pumpAndSettle();
+    expect(patches, isEmpty);
     await tester.tap(find.byKey(const Key('continue')));
     await tester.pumpAndSettle();
 
@@ -1846,6 +1850,121 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(find.byType(FilledButton), findsNothing);
+    });
+  });
+
+  group('About step answers that look wrong', () {
+    Future<void> toAbout(WidgetTester tester) async {
+      await _skip(tester);
+      expect(find.text('STEP 2 / 6'), findsOneWidget);
+    }
+
+    testWidgets('an implausible height is queried, then kept on a second '
+        'Continue', (tester) async {
+      final patches = <Map<String, dynamic>>[];
+      await _pumpFlow(tester, patches: patches);
+      await toAbout(tester);
+
+      await tester.enterText(find.byKey(const Key('heightCm')), '17');
+      await tester.enterText(find.byKey(const Key('weightKg')), '72');
+      await tester.pumpAndSettle();
+      await _tapKey(tester, const Key('continue'));
+
+      expect(patches, isEmpty, reason: 'nothing saved until it is checked');
+      expect(find.text('STEP 2 / 6'), findsOneWidget);
+      final inline = find.byKey(const Key('error.heightCm'));
+      expect(inline, findsOneWidget);
+      expect(
+        find.descendant(of: inline, matching: find.textContaining('17 cm')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('error')),
+          matching: find.textContaining('height'),
+        ),
+        findsOneWidget,
+      );
+
+      // The user meant it: a second Continue saves it as it is.
+      await _tapKey(tester, const Key('continue'));
+      expect(patches, [
+        {'heightCm': 17.0, 'weightKg': 72.0},
+      ]);
+      expect(find.text('STEP 3 / 6'), findsOneWidget);
+    });
+
+    testWidgets('fixing the queried answer clears its message and saves', (
+      tester,
+    ) async {
+      final patches = <Map<String, dynamic>>[];
+      await _pumpFlow(tester, patches: patches);
+      await toAbout(tester);
+
+      await tester.enterText(find.byKey(const Key('heightCm')), '17');
+      await tester.pumpAndSettle();
+      await _tapKey(tester, const Key('continue'));
+      expect(find.byKey(const Key('error.heightCm')), findsOneWidget);
+
+      await tester.enterText(find.byKey(const Key('heightCm')), '175');
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('error.heightCm')), findsNothing);
+      expect(find.byKey(const Key('error')), findsNothing);
+
+      await _tapKey(tester, const Key('continue'));
+      expect(patches, [
+        {'heightCm': 175.0},
+      ]);
+    });
+
+    testWidgets('a new implausible value is queried again', (tester) async {
+      final patches = <Map<String, dynamic>>[];
+      await _pumpFlow(tester, patches: patches);
+      await toAbout(tester);
+
+      await tester.enterText(find.byKey(const Key('heightCm')), '17');
+      await tester.pumpAndSettle();
+      await _tapKey(tester, const Key('continue'));
+      await tester.enterText(find.byKey(const Key('heightCm')), '18');
+      await tester.pumpAndSettle();
+      await _tapKey(tester, const Key('continue'));
+
+      expect(patches, isEmpty);
+      expect(find.byKey(const Key('error.heightCm')), findsOneWidget);
+    });
+
+    testWidgets('a rejected answer names the field the server pointed at', (
+      tester,
+    ) async {
+      await _pumpFlow(
+        tester,
+        patches: [],
+        onPatch: () async => throw const ApiException(
+          'INVALID_PROFILE_FIELD',
+          'weightKg must be a number between 0 and 1000.',
+          details: [
+            {'field': 'weightKg'},
+          ],
+        ),
+      );
+      await toAbout(tester);
+
+      await tester.enterText(find.byKey(const Key('weightKg')), '72');
+      await tester.pumpAndSettle();
+      await _tapKey(tester, const Key('continue'));
+
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('error')),
+          matching: find.text(
+            "Your weight can't be saved as it is. Check it and try again.",
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('error.weightKg')), findsOneWidget);
+      expect(find.textContaining('weightKg'), findsNothing);
+      expect(find.text('STEP 2 / 6'), findsOneWidget);
     });
   });
 }

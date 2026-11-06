@@ -48,6 +48,14 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
   String? _error;
   bool _seeded = false;
 
+  /// About-step answers to check, by API field name, shown under each one.
+  Map<String, String> _fieldErrors = const {};
+
+  /// The About answers [_fieldErrors] describe. A Continue with the same
+  /// numbers keeps them -- the range check is a question, not a rule -- and
+  /// editing one of them takes its message away.
+  AboutAnswers? _queried;
+
   /// Whether the last attempt at building the plan failed. Turns the last
   /// step's Continue into "Try again": the reminder question was answered on
   /// the way in, so the build is the only thing left to repeat.
@@ -264,7 +272,64 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     ];
   }
 
-  Future<void> _continue() => _save(_saveCurrentStep);
+  Future<void> _continue() {
+    if (_index == 1 && _queryImplausible()) return Future.value();
+    return _save(_saveCurrentStep);
+  }
+
+  /// Stops the About step's Continue once to ask about a number that looks
+  /// like a slip (17 cm, 7 kg). True when it asked; a second Continue with
+  /// the same numbers goes ahead.
+  bool _queryImplausible() {
+    final problems = aboutRangeProblems(_about, ref.read(weightUnitProvider));
+    if (problems.isEmpty) return false;
+    final queried = _queried;
+    if (queried != null &&
+        problems.keys.every(
+          (field) => _aboutValue(queried, field) == _aboutValue(_about, field),
+        )) {
+      return false;
+    }
+    setState(() {
+      _fieldErrors = problems;
+      _queried = _about;
+      final names = [for (final field in problems.keys) _fieldNames[field]!];
+      _error =
+          "Check your ${names.join(' and ')}. If it's right, tap Continue "
+          'again.';
+    });
+    return true;
+  }
+
+  /// One About answer by its API field name.
+  static Object? _aboutValue(AboutAnswers about, String field) =>
+      switch (field) {
+        'sex' => about.sex,
+        'dateOfBirth' => about.dateOfBirth,
+        'heightCm' => about.heightCm,
+        'weightKg' => about.weightKg,
+        'goalWeightKg' => about.goalWeightKg,
+        'activityLevel' => about.activityLevel,
+        _ => null,
+      };
+
+  /// The About step reports every edit here. An answer the user has changed
+  /// since it was queried loses its message; once none is left, so does the
+  /// line above Continue that pointed at them.
+  void _onAboutChanged(AboutAnswers value) {
+    _about = value;
+    final queried = _queried;
+    if (_fieldErrors.isEmpty || queried == null) return;
+    final left = {
+      for (final MapEntry(:key, value: message) in _fieldErrors.entries)
+        if (_aboutValue(queried, key) == _aboutValue(value, key)) key: message,
+    };
+    if (left.length == _fieldErrors.length) return;
+    setState(() {
+      _fieldErrors = left;
+      if (left.isEmpty) _error = null;
+    });
+  }
 
   Future<void> _skip() => _save(_saveTypedAnswers);
 
@@ -297,6 +362,16 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
         _error = _plainError(error);
         _busy = false;
         if (_index == _total - 1) _buildFailed = true;
+        // A rejected About answer is also flagged under its own card.
+        final field = _rejectedField(error);
+        if (_index == 1 &&
+            field != null &&
+            _aboutValue(_about, field) != null) {
+          _fieldErrors = {
+            field: "This can't be saved as it is. Check it and try again.",
+          };
+          _queried = _about;
+        }
       });
       return;
     }
@@ -307,12 +382,37 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
   }
 
   /// A failure in words a user can act on: [userMessage], except for the
-  /// server's rejections of a profile answer, which name the API field
-  /// ("goalWeightKg must be ...") rather than anything on screen.
-  static String _plainError(Object error) => switch (error) {
-    ApiException(code: 'INVALID_PROFILE_FIELD') =>
-      "One of these answers can't be saved as it is. Check it and try again.",
-    _ => userMessage(error),
+  /// server's rejections of a profile answer, whose message names the API
+  /// field ("goalWeightKg must be ...") rather than anything on screen. The
+  /// field it sends in `details` is named the way the step names it instead.
+  static String _plainError(Object error) {
+    if (error is! ApiException || error.code != 'INVALID_PROFILE_FIELD') {
+      return userMessage(error);
+    }
+    final name = _fieldNames[_rejectedField(error)];
+    return name == null
+        ? "One of these answers can't be saved as it is. Check it and try "
+              'again.'
+        : "Your $name can't be saved as it is. Check it and try again.";
+  }
+
+  /// The profile field a rejection points at, from the server's `details`.
+  static String? _rejectedField(Object error) => switch (error) {
+    ApiException(code: 'INVALID_PROFILE_FIELD', :final details) =>
+      details.firstOrNull?['field'] as String?,
+    _ => null,
+  };
+
+  /// Profile fields as the steps name them on screen.
+  static const _fieldNames = {
+    'sex': 'sex',
+    'dateOfBirth': 'date of birth',
+    'heightCm': 'height',
+    'weightKg': 'weight',
+    'goalWeightKg': 'goal weight',
+    'activityLevel': 'activity level',
+    'fitnessLevel': 'experience',
+    'trainingLocation': 'training location',
   };
 
   /// The last step's Continue: unlike every earlier step, this one has
@@ -361,11 +461,15 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
 
   void _advance() => setState(() {
     _error = null;
+    _fieldErrors = const {};
+    _queried = null;
     if (_index < _total - 1) _index++;
   });
 
   void _back() => setState(() {
     _error = null;
+    _fieldErrors = const {};
+    _queried = null;
     _buildFailed = false;
     if (_index > 0) _index--;
   });
@@ -377,8 +481,9 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     ),
     1 => AboutStep(
       value: _about,
-      onChanged: (value) => _about = value,
+      onChanged: _onAboutChanged,
       goals: _goals.goals,
+      fieldErrors: _fieldErrors,
       // Saved to the account as it is tapped rather than held with the
       // rest of the step: it changes what the two cards on screen say
       // right now, so it cannot wait for Continue.

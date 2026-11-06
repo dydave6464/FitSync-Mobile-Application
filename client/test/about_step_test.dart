@@ -43,6 +43,7 @@ Future<AboutAnswers?> _pumpAndEdit(
   AboutAnswers value = const AboutAnswers(),
   WeightUnit unit = WeightUnit.kg,
   List<String> goals = const [],
+  Map<String, String> fieldErrors = const {},
 }) async {
   AboutAnswers? emitted;
   await tester.pumpWidget(
@@ -53,6 +54,7 @@ Future<AboutAnswers?> _pumpAndEdit(
             value: value,
             unit: unit,
             goals: goals,
+            fieldErrors: fieldErrors,
             onChanged: (v) => emitted = v,
           ),
         ),
@@ -619,6 +621,68 @@ void main() {
     });
 
     expect(emitted?.activityLevel, _activityValues.last);
+  });
+
+  group('implausible numbers', () {
+    test('a height or weight well outside a person is queried', () {
+      final problems = aboutRangeProblems(
+        const AboutAnswers(heightCm: 17, weightKg: 7, goalWeightKg: 400),
+        WeightUnit.kg,
+      );
+
+      expect(problems.keys, ['heightCm', 'weightKg', 'goalWeightKg']);
+      expect(problems['heightCm'], contains('17 cm'));
+      expect(problems['heightCm'], contains('100–250 cm'));
+      expect(problems['weightKg'], contains('7 kg'));
+      expect(problems['weightKg'], contains('25–300 kg'));
+      expect(problems['goalWeightKg'], contains('400 kg'));
+    });
+
+    test('the edges of the ranges and blanks are fine', () {
+      expect(
+        aboutRangeProblems(
+          const AboutAnswers(heightCm: 100, weightKg: 300, goalWeightKg: 25),
+          WeightUnit.kg,
+        ),
+        isEmpty,
+      );
+      expect(aboutRangeProblems(const AboutAnswers(), WeightUnit.kg), isEmpty);
+    });
+
+    test('a weight is queried in the unit it was typed in', () {
+      final problems = aboutRangeProblems(
+        AboutAnswers(weightKg: parseWeight('15', WeightUnit.lb)),
+        WeightUnit.lb,
+      );
+
+      expect(problems['weightKg'], contains('15 lb'));
+      expect(problems['weightKg'], contains('55–661 lb'));
+    });
+
+    testWidgets('a queried answer is flagged right under its card', (
+      tester,
+    ) async {
+      await _pumpAndEdit(
+        tester,
+        (_) async {},
+        value: const AboutAnswers(heightCm: 17, weightKg: 72),
+        fieldErrors: const {'heightCm': 'Check this: 17 cm?'},
+      );
+
+      final error = find.byKey(const Key('error.heightCm'));
+      expect(error, findsOneWidget);
+      expect(
+        find.descendant(of: error, matching: find.text('Check this: 17 cm?')),
+        findsOneWidget,
+      );
+      final height = tester.getRect(find.byKey(const Key('heightCm')));
+      expect(tester.getRect(error).top, greaterThan(height.bottom));
+      expect(
+        tester.getRect(error).top - height.bottom,
+        lessThan(40),
+        reason: 'under the card, not at the end of the step',
+      );
+    });
   });
 }
 

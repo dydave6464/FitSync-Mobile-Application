@@ -31,6 +31,60 @@ class AboutAnswers {
   final String? activityLevel;
 }
 
+/// Heights and body weights a person can plausibly have. Outside them a
+/// typed number is far more likely a slip -- 17 for 170 -- than a fact, and
+/// it would drive the plan and the calorie target. Soft limits: the step
+/// asks once, and a second Continue keeps the number (the server accepts
+/// anything from 0 to 1000).
+const heightRangeCm = (min: 100.0, max: 250.0);
+const weightRangeKg = (min: 25.0, max: 300.0);
+
+/// The answers on this step that look like typos, by API field name, each
+/// with what to say under its card. Weights are worded in [unit], the one the
+/// user typed in.
+Map<String, String> aboutRangeProblems(AboutAnswers value, WeightUnit unit) {
+  String number(double n) =>
+      n == n.roundToDouble() ? n.toStringAsFixed(0) : n.toString();
+
+  String? query(
+    double? measured,
+    String name,
+    ({double min, double max}) range, {
+    WeightUnit? weightUnit,
+  }) {
+    if (measured == null || (measured >= range.min && measured <= range.max)) {
+      return null;
+    }
+    final shown = weightUnit == null
+        ? '${number(measured)} cm'
+        : formatWeightWithUnit(measured, weightUnit);
+    final min = weightUnit == null
+        ? number(range.min)
+        : convertFromKg(range.min, weightUnit).round().toString();
+    final max = weightUnit == null
+        ? number(range.max)
+        : convertFromKg(range.max, weightUnit).round().toString();
+    final suffix = weightUnit?.api ?? 'cm';
+    return 'Check this: $shown? $name is usually $min–$max $suffix.';
+  }
+
+  return {
+    'heightCm': ?query(value.heightCm, 'Height', heightRangeCm),
+    'weightKg': ?query(
+      value.weightKg,
+      'Weight',
+      weightRangeKg,
+      weightUnit: unit,
+    ),
+    'goalWeightKg': ?query(
+      value.goalWeightKg,
+      'Goal weight',
+      weightRangeKg,
+      weightUnit: unit,
+    ),
+  };
+}
+
 /// The two `sex` values the design offers.
 ///
 /// The schema also has `prefer_not_to_say`, and profiles answered under the
@@ -107,9 +161,16 @@ class AboutStep extends StatefulWidget {
     this.unit = WeightUnit.kg,
     this.onUnitChanged,
     required this.goals,
+    this.fieldErrors = const {},
   });
 
   final AboutAnswers value;
+
+  /// What to say under an answer that needs checking, by API field name
+  /// (`heightCm`, `weightKg`, ...): a typo [aboutRangeProblems] caught, or a
+  /// value the server turned down. Shown right under that answer's card, so
+  /// the user does not have to guess which of six to fix.
+  final Map<String, String> fieldErrors;
   final ValueChanged<AboutAnswers> onChanged;
 
   /// The goals step 1 collected, or the saved ones in Settings. Goal weight
@@ -286,6 +347,17 @@ class _AboutStepState extends State<AboutStep> {
     focusNode: focusNode,
   );
 
+  /// [AboutStep.fieldErrors]'s message for [field], under the answer it is
+  /// about; nothing when that answer is fine.
+  List<Widget> _errorFor(String field) {
+    final message = widget.fieldErrors[field];
+    if (message == null) return const [];
+    return [
+      const SizedBox(height: 8),
+      FsErrorLine(message, key: Key('error.$field')),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
@@ -321,6 +393,7 @@ class _AboutStepState extends State<AboutStep> {
             _emit();
           },
         ),
+        ..._errorFor('sex'),
         const SizedBox(height: 18),
         const FsEyebrow('Date of birth'),
         const SizedBox(height: 10),
@@ -347,6 +420,7 @@ class _AboutStepState extends State<AboutStep> {
             ],
           ),
         ),
+        ..._errorFor('dateOfBirth'),
         const SizedBox(height: 14),
         LayoutBuilder(
           builder: (context, constraints) {
@@ -387,6 +461,8 @@ class _AboutStepState extends State<AboutStep> {
             );
           },
         ),
+        ..._errorFor('heightCm'),
+        ..._errorFor('weightKg'),
         const SizedBox(height: 10),
         if (_showGoalWeight) ...[
           _statField(
@@ -398,6 +474,7 @@ class _AboutStepState extends State<AboutStep> {
             accent: widget.goals.contains('lose_weight'),
             focusNode: _goalWeightFocus,
           ),
+          ..._errorFor('goalWeightKg'),
           const SizedBox(height: 6),
           Text(
             'Optional. Shows as your target line on the weight chart.',
@@ -451,6 +528,7 @@ class _AboutStepState extends State<AboutStep> {
             ),
           ),
         ),
+        ..._errorFor('activityLevel'),
         // Absent until every term of the equation is answered — the same rule
         // `estimateSessionKcal` follows for an unknown body weight. A card
         // that filled its gaps with population averages would show a
