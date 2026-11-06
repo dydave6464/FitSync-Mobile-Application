@@ -62,20 +62,25 @@ class NutritionDayController extends AsyncNotifier<NutritionDay> {
   /// this rethrows, so the caller can say so. With no [date] and no day
   /// loaded there is nowhere to save, which throws a [StateError]. Returns
   /// the saved entry, so the caller can offer to change it.
-  Future<FoodEntry> log(Food food, {required String mealType, required double servings, String? date}) async {
+  ///
+  /// A caller makes one [clientId] per log and sends it again on Try again
+  /// (see [NutritionRepository.logEntry]), so a first save that landed
+  /// comes back rather than being saved twice.
+  Future<FoodEntry> log(Food food, {required String mealType, required double servings, String? date, String? clientId}) async {
     final target = date ?? state.value?.date;
     if (target == null) throw StateError('No day is loaded to log to.');
     final pending = FoodEntry.pending(id: --_pendingIds, food: food, mealType: mealType, servings: servings);
     _onDay(target, (day) => day.withEntry(pending));
     final FoodEntry saved;
     try {
-      saved = await _repo.logEntry(date: target, mealType: mealType, servings: servings, food: food);
+      saved = await _repo.logEntry(date: target, mealType: mealType, servings: servings, food: food, clientId: clientId);
     } catch (_) {
       _onDay(target, (day) => day.without(pending.id));
       rethrow;
     }
     // The real entry, so it can be deleted even if the refetch below fails.
-    _onDay(target, (day) => day.without(pending.id).withEntry(saved));
+    // A retry may return an entry a reload already shows: listed once.
+    _onDay(target, (day) => day.without(pending.id).without(saved.id).withEntry(saved));
     ref.invalidate(recentFoodsProvider);
     await _settle(target);
     return saved;

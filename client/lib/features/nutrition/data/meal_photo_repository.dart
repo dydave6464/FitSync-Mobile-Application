@@ -4,7 +4,8 @@ import 'dart:typed_data';
 import '../../../core/api_client.dart';
 import '../domain/meal_photo.dart';
 
-/// Snap a meal's two calls: send a photo, then log what the user confirmed.
+/// Snap a meal's calls: ask about today, send a photo, then log what the
+/// user confirmed.
 class MealPhotoRepository {
   MealPhotoRepository(this._api);
 
@@ -18,6 +19,16 @@ class MealPhotoRepository {
 
   /// A FatSecret item is fetched from FatSecret while logging.
   static const logTimeout = Duration(seconds: 30);
+
+  /// The capture sheet's question is a nicety: it gives up quickly.
+  /// getJson has no timeout parameter, so this wraps the call.
+  static const todayTimeout = Duration(seconds: 5);
+
+  /// How many photos are left today, and today's unlogged photo, if any.
+  Future<PhotoToday> today() async {
+    final data = await _api.getJson('/api/v1/nutrition/recognitions/today').timeout(todayTimeout);
+    return PhotoToday.fromJson(data);
+  }
 
   /// Completing [cancel] drops the request: the server then stops, sends
   /// nothing more to the AI and does not count the photo.

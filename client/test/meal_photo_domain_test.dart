@@ -261,4 +261,22 @@ void main() {
     );
     expect(sameFood(_rice, _shake), isFalse);
   });
+
+  // NU-15 / #21: what the capture sheet learns before a photo.
+  test('PhotoToday reads the allowance with no unlogged photo', () {
+    final t = PhotoToday.fromJson({'limit': 15, 'remainingToday': 12, 'unlogged': null});
+    expect([t.limit, t.remainingToday, t.unlogged, t.unloggedAt], [15, 12, null, null]);
+  });
+
+  test('PhotoToday reads an unlogged photo as a PhotoRecognition', () {
+    final t = PhotoToday.fromJson({
+      'limit': 15,
+      'remainingToday': 12,
+      'unlogged': {..._answer, 'createdAt': '2026-11-06T04:05:12.000Z'},
+    });
+    final u = t.unlogged!;
+    expect([u.recognitionId, u.items.length, u.items.first.itemId, u.items.first.servings, u.unlisted.single.name],
+        [7, 2, 40, 1.5, 'Atchara (pickled papaya)']);
+    expect(t.unloggedAt, DateTime.utc(2026, 11, 6, 4, 5, 12));
+  });
 }

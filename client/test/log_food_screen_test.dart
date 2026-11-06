@@ -617,5 +617,22 @@ void main() {
     await tester.pumpAndSettle();
     expect(repo.calls.where((c) => c == 'log 2026-10-14 dinner Chicken adobo x1.5'), hasLength(2));
     expect(find.text("Couldn't save Chicken adobo. Couldn't reach FitSync. Check your connection and try again."), findsNothing);
+    // The same key both times, so a first save that did land is not doubled.
+    expect(repo.clientIds, hasLength(2));
+    expect(repo.clientIds.first, isNotNull);
+    expect(repo.clientIds.last, repo.clientIds.first);
+
+    // A separate log is a new one, with its own key.
+    await tester.tap(find.text('go'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('food.search')), 'adobo');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Chicken adobo'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
+    expect(repo.clientIds, hasLength(3));
+    expect(repo.clientIds.last, isNot(repo.clientIds.first));
   });
 }

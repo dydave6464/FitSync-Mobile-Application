@@ -42,14 +42,25 @@ class FakeNutritionRepository implements NutritionRepository {
     return dayOf(date ?? today);
   }
 
+  /// Every clientId logEntry was sent, in order (null when none was).
+  final List<String?> clientIds = [];
+
+  /// Like the server: an entry saved under a clientId, returned again for
+  /// a repeat of that id instead of a second entry.
+  final Map<String, FoodEntry> savedByClientId = {};
+
   @override
-  Future<FoodEntry> logEntry({required String date, required String mealType, required double servings, required Food food}) async {
+  Future<FoodEntry> logEntry({required String date, required String mealType, required double servings, required Food food, String? clientId}) async {
     calls.add('log $date $mealType ${food.name} x$servings');
+    clientIds.add(clientId);
     lastLogged = food;
     if (hold != null) await hold!.future;
     if (failNext) { failNext = false; throw const ApiException('NETWORK_ERROR', 'offline'); }
+    final earlier = clientId == null ? null : savedByClientId[clientId];
+    if (earlier != null) return earlier;
     final saved = FoodEntry.pending(id: _ids++, food: food, mealType: mealType, servings: servings);
     days[date] = dayOf(date).withEntry(saved);
+    if (clientId != null) savedByClientId[clientId] = saved;
     return saved;
   }
 
@@ -142,6 +153,22 @@ void main() {
     await pending;
     final after = c.read(nutritionDayProvider).value!;
     expect(after.meals['lunch']!.single.id, 100);
+  });
+
+  // NU-4: a Try again whose first save landed gets that same entry back.
+  test('log passes its clientId on, and an entry already on the day is listed once', () async {
+    final repo = FakeNutritionRepository();
+    final c = _container(repo);
+    await c.read(nutritionDayProvider.future);
+    const id = '3f1c2b9e-8d4a-4c1e-9b7a-2e5d6f708192';
+    await c.read(nutritionDayProvider.notifier).log(rice, mealType: 'lunch', servings: 1, clientId: id);
+    expect(c.read(nutritionDayProvider).value!.meals['lunch']!.single.id, 100);
+    // The repeat's reload fails, so the day is left as the log made it.
+    repo.failNextGet = true;
+    final again = await c.read(nutritionDayProvider.notifier).log(rice, mealType: 'lunch', servings: 1, clientId: id);
+    expect(again.id, 100);
+    expect(repo.clientIds, [id, id]);
+    expect(c.read(nutritionDayProvider).value!.meals['lunch']!.map((e) => e.id), [100]);
   });
 
   test('a failed log takes the entry back out and throws', () async {

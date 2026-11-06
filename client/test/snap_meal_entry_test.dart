@@ -61,9 +61,26 @@ class _Repo implements MealPhotoRepository {
   int logged = 0;
   String? loggedDate;
   String? loggedMeal;
+  int? loggedRecognitionId;
+  int recognizeCalls = 0;
+  int todayCalls = 0;
+
+  /// The capture sheet's answer; an error by default, which adds nothing.
+  Future<PhotoToday> Function() todayAnswer = () => Future.error(const ApiException('NETWORK_ERROR', 'x'));
 
   @override
-  Future<PhotoRecognition> recognize(Uint8List bytes, String mimeType, {Future<void>? cancel}) async => PhotoRecognition.fromJson({
+  Future<PhotoToday> today() {
+    todayCalls++;
+    return todayAnswer();
+  }
+
+  @override
+  Future<PhotoRecognition> recognize(Uint8List bytes, String mimeType, {Future<void>? cancel}) async {
+    recognizeCalls++;
+    return _rice;
+  }
+
+  final _rice = PhotoRecognition.fromJson({
     'recognitionId': 7, 'remainingToday': 12, 'unlisted': [],
     'items': [{'itemId': 40, 'confidence': 0.9, 'servings': 1, 'alternatives': [], 'food': {
       'id': 1, 'name': 'White rice', 'servingDesc': '1 cup (160 g)', 'fromFatsecret': false,
@@ -73,6 +90,7 @@ class _Repo implements MealPhotoRepository {
 
   @override
   Future<int> log({required int recognitionId, required String date, required String mealType, required List<PhotoLogItem> items}) async {
+    loggedRecognitionId = recognitionId;
     logged += items.length;
     loggedDate = date;
     loggedMeal = mealType;
@@ -168,6 +186,53 @@ void main() {
     expect(find.text('FitSync Pro'), findsOneWidget);
     expect(find.text('Take a photo'), findsNothing);
     expect(h.picker.sources, isEmpty);
+  });
+
+  // NU-15: the allowance is asked as the sheet opens, once Pro is known.
+  testWidgets('Pro: the sheet asks about today and shows few photos left', (tester) async {
+    final h = await _pump(tester, home: const NutritionScreen());
+    h.repo.todayAnswer = () async => const PhotoToday(limit: 15, remainingToday: 3);
+    await tester.tap(find.byKey(const Key('snap.card')));
+    await tester.pumpAndSettle();
+    expect(h.repo.todayCalls, 1);
+    expect(find.text('3 photos left today'), findsOneWidget);
+  });
+
+  testWidgets('a free account is never asked about today', (tester) async {
+    final h = await _pump(tester, home: const NutritionScreen(), premium: false);
+    await tester.tap(find.byKey(const Key('snap.card')));
+    await tester.pumpAndSettle();
+    expect(h.repo.todayCalls, 0);
+  });
+
+  // #21: today's unlogged photo comes back without a new photo.
+  testWidgets('Finish your last photo reopens its list, sends no photo, and logs that photo', (tester) async {
+    final h = await _pump(tester, home: const NutritionScreen());
+    h.repo.todayAnswer = () async => PhotoToday(
+      limit: 15,
+      remainingToday: 0,
+      unlogged: PhotoRecognition.fromJson({
+        'recognitionId': 41, 'remainingToday': 0, 'unlisted': [{'itemId': 89, 'name': 'Atchara (pickled papaya)'}],
+        'items': [{'itemId': 88, 'confidence': 0.95, 'servings': 1.5, 'alternatives': [], 'food': {
+          'id': 7, 'name': 'Chicken adobo', 'servingDesc': '1 serving', 'fromFatsecret': false,
+          'perServing': {'kcal': 320, 'proteinG': 25, 'carbsG': 4, 'fatG': 22, 'fiberG': null, 'sugarG': null, 'sodiumMg': null},
+        }}],
+      }),
+    );
+    await tester.tap(find.byKey(const Key('snap.card')));
+    await tester.pumpAndSettle();
+    expect(find.text('2 foods · not logged yet'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('snap.resume')));
+    await tester.pumpAndSettle();
+    expect(find.byType(MealPhotoScreen), findsOneWidget);
+    expect(find.text('Chicken adobo'), findsOneWidget);
+    expect(find.textContaining('Atchara (pickled papaya)'), findsOneWidget);
+    expect(find.text("Your photo isn't kept"), findsOneWidget);
+    expect([h.repo.recognizeCalls, h.picker.sources.length], [0, 0]);
+    await tester.tap(find.byKey(const Key('snap.log')));
+    await tester.pumpAndSettle();
+    expect([h.repo.loggedRecognitionId, h.repo.logged, h.repo.loggedMeal], [41, 1, 'lunch']);
+    expect(find.text('Logged 1 item to lunch'), findsOneWidget);
   });
 
   testWidgets('Pro: choose, confirm, log -- back on Nutrition with the message', (tester) async {
