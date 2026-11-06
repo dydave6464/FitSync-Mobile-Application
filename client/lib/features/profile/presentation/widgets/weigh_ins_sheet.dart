@@ -74,7 +74,7 @@ class _WeighInsSheetState extends ConsumerState<_WeighInsSheet> {
     var message =
         '${formatWeightWithUnit(point.weightKg, unit)} on ${named(point)} '
         'comes off your chart.';
-    if (identical(point, newest.first) && newest.length > 1) {
+    if (point.loggedOn == newest.first.loggedOn && newest.length > 1) {
       final previous = newest[1];
       message +=
           ' Your weight goes back to '

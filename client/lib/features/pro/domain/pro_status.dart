@@ -11,7 +11,8 @@ enum ProPlan {
   final String wire;
 
   /// How long one payment adds, as the server's plans define it
-  /// (server/src/lib/pro-plans.js). One payment, one period: nothing renews.
+  /// (server/src/lib/pro-plans.js). Only a fallback for an older server
+  /// that sends no `plans`: the screen reads [ProStatus.plans].
   final int months;
 
   static ProPlan? fromWire(Object? value) => switch (value) {
