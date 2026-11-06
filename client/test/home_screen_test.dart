@@ -575,7 +575,11 @@ void main() {
       tester,
       planError: const ApiException('X', 'Server is down'),
     );
-    expect(find.text('Retry'), findsOneWidget);
+    // The app's one retry treatment, in plain words, as every other
+    // screen's load error now is.
+    expect(find.byType(FsRetry), findsOneWidget);
+    expect(find.text('Server is down'), findsOneWidget);
+    expect(find.text('Try again'), findsOneWidget);
   });
 
   testWidgets(
