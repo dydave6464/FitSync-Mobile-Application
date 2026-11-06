@@ -81,7 +81,11 @@ class FakeProfileNotifier extends ProfileNotifier {
     this.patchError,
     this.patchGate,
     this.weightUnit = WeightUnit.kg,
+    this.isPremium = false,
   });
+
+  /// Whether the profile says the account is Pro.
+  final bool isPremium;
 
   /// The unit the profile opens in.
   final WeightUnit weightUnit;
@@ -142,7 +146,7 @@ class FakeProfileNotifier extends ProfileNotifier {
     email: _baseProfile.email,
     fullName: _baseProfile.fullName,
     onboardingCompleted: _baseProfile.onboardingCompleted,
-    isPremium: _baseProfile.isPremium,
+    isPremium: isPremium,
     notificationsEnabled: _baseProfile.notificationsEnabled,
     equipment: _baseProfile.equipment,
     injuries: _baseProfile.injuries,
@@ -278,6 +282,7 @@ Future<void> _pump(
   Completer<void>? patchGate,
   bool dark = false,
   WeightUnit weightUnit = WeightUnit.kg,
+  bool isPremium = false,
 }) async {
   _profile = FakeProfileNotifier(
     patches ?? <Map<String, dynamic>>[],
@@ -295,6 +300,7 @@ Future<void> _pump(
     patchError: patchError,
     patchGate: patchGate,
     weightUnit: weightUnit,
+    isPremium: isPremium,
   );
   await tester.pumpWidget(
     ProviderScope(
@@ -747,6 +753,41 @@ void main() {
       find.descendant(
         of: find.byKey(const Key('settings.goPro')),
         matching: find.text('Pro until 26 Nov 2026'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  // PS-14: while the status loads, or after a failed read, a Pro account
+  // was shown the free pitch.
+  testWidgets('a Pro account reads as Pro while its status is still loading', (
+    tester,
+  ) async {
+    final repo = FakeProRepository(grantedStatus)..statusGate = Completer();
+    await _pump(tester, pro: repo, isPremium: true);
+
+    final card = find.byKey(const Key('settings.goPro'));
+    expect(
+      find.descendant(of: card, matching: find.text('Pro')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: card,
+        matching: find.text('Muscle analytics, Snap a meal, unlimited AI cues'),
+      ),
+      findsNothing,
+    );
+    repo.statusGate!.complete();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('a free account is told everything Pro unlocks', (tester) async {
+    await _pump(tester);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('settings.goPro')),
+        matching: find.text('Muscle analytics, Snap a meal, unlimited AI cues'),
       ),
       findsOneWidget,
     );

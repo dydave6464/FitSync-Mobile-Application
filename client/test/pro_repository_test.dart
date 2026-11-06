@@ -115,8 +115,14 @@ void main() {
   );
 
   test('the Settings card says how the user is Pro', () {
-    expect(proCardSubtitle(null), 'See where your training volume goes');
-    expect(proCardSubtitle(freeStatus), 'See where your training volume goes');
+    // PS-14: what Pro unlocks, not only the analytics.
+    const free = 'Muscle analytics, Snap a meal, unlimited AI cues';
+    expect(proCardSubtitle(null), free);
+    expect(proCardSubtitle(freeStatus), free);
+    // PS-14: no status yet (still loading, or a failed read) for an account
+    // the profile already says is Pro is not sold Pro again.
+    expect(proCardSubtitle(null, premium: true), 'Pro');
+    expect(proCardSubtitle(freeStatus, premium: true), free);
     expect(proCardSubtitle(grantedStatus), 'Pro (granted)');
     expect(
       proCardSubtitle(paidStatus(until: DateTime(2026, 11, 26, 12))),
