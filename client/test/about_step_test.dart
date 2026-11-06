@@ -563,6 +563,57 @@ void main() {
     },
   );
 
+  // L-82: a kg/lb switch rewrote the weights inside didUpdateWidget, and the
+  // listeners reported it upwards then, mid-rebuild, so an owner that simply
+  // called setState on a change asserted. It is reported after the frame.
+  testWidgets(
+    'a unit switch reports the converted weight after the frame, so a plain '
+    'setState in the owner is safe',
+    (tester) async {
+      final emitted = <AboutAnswers>[];
+      var unit = WeightUnit.kg;
+      late StateSetter rebuild;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: StatefulBuilder(
+                builder: (context, setState) {
+                  rebuild = setState;
+                  return AboutStep(
+                    value: _complete,
+                    unit: unit,
+                    goals: const [],
+                    onChanged: (v) => setState(() => emitted.add(v)),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+
+      rebuild(() => unit = WeightUnit.lb);
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      await tester.pump();
+
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const Key('weightKg')))
+            .controller!
+            .text,
+        '158.7',
+      );
+      expect(emitted, hasLength(1));
+      // 158.7 lb, as now shown, back in kilograms.
+      expect(
+        emitted.single.weightKg,
+        closeTo(parseWeight('158.7', WeightUnit.lb)!, 1e-9),
+      );
+    },
+  );
+
   testWidgets('the estimate reads as the daily target', (tester) async {
     // The user's chosen wording (2026-10-18). A "to maintain your weight"
     // version was tried and turned down.

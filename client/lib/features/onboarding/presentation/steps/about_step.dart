@@ -258,18 +258,33 @@ class _AboutStepState extends State<AboutStep> {
   /// Carries whatever is already typed across a unit change, so a number does
   /// not silently start meaning something else. See SetRow's own
   /// didUpdateWidget -- same hazard, same resolution.
+  ///
+  /// The listeners are off while the fields are rewritten: this runs inside
+  /// the owner's rebuild, where reporting upwards would have the owner ask
+  /// for a rebuild mid-build. The rounded figure now shown is reported once
+  /// the frame is done, and the build that follows this redraws the step.
   @override
   void didUpdateWidget(AboutStep oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.unit == widget.unit) return;
+    var rewritten = false;
     for (final controller in [_weight, _goalWeight]) {
       final kg = parseWeight(controller.text, oldWidget.unit);
       if (kg == null) continue;
       final converted = formatWeight(kg, widget.unit);
-      controller.value = TextEditingValue(
-        text: converted,
-        selection: TextSelection.collapsed(offset: converted.length),
-      );
+      controller
+        ..removeListener(_onNumberChanged)
+        ..value = TextEditingValue(
+          text: converted,
+          selection: TextSelection.collapsed(offset: converted.length),
+        )
+        ..addListener(_onNumberChanged);
+      rewritten = true;
+    }
+    if (rewritten) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _emit();
+      });
     }
   }
 

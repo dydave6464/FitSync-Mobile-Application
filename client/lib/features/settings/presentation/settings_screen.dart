@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart' show listEquals, setEquals;
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart' show LengthLimitingTextInputFormatter;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -805,17 +804,9 @@ class _AboutEditorState extends _EditorState<_AboutEditor> with _UnitSwitch {
       onChanged: (value) {
         _value = value;
         _dropAnsweredErrors();
-        // A kg/lb switch rewrites the weight fields while the step itself is
-        // being rebuilt, where a setState here would assert; the dirty flag
-        // and Save's hint catch up a frame later.
-        final scheduler = SchedulerBinding.instance;
-        if (scheduler.schedulerPhase == SchedulerPhase.persistentCallbacks) {
-          scheduler.addPostFrameCallback((_) {
-            if (mounted) setState(() {});
-          });
-        } else {
-          setState(() {});
-        }
+        // Never mid-build: the step reports a kg/lb switch's rewritten
+        // weights after the frame (AboutStep.didUpdateWidget).
+        setState(() {});
       },
       // The same rule as onboarding: goal weight is asked outright only when
       // losing weight is among the saved goals.
