@@ -14,6 +14,7 @@ import 'package:fitsync/features/pro/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart'
     show trainingAnalyticsProvider;
 
+import 'helpers/a11y.dart' show contrast;
 import 'helpers/fake_pro_repository.dart';
 import 'helpers/pro_locks_probe.dart';
 
@@ -793,4 +794,46 @@ void main() {
       expect(find.byKey(const Key('pro.pay')), findsOneWidget);
     },
   );
+
+  for (final dark in [false, true]) {
+    testWidgets(
+      "the picked plan's title and note read at 4.5:1 on its accent tint "
+      '(${dark ? 'dark' : 'light'})',
+      (tester) async {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              proRepositoryProvider.overrideWithValue(
+                FakeProRepository(freeStatus),
+              ),
+              proCheckoutOpenerProvider.overrideWithValue((_) async => true),
+            ],
+            child: MaterialApp(
+              theme: dark ? fsDarkTheme() : fsLightTheme(),
+              home: const ProScreen(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final t = dark ? FsTokens.dark : FsTokens.light;
+        // FsCard(accent: true) at its strongest tint.
+        final strongest = Color.alphaBlend(
+          t.accent.withValues(alpha: 0.16),
+          t.bg,
+        );
+        // Annual is picked first, so its card is the accent one.
+        for (final text in [
+          find.text('Annual'),
+          find.textContaining('once, for 12 months'),
+        ]) {
+          final widget = tester.widget<Text>(_inside('pro.plan.annual', text));
+          expect(
+            contrast(widget.style!.color!, strongest),
+            greaterThanOrEqualTo(4.5),
+            reason: widget.data,
+          );
+        }
+      },
+    );
+  }
 }

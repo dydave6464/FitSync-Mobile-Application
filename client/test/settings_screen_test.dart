@@ -15,6 +15,7 @@ import 'package:fitsync/features/onboarding/presentation/steps/goal_step.dart';
 import 'package:fitsync/features/onboarding/presentation/steps/injuries_step.dart';
 import 'package:fitsync/features/onboarding/presentation/steps/level_step.dart';
 import 'package:fitsync/core/api_exception.dart';
+import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/theme_controller.dart';
 import 'package:fitsync/features/health/domain/health_answers.dart';
 import 'package:fitsync/features/health/presentation/providers.dart';
@@ -36,6 +37,7 @@ import 'package:fitsync/features/schedule/domain/calendar.dart';
 import 'package:fitsync/features/schedule/presentation/providers.dart';
 import 'package:fitsync/features/schedule/presentation/schedule_screen.dart';
 
+import 'helpers/a11y.dart' show contrast;
 import 'helpers/dialog_buttons.dart';
 import 'helpers/fake_health.dart';
 import 'helpers/fake_pro_repository.dart';
@@ -269,6 +271,7 @@ Future<void> _pump(
   double? goalWeightKg,
   Object? patchError,
   Completer<void>? patchGate,
+  bool dark = false,
 }) async {
   _profile = FakeProfileNotifier(
     patches ?? <Map<String, dynamic>>[],
@@ -310,7 +313,10 @@ Future<void> _pump(
           health ?? FakeHealthRepository(),
         ),
       ],
-      child: const MaterialApp(home: SettingsScreen()),
+      child: MaterialApp(
+        theme: dark ? fsDarkTheme() : null,
+        home: const SettingsScreen(),
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -930,12 +936,7 @@ void main() {
         tester,
       ) async {
         final patches = <Map<String, dynamic>>[];
-        await _pump(
-          tester,
-          patches: patches,
-          heightCm: 170,
-          weightKg: 70,
-        );
+        await _pump(tester, patches: patches, heightCm: 170, weightKg: 70);
         await _openRow(tester, Key(row));
         await edit(tester);
 
@@ -1219,9 +1220,7 @@ void main() {
         tester.widget<FsButton>(find.byKey(const Key('save'))).onPressed !=
         null;
 
-    testWidgets('unticking every goal greys Save and says why', (
-      tester,
-    ) async {
+    testWidgets('unticking every goal greys Save and says why', (tester) async {
       final goalWrites = <({List<String> goals, String mainGoal})>[];
       await _pump(
         tester,
@@ -1314,10 +1313,7 @@ void main() {
     }
 
     testWidgets('in a profile editor, in plain words', (tester) async {
-      await _pump(
-        tester,
-        failTrainingDays: true,
-      );
+      await _pump(tester, failTrainingDays: true);
       await _openRow(tester, const Key('edit.trainingDays'));
       await tester.tap(find.byKey(const Key('save')));
       await tester.pumpAndSettle();
@@ -1355,4 +1351,31 @@ void main() {
       expectErrorAboveSave(tester, 'Not saved.');
     });
   });
+
+  for (final dark in [false, true]) {
+    testWidgets("the Pro card's subtitle reads at 4.5:1 on its accent tint "
+        '(${dark ? 'dark' : 'light'})', (tester) async {
+      await _pump(tester, dark: dark);
+      final t = dark ? FsTokens.dark : FsTokens.light;
+      // FsCard(accent: true) at its strongest tint.
+      final strongest = Color.alphaBlend(
+        t.accent.withValues(alpha: 0.16),
+        t.bg,
+      );
+      final texts = tester.widgetList<Text>(
+        find.descendant(
+          of: find.byKey(const Key('settings.goPro')),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(texts, isNotEmpty);
+      for (final text in texts) {
+        expect(
+          contrast(text.style!.color!, strongest),
+          greaterThanOrEqualTo(4.5),
+          reason: text.data,
+        );
+      }
+    });
+  }
 }

@@ -211,7 +211,7 @@ class _SettingsList extends ConsumerWidget {
                     const SizedBox(height: 2),
                     Text(
                       proCardSubtitle(proStatus),
-                      style: TextStyle(fontSize: 11, color: t.text3),
+                      style: TextStyle(fontSize: 11, color: t.text2),
                     ),
                   ],
                 ),

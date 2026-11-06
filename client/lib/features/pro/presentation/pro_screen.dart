@@ -614,7 +614,7 @@ class _PlanCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       title,
-                      style: TextStyle(fontSize: 11, color: t.text3),
+                      style: TextStyle(fontSize: 11, color: t.text2),
                     ),
                   ),
                   if (tag != null) FsTag(tag!),
@@ -631,7 +631,7 @@ class _PlanCard extends StatelessWidget {
               ),
               Text(
                 note,
-                style: TextStyle(fontSize: 10, color: t.text3, height: 1.3),
+                style: TextStyle(fontSize: 10, color: t.text2, height: 1.3),
               ),
             ],
           ),
