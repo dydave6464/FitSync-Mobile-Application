@@ -62,8 +62,10 @@ Future<CaptureChoice?> _sheet(
       final noneLeft = known != null && known.remainingToday <= 0;
       final left = known == null ? null : photosLeftText(known.remainingToday);
       final unlogged = known?.unlogged;
+      // Scrolls rather than overflows when large text makes it taller
+      // than the sheet may be.
       return SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
           child: Column(
             mainAxisSize: MainAxisSize.min,

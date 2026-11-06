@@ -148,6 +148,18 @@ void main() {
       expect(enabled(tester, 'snap.camera'), isFalse);
     });
 
+    testWidgets('everything it adds fits a 320 dp phone at 2x text', (tester) async {
+      tester.view.physicalSize = const Size(320, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await openWith(tester, () => Future.value(PhotoToday(limit: 15, remainingToday: 0, unlogged: _recognition(items: 2, unlisted: 1))));
+      expect(find.text('No meal photos left today'), findsOneWidget);
+      expect(find.text('3 foods · not logged yet'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('no unlogged photo: no Finish tile', (tester) async {
       await openWith(tester, () => Future.value(const PhotoToday(limit: 15, remainingToday: 3)));
       expect(find.byKey(const Key('snap.resume')), findsNothing);
