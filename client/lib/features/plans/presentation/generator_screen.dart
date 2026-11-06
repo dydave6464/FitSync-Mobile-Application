@@ -31,6 +31,10 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   bool _busy = false;
   int? _savingWeekday;
 
+  /// The weekday whose write last landed, read out as "Saved" on its cell.
+  /// Cleared when the next tap starts, and never set by a failed write.
+  int? _savedWeekday;
+
   /// True once /regenerate has answered. Separate from [_busy], which flips
   /// before anything has been asked for: the building screen's last row
   /// claims the plan exists, so only this may tick it.
@@ -46,9 +50,13 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   /// day looking chosen.
   Future<void> _setTrainingDays(List<int> next, int tapped) async {
     final messenger = ScaffoldMessenger.of(context);
-    setState(() => _savingWeekday = tapped);
+    setState(() {
+      _savingWeekday = tapped;
+      _savedWeekday = null;
+    });
     try {
       await ref.read(profileProvider.notifier).setTrainingDays(next);
+      if (mounted) setState(() => _savedWeekday = tapped);
     } catch (error) {
       if (!mounted) return;
       messenger.showSnackBar(
@@ -216,15 +224,8 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   /// a count only when there are none, because a count is then all there is
   /// to say.
   static String _describeChoice(String split, List<int> days, int count) {
-    final label = splitStyles
-        .firstWhere(
-          (s) => s.value == split,
-          orElse: () => (value: split, label: describeSplit(split)),
-        )
-        .label;
-    if (days.isEmpty) {
-      return '$label, $count day${count == 1 ? '' : 's'} a week';
-    }
+    final label = splitLabel(split);
+    if (days.isEmpty) return '$label, ${daysAWeek(count)}';
     const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     return '$label, ${(days.toList()..sort()).map((d) => names[d - 1]).join(' · ')}';
   }
@@ -420,6 +421,7 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
         TrainingDaysRow(
           selected: trainingDays,
           busyWeekday: _savingWeekday,
+          savedWeekday: _savedWeekday,
           enabled: daysKnown,
           onChanged: (next) {
             // The tapped day is the one that differs between the two sets.

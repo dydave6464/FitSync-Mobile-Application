@@ -360,7 +360,7 @@ String composeWeekDescription({
   final chosen = profile?.trainingDays ?? const <int>[];
   final days = chosen.isNotEmpty ? chosen.length : plan?.daysPerWeek;
   if (days != null) {
-    clauses.add('train $days ${days == 1 ? 'day' : 'days'} a week');
+    clauses.add('train ${daysAWeek(days)}');
   }
 
   final split = _splitLabels[plan?.splitStyle];
@@ -378,3 +378,7 @@ String composeWeekDescription({
 
   return clauses.isEmpty ? '' : '${clauses.join(', ')}.';
 }
+
+/// "1 day a week", "3 days a week": the one spelling of a weekly count, for
+/// the Plan tab's card, the generator's lead row and this sentence.
+String daysAWeek(int n) => '$n ${n == 1 ? 'day' : 'days'} a week';

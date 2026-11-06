@@ -1562,6 +1562,54 @@ void main() {
     );
   });
 
+  testWidgets('the tapped weekday reads Saved once its write lands (PT-16)', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester, plan: _pplPlan, trainingDays: const [1, 3]);
+
+    await tester.tap(find.byKey(const Key('weekday.5')));
+    await tester.pumpAndSettle();
+
+    String value(int weekday) => tester
+        .getSemantics(find.byKey(Key('weekday.$weekday')))
+        .getSemanticsData()
+        .value;
+    expect(value(5), 'Saved');
+    expect(value(1), '');
+
+    // The next tap moves it: only the latest write is the one just saved.
+    await tester.tap(find.byKey(const Key('weekday.1')));
+    await tester.pumpAndSettle();
+    expect(value(1), 'Saved');
+    expect(value(5), '');
+    handle.dispose();
+  });
+
+  testWidgets('a failed weekday write never reads Saved (PT-16)', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(
+      tester,
+      plan: _pplPlan,
+      trainingDays: const [1, 3],
+      failTrainingDays: true,
+    );
+
+    await tester.tap(find.byKey(const Key('weekday.5')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .getSemantics(find.byKey(const Key('weekday.5')))
+          .getSemanticsData()
+          .value,
+      '',
+    );
+    handle.dispose();
+  });
+
   testWidgets('Apply is an action, not a chip stuck selected (PT-19)', (
     tester,
   ) async {

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
 import '../../domain/split_style.dart';
+import '../../domain/week_description.dart';
 import '../../domain/workout_plan.dart';
 
 /// The hero of the Plan tab: what today's session is, and the way into it.
@@ -55,17 +56,11 @@ class SessionCard extends StatelessWidget {
         : plan.daysPerWeek;
     // Spelled as the choosers spell it ("Push / Pull / Legs"), so one split
     // does not have two names across screens.
-    final split = splitStyles
-        .firstWhere(
-          (s) => s.value == plan.splitStyle,
-          orElse: () =>
-              (value: plan.splitStyle, label: describeSplit(plan.splitStyle)),
-        )
-        .label;
+    final split = splitLabel(plan.splitStyle);
 
     final facts = [
       split,
-      '$days ${days == 1 ? 'day' : 'days'} a week',
+      daysAWeek(days),
       '$count ${count == 1 ? 'exercise' : 'exercises'}',
       '${plan.sessionLengthMin} min',
     ].where((part) => part.isNotEmpty).join(' · ');

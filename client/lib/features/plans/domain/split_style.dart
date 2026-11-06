@@ -1,3 +1,5 @@
+import 'workout_plan.dart' show describeSplit;
+
 /// The four split styles, and the labels the design gives them.
 ///
 /// One definition rather than one per screen: the generator and the
@@ -10,3 +12,14 @@ const splitStyles = <({String value, String label})>[
   (value: 'upper_lower', label: 'Upper / Lower'),
   (value: 'cardio_core', label: 'Cardio + core'),
 ];
+
+/// How a split is named on screen: the choosers' label for one of
+/// [splitStyles], and a readable slug ([describeSplit]) for any other value
+/// the generator returns. Every screen that names a plan's split asks here,
+/// so one split never has two spellings.
+String splitLabel(String slug) {
+  for (final s in splitStyles) {
+    if (s.value == slug) return s.label;
+  }
+  return describeSplit(slug);
+}
