@@ -288,6 +288,9 @@ void main() {
       ],
       child: const MaterialApp(home: ActivityScreen()),
     ));
+    // A garbled reply is retried twice first (apiRetryPolicy); the phone's
+    // own count shows meanwhile, so let the backoff run out before looking.
+    await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();
 
     expect(find.text('Something went wrong on our side. Please try again.'), findsOneWidget);

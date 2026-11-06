@@ -54,7 +54,8 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
-    final live = ref.watch(liveStepsProvider).value;
+    // The count Home's tile shows too (stepsShownTodayProvider).
+    final shown = ref.watch(stepsShownTodayProvider);
     return Scaffold(
       backgroundColor: t.bg,
       appBar: AppBar(title: const Text('Activity')),
@@ -66,7 +67,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
             loading: () => switch (ref.watch(todayStepsProvider).value) {
               final today? => _Body(
                 state: ActivityState(today: today, week: null, offline: false),
-                steps: live ?? today.steps,
+                steps: shown ?? today.steps,
                 loadingWeek: true,
               ),
               null => const Center(child: CircularProgressIndicator()),
@@ -78,7 +79,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
             ),
             data: (state) => _Body(
               state: state,
-              steps: live ?? state.today.steps,
+              steps: shown ?? state.today.steps,
               onGoToProfile: widget.onGoToProfile == null
                   ? null
                   : () {

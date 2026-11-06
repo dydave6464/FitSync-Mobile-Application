@@ -98,6 +98,7 @@ Future<void> _pump(
   ActivityWeek? week,
   int steps = 6420,
   bool fail = false,
+  Stream<int> live = const Stream<int>.empty(),
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -114,7 +115,7 @@ Future<void> _pump(
                   ),
                 ),
         ),
-        liveStepsProvider.overrideWith((ref) => const Stream<int>.empty()),
+        liveStepsProvider.overrideWith((ref) => live),
       ],
       child: const MaterialApp(home: Scaffold(body: ActivityStatsRow())),
     ),
@@ -349,6 +350,75 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('with the live count ahead, Home shows what Activity shows', (
+    tester,
+  ) async {
+    // X-2: Home's tile showed the count saved with the week while Activity
+    // showed the phone's live count, so for that moment the two screens
+    // had different steps, and so different kcal and km.
+    final live = StreamController<int>();
+    // Not awaited: a stream nobody listened to never finishes closing.
+    addTearDown(() => unawaited(live.close()));
+    await _pump(
+      tester,
+      _Permission(StepAccess.granted),
+      steps: 6420,
+      live: live.stream,
+    );
+    live.add(9630);
+    await tester.pumpAndSettle();
+
+    expect(tile('steps', '9,630'), findsOneWidget);
+    expect(tile('kcal', '237'), findsOneWidget);
+    expect(tile('km', '6.8'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('home.activity.steps')));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('activity.steps')),
+        matching: find.text('9,630'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('activity.kcal')),
+        matching: find.text('237'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('before the week arrives, Home shows the live count too', (
+    tester,
+  ) async {
+    final live = StreamController<int>();
+    // Not awaited: a stream nobody listened to never finishes closing.
+    addTearDown(() => unawaited(live.close()));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          stepPermissionProvider.overrideWithValue(
+            _Permission(StepAccess.granted),
+          ),
+          stepSourceProvider.overrideWithValue(const _PhoneSteps(6420)),
+          activityProvider.overrideWith(_SlowActivity.new),
+          liveStepsProvider.overrideWith((ref) => live.stream),
+        ],
+        child: const MaterialApp(home: Scaffold(body: ActivityStatsRow())),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(tile('steps', '6,420'), findsOneWidget);
+
+    live.add(9630);
+    await tester.pump();
+    await tester.pump();
+    expect(tile('steps', '9,630'), findsOneWidget);
   });
 
   testWidgets('on: kcal over a thousand is grouped, as steps are', (

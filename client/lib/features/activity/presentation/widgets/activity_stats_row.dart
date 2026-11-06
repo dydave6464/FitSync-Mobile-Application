@@ -135,6 +135,9 @@ class _Stats extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // The count the Activity screen shows too, live once the phone streams
+    // one (stepsShownTodayProvider).
+    final shown = ref.watch(stepsShownTodayProvider);
     return ref
         .watch(activityProvider)
         .when(
@@ -142,17 +145,14 @@ class _Stats extends ConsumerWidget {
           // today's count: show it, with dashes for the estimates that need
           // the server. Zeros would tell someone who has walked thousands
           // that they have not.
-          loading: () {
-            final today = ref.watch(todayStepsProvider).value;
-            return _Tiles(
-              steps: today == null ? '—' : formatSteps(today.steps),
-              kcal: '—',
-              km: '—',
-              todaySteps: today?.steps ?? 0,
-              usual: null,
-              onTap: onOpen,
-            );
-          },
+          loading: () => _Tiles(
+            steps: shown == null ? '—' : formatSteps(shown),
+            kcal: '—',
+            km: '—',
+            todaySteps: shown ?? 0,
+            usual: null,
+            onTap: onOpen,
+          ),
           error: (_, _) => _WideTile(
             key: const Key('home.activity.retry'),
             title: "Couldn't load your steps",
@@ -161,17 +161,18 @@ class _Stats extends ConsumerWidget {
           ),
           data: (state) {
             final week = state.week;
-            // Grown to the phone's count, as the Activity screen does, so a
-            // tap opens the same kcal and km.
-            final today = week?.today.grownTo(state.today.steps);
+            final steps = shown ?? state.today.steps;
+            // Grown to the shown count, as the Activity screen does, so a
+            // tap opens the same steps, kcal and km.
+            final today = week?.today.grownTo(steps);
             final noKm = week == null || week.missingHeight;
             final noKcal =
                 week == null || week.missingHeight || week.missingWeight;
             return _Tiles(
-              steps: formatSteps(state.today.steps),
+              steps: formatSteps(steps),
               kcal: noKcal ? '—' : formatSteps(today!.caloriesBurned ?? 0),
               km: noKm ? '—' : (today!.distanceKm ?? 0).toStringAsFixed(1),
-              todaySteps: state.today.steps,
+              todaySteps: steps,
               usual: week?.usual,
               onTap: onOpen,
             );

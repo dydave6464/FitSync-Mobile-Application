@@ -139,7 +139,25 @@ final todayStepsProvider = FutureProvider.autoDispose<DaySteps>(
   (ref) => ref.watch(stepSourceProvider).today(ref.read(activityClockProvider)()),
 );
 
-/// Today's running total while the Activity screen listens.
+/// Today's running total from the phone, while anything shows today's
+/// steps ([stepsShownTodayProvider]).
 final liveStepsProvider = StreamProvider.autoDispose<int>(
   (ref) => ref.watch(stepSourceProvider).live(ref.read(activityClockProvider)()),
 );
+
+/// Today's steps as every screen shows them: the phone's live count once it
+/// has one, else the count read with the week, else -- while the week is
+/// still on its way -- the phone's own read. Null only before the phone has
+/// answered at all.
+///
+/// One source for Home's steps tile and the Activity screen, so the two
+/// never show different counts, or different kcal and km grown from them
+/// (ActivityDay.grownTo), for the same moment.
+final stepsShownTodayProvider = Provider.autoDispose<int?>((ref) {
+  final live = ref.watch(liveStepsProvider).value;
+  if (live != null) return live;
+  final saved = ref.watch(activityProvider).value;
+  if (saved != null) return saved.today.steps;
+  // Watched only until the week arrives, so it is read afresh next time.
+  return ref.watch(todayStepsProvider).value?.steps;
+});
