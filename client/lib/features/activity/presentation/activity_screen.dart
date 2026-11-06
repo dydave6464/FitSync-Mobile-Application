@@ -325,10 +325,11 @@ const _weekdays = [
   'Sunday',
 ];
 
-/// The week as the app's other bar charts draw it: every bar in `t.blue`,
-/// which reads at 3:1 or better on the card in both themes (the prototype's
-/// surface-2 "off" bars were barely there), each day's count on touch and
-/// all seven read out to a screen reader. Today carries the live count.
+/// The week as the app's other bar charts draw it, each day's count on touch
+/// and all seven read out to a screen reader. Today carries the live count
+/// and, as in the prototype, stands out in `t.blue`; the six days before it
+/// are `t.text3` rather than the prototype's surface-2, which was barely
+/// there. Both read at 3:1 or better on the card in either theme.
 class _WeekBars extends StatelessWidget {
   const _WeekBars({required this.days, required this.todaySteps});
 
@@ -340,7 +341,9 @@ class _WeekBars extends StatelessWidget {
     final t = context.fs;
     return FsBarChart(
       label: 'Steps this week',
-      color: t.blue,
+      color: t.text3,
+      highlightIndex: days.length - 1,
+      highlightColor: t.blue,
       height: 96,
       bars: [
         for (var i = 0; i < days.length; i++) _bar(i),

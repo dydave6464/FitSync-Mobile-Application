@@ -250,6 +250,11 @@ void main() {
         // WCAG 1.4.11: a bar is a graphical object and needs 3:1.
         expect(contrast(rod.color!, t.surface), greaterThanOrEqualTo(3));
       }
+      // The prototype's today-only highlight: today in blue, and the six
+      // days before it in one other colour.
+      expect(rods.last.color, t.blue);
+      expect(rods.take(6).map((r) => r.color).toSet(), hasLength(1));
+      expect(rods.first.color, isNot(t.blue));
     });
   }
 

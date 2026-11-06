@@ -490,6 +490,8 @@ class FsBarChart extends StatefulWidget {
     this.height = 120,
     this.showLabels = true,
     this.interactive = true,
+    this.highlightIndex,
+    this.highlightColor,
   });
 
   /// What the chart measures, the start of what a screen reader hears.
@@ -499,6 +501,11 @@ class FsBarChart extends StatefulWidget {
 
   /// Null is the accent: training output.
   final Color? color;
+
+  /// One bar drawn in [highlightColor] instead of [color] -- today's, say.
+  /// Each colour must hold 3:1 on the card on its own: the bars are data.
+  final int? highlightIndex;
+  final Color? highlightColor;
 
   final double height;
 
@@ -640,7 +647,9 @@ class FsBarChart extends StatefulWidget {
                           // Thin, never filling its slot: the space between
                           // bars is what keeps them separate.
                           width: rod,
-                          color: color ?? t.accentFill,
+                          color: i == highlightIndex && highlightColor != null
+                              ? highlightColor
+                              : color ?? t.accentFill,
                           borderRadius: const BorderRadius.vertical(
                             top: Radius.circular(4),
                           ),
