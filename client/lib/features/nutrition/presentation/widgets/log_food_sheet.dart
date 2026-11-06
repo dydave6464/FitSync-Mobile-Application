@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
 
 import '../../../../core/numbers.dart';
 import '../../../../core/theme.dart';
@@ -78,17 +77,15 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
     super.dispose();
   }
 
-  /// One step of the servings stepper, read out as servings and what they
-  /// come to. An announcement rather than a live region: the kcal also
-  /// follows the numbers typed under "Edit numbers", and a live region would
-  /// speak again on every keystroke there.
-  void _step(double by, int perKcal) {
-    setState(() => _servings = (_servings + by).clamp(_minServings, _maxServings));
-    SemanticsService.sendAnnouncement(View.of(context), _amountLabel(perKcal), Directionality.of(context));
-  }
+  /// One step of the servings stepper. The figure between the buttons is a
+  /// live region that says the new servings.
+  void _step(double by) =>
+      setState(() => _servings = (_servings + by).clamp(_minServings, _maxServings));
 
-  String _amountLabel(int perKcal) =>
-      '${formatServings(_servings)} ${_servings == 1 ? 'serving' : 'servings'} · ${(perKcal * _servings).round()} kcal';
+  /// The servings as said: "1.5 servings", never a bare number.
+  String get _servingsLabel => '${formatServings(_servings)} ${_servings == 1 ? 'serving' : 'servings'}';
+
+  String _amountLabel(int perKcal) => '$_servingsLabel · ${(perKcal * _servings).round()} kcal';
 
   @override
   Widget build(BuildContext context) {
@@ -161,15 +158,21 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
                 IconButton(
                   key: const Key('servings.minus'),
                   tooltip: 'Fewer servings',
-                  onPressed: _servings > _minServings ? () => _step(-0.5, perKcal) : null,
+                  onPressed: _servings > _minServings ? () => _step(-0.5) : null,
                   icon: const Icon(Icons.remove),
                 ),
-                // At least 48 dp, and the figure shrinks rather than breaking
-                // "1.5" over two lines at large text. The live region below
-                // speaks it, so it is not a second, bare node.
+                // At least 48 dp, and "1.5" stays on one line at large text.
+                // A live region whose words follow the servings alone: the
+                // kcal also follows the numbers typed under Edit numbers, and
+                // a region carrying it would speak on every keystroke there.
                 ConstrainedBox(
                   constraints: const BoxConstraints(minWidth: 48),
-                  child: ExcludeSemantics(
+                  child: Semantics(
+                    key: const Key('logSheet.servings'),
+                    container: true,
+                    liveRegion: true,
+                    label: _servingsLabel,
+                    excludeSemantics: true,
                     child: Center(
                       widthFactor: 1,
                       child: FsOneLine(formatServings(_servings), style: theme.textTheme.titleMedium!),
@@ -179,14 +182,14 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
                 IconButton(
                   key: const Key('servings.plus'),
                   tooltip: 'More servings',
-                  onPressed: _servings < _maxServings ? () => _step(0.5, perKcal) : null,
+                  onPressed: _servings < _maxServings ? () => _step(0.5) : null,
                   icon: const Icon(Icons.add),
                 ),
               ],
             ),
             const SizedBox(height: 8),
-            // How many servings and what they come to, never a bare number;
-            // _step reads the same words out after every step.
+            // How many servings and what they come to, never a bare number.
+            // Not live: it follows typing too (see the servings figure).
             Semantics(
               key: const Key('logSheet.amount'),
               container: true,

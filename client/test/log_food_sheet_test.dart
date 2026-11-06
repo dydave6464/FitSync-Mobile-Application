@@ -762,9 +762,14 @@ void main() {
       expect(button('servings.plus').onPressed, isNull, reason: 'nothing above 20 servings');
     });
 
-    testWidgets('every step is read out as servings and kcal', (tester) async {
+    // L-67: said by a live region, not an announcement (deprecated on
+    // Android 16). Its words follow the servings only, so typing under Edit
+    // numbers, which moves the kcal, never sets it off.
+    testWidgets('every step is said by a live region that follows the servings alone', (tester) async {
       final h = tester.ensureSemantics();
       await _open(tester, _rice);
+      final servings = find.byKey(const Key('logSheet.servings'));
+      expect(tester.getSemantics(servings), isSemantics(isLiveRegion: true, label: '1 serving'));
       expect(
         tester.getSemantics(find.byKey(const Key('logSheet.amount'))),
         matchesSemantics(label: '1 serving · 205 kcal'),
@@ -772,16 +777,23 @@ void main() {
       tester.takeAnnouncements();
       await tester.tap(find.byKey(const Key('servings.plus')));
       await tester.pump();
-      expect(tester.takeAnnouncements().map((a) => a.message), ['1.5 servings · 308 kcal']);
+      expect(tester.getSemantics(servings), isSemantics(isLiveRegion: true, label: '1.5 servings'));
       expect(
         tester.getSemantics(find.byKey(const Key('logSheet.amount'))),
         matchesSemantics(label: '1.5 servings · 308 kcal'),
       );
       await tester.tap(find.byKey(const Key('servings.minus')));
       await tester.pump();
-      expect(tester.takeAnnouncements().map((a) => a.message), ['1 serving · 205 kcal']);
-      // The bare figure between the buttons is not a second, contextless node.
+      expect(tester.getSemantics(servings), isSemantics(isLiveRegion: true, label: '1 serving'));
+      expect(tester.takeAnnouncements(), isEmpty, reason: 'the live region says it');
+      // The bare figure between the buttons is not a contextless node.
       expect(find.bySemanticsLabel('1.5'), findsNothing);
+
+      // Typing moves the kcal but not the live region's words.
+      await _editNumbers(tester);
+      await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.protein')), matching: find.byType(TextField)), '10');
+      await tester.pump();
+      expect(tester.getSemantics(servings), isSemantics(isLiveRegion: true, label: '1 serving'));
       h.dispose();
     });
 
