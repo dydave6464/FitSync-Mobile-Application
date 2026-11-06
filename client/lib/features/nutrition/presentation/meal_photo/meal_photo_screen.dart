@@ -47,6 +47,15 @@ String logButtonLabel(int n) => switch (n) {
   _ => 'Log $n items',
 };
 
+/// How many meal photos are left today, once few are (at most 5), so the
+/// daily limit is no surprise; null while there are plenty.
+String? photosLeftText(int n) => switch (n) {
+  > 5 => null,
+  <= 0 => 'No meal photos left today',
+  1 => '1 photo left today',
+  _ => '$n photos left today',
+};
+
 /// Snap a meal once the photo is taken: analysing, then the confirm list --
 /// or what went wrong, with a way on. Pops true once the meal is logged.
 class MealPhotoScreen extends ConsumerStatefulWidget {
@@ -414,6 +423,10 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
               const Expanded(child: FsEyebrow('AI suggests · check before logging', maxLines: 3)),
             ],
           ),
+          if (photosLeftText(_recognition!.remainingToday) case final left?) ...[
+            const SizedBox(height: 4),
+            Text(left, key: const Key('snap.left'), style: TextStyle(color: t.text2, fontSize: 12)),
+          ],
           const SizedBox(height: 16),
           Text('Meal', style: TextStyle(color: t.text2, fontSize: 12)),
           const SizedBox(height: 6),

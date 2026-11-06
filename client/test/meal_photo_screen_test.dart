@@ -313,6 +313,29 @@ void main() {
     expect(find.text('White rice'), findsOneWidget);
   });
 
+  // NU-15: the daily limit is no surprise. Shown only when few are left.
+  group('photos left today', () {
+    PhotoRecognition left(int n) => PhotoRecognition(
+      recognitionId: _answer.recognitionId,
+      remainingToday: n,
+      items: _answer.items,
+      unlisted: _answer.unlisted,
+    );
+    for (final (n, text) in [(5, '5 photos left today'), (1, '1 photo left today'), (0, 'No meal photos left today')]) {
+      testWidgets('$n left: "$text"', (tester) async {
+        final h = _Harness()..repo.answer = left(n);
+        await _open(tester, h: h);
+        expect(find.text(text), findsOneWidget);
+      });
+    }
+
+    testWidgets('6 or more left: nothing said', (tester) async {
+      final h = _Harness()..repo.answer = left(6);
+      await _open(tester, h: h);
+      expect(find.textContaining('left today'), findsNothing);
+    });
+  });
+
   testWidgets(
     'the confirm list: every item, the one not on the list, the meal, the total and Log N items',
     (tester) async {
