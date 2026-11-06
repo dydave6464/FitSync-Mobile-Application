@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import 'package:fitsync/core/widgets/fs_kit.dart';
 
@@ -272,7 +273,19 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repo.registerCalls, 1);
-    expect(find.text('That email is already registered.'), findsOneWidget);
+    // AO-27: the server's words left no way forward. Now the line says what
+    // to do, and a link right under it does it.
+    expect(find.text('That email already has an account.'), findsOneWidget);
+    expect(find.text('That email is already registered.'), findsNothing);
+
+    await _tapKey(tester, 'signInInstead');
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('fullName')), findsNothing);
+    expect(find.text('Sign in'), findsOneWidget);
+    expect(_field(tester, 'email').controller!.text, 'juan@example.com');
+    expect(_field(tester, 'password').controller!.text, 's3cret-pass');
+    expect(find.text('That email already has an account.'), findsNothing);
   });
 
   testWidgets('a NETWORK_ERROR shows plain words, not the developer text', (
@@ -421,6 +434,26 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(ForgotPasswordScreen), findsOneWidget);
+  });
+
+  testWidgets('Forgot password? carries the typed email over', (tester) async {
+    // AO-21: the user had to type it again.
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('email')),
+      ' juan@example.com ',
+    );
+    await tester.tap(find.byKey(const Key('forgotPassword')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<ForgotPasswordScreen>(find.byType(ForgotPasswordScreen))
+          .initialEmail,
+      'juan@example.com',
+    );
   });
 
   testWidgets('Forgot password? is hidden while registering', (tester) async {
@@ -842,5 +875,27 @@ void main() {
       isNot(contains('Enter your name.')),
     );
     handle.dispose();
+  });
+
+  testWidgets('the Google button and the logo use the real marks', (
+    tester,
+  ) async {
+    // AO-20: stand-ins -- Material's mobile-data "G" and a lightning bolt.
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+
+    final google = find.byKey(const Key('google'));
+    expect(
+      find.descendant(of: google, matching: find.byIcon(Icons.g_mobiledata)),
+      findsNothing,
+    );
+    final mark = tester.widget<FaIcon>(
+      find.descendant(of: google, matching: find.byType(FaIcon)),
+    );
+    expect(mark.icon?.codePoint, FontAwesomeIcons.google.codePoint);
+
+    expect(find.byIcon(Icons.bolt), findsNothing);
+    expect(find.byKey(const Key('logo.blades')), findsOneWidget);
+    expect(tester.getSize(find.byKey(const Key('logo.blades'))).width, 22);
   });
 }

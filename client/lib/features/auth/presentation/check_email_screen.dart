@@ -40,9 +40,14 @@ class CheckEmailScreen extends ConsumerStatefulWidget {
   ConsumerState<CheckEmailScreen> createState() => _CheckEmailScreenState();
 }
 
+/// Which request is on its way, so only the button that sent it spins. The
+/// other is disabled without a spinner: one request at a time.
+enum _Pending { none, verify, resend }
+
 class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
   final _code = TextEditingController();
-  bool _busy = false;
+  _Pending _pending = _Pending.none;
+  bool get _busy => _pending != _Pending.none;
 
   /// Set once the server accepts the code. From then on the button only
   /// retries the sign-in: the code is spent, and sending it again would come
@@ -87,7 +92,7 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
     final email = widget.email;
     final password = widget.password;
     setState(() {
-      _busy = true;
+      _pending = _Pending.verify;
       _status = null;
     });
 
@@ -135,7 +140,7 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
         );
       });
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _pending = _Pending.none);
     }
   }
 
@@ -143,7 +148,7 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
     if (_busy) return;
     final repo = ref.read(authRepositoryProvider);
     setState(() {
-      _busy = true;
+      _pending = _Pending.resend;
       _status = null;
     });
 
@@ -158,7 +163,7 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
       if (!mounted) return;
       setState(() => _status = (text: userMessage(error), isError: true));
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _pending = _Pending.none);
     }
   }
 
@@ -207,8 +212,18 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
                   const SizedBox(height: 14),
                   // Both kinds are live regions, so a screen reader says the
                   // outcome of Verify or Send a new code as it appears.
+                  // Centred like every other line here: only as wide as its
+                  // icon and words, so a short one does not hang off the
+                  // left edge.
                   if (status.isError)
-                    FsErrorLine(status.text, key: const Key('status'))
+                    Center(
+                      child: IntrinsicWidth(
+                        child: FsErrorLine(
+                          status.text,
+                          key: const Key('status'),
+                        ),
+                      ),
+                    )
                   else
                     Semantics(
                       container: true,
@@ -225,7 +240,7 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
                 FsButton(
                   key: const Key('verify'),
                   label: _verified ? 'Sign in' : 'Verify',
-                  busy: _busy,
+                  busy: _pending == _Pending.verify,
                   onPressed: _canSubmit ? _verify : null,
                 ),
                 if (!_verified) ...[
@@ -234,6 +249,7 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
                     key: const Key('resend'),
                     label: 'Send a new code',
                     kind: FsButtonKind.secondary,
+                    busy: _pending == _Pending.resend,
                     onPressed: _busy ? null : _resend,
                   ),
                 ],

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -123,6 +125,21 @@ Future<void> _pump(
   await tester.pumpAndSettle();
 }
 
+/// Runs [body] with `debugPrint` captured rather than printed: a failed
+/// Google sign-in logs its cause. Restored inside the test, as flutter_test
+/// requires.
+Future<List<String?>> _capturingLogs(Future<void> Function() body) async {
+  final logs = <String?>[];
+  final original = debugPrint;
+  debugPrint = (message, {wrapWidth}) => logs.add(message);
+  try {
+    await body();
+  } finally {
+    debugPrint = original;
+  }
+  return logs;
+}
+
 void main() {
   testWidgets('a successful Google sign-in posts its id token', (tester) async {
     final seen = <AuthUser>[];
@@ -218,18 +235,20 @@ void main() {
     );
     final repo = FakeAuthRepository();
 
-    await _pump(tester, gateway: gateway, repo: repo);
-    await tester.tap(find.byKey(const Key('google')));
-    await tester.pumpAndSettle();
+    await _capturingLogs(() async {
+      await _pump(tester, gateway: gateway, repo: repo);
+      await tester.tap(find.byKey(const Key('google')));
+      await tester.pumpAndSettle();
 
-    expect(find.text(_googleFailed), findsOneWidget);
-    expect(repo.googleTokens, isEmpty);
+      expect(find.text(_googleFailed), findsOneWidget);
+      expect(repo.googleTokens, isEmpty);
 
-    // Still usable: the user can try again.
-    await tester.ensureVisible(find.byKey(const Key('google')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('google')));
-    await tester.pumpAndSettle();
+      // Still usable: the user can try again.
+      await tester.ensureVisible(find.byKey(const Key('google')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('google')));
+      await tester.pumpAndSettle();
+    });
     expect(gateway.calls, 2);
   });
 
@@ -243,9 +262,11 @@ void main() {
     );
     final repo = FakeAuthRepository();
 
-    await _pump(tester, gateway: gateway, repo: repo);
-    await tester.tap(find.byKey(const Key('google')));
-    await tester.pumpAndSettle();
+    await _capturingLogs(() async {
+      await _pump(tester, gateway: gateway, repo: repo);
+      await tester.tap(find.byKey(const Key('google')));
+      await tester.pumpAndSettle();
+    });
 
     expect(tester.takeException(), isNull);
     expect(find.text(_googleFailed), findsOneWidget);
@@ -265,5 +286,61 @@ void main() {
       tester.widget<FsButton>(find.byKey(const Key('google'))).onPressed,
       isNotNull,
     );
+  });
+
+  testWidgets('only the Google button spins while Google signs in', (
+    tester,
+  ) async {
+    // AO-18: the email Sign in button used to spin, and be announced as
+    // "Sign in, loading", while Google was the one at work.
+    final pending = Completer<GoogleSignInResult>();
+    final gateway = FakeGoogleGateway(() => pending.future);
+    await _pump(tester, gateway: gateway, repo: FakeAuthRepository());
+
+    await tester.tap(find.byKey(const Key('google')));
+    await tester.pump();
+
+    final submit = tester.widget<FsButton>(find.byKey(const Key('submit')));
+    final google = tester.widget<FsButton>(find.byKey(const Key('google')));
+    expect(google.busy, isTrue);
+    expect(submit.busy, isFalse);
+    expect(submit.onPressed, isNull, reason: 'still one request at a time');
+
+    pending.complete(const GoogleSignInCancelled());
+    await tester.pumpAndSettle();
+  });
+
+  group('a failed Google sign-in is logged for debugging', () {
+    Future<List<String?>> logsOf(
+      WidgetTester tester,
+      Future<GoogleSignInResult> Function() result,
+    ) => _capturingLogs(() async {
+      await _pump(
+        tester,
+        gateway: FakeGoogleGateway(result),
+        repo: FakeAuthRepository(),
+      );
+      await tester.tap(find.byKey(const Key('google')));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('with the cause Google gave', (tester) async {
+      final logs = await logsOf(
+        tester,
+        () async => GoogleSignInFailed(StateError('no id token')),
+      );
+
+      expect(logs.where((l) => l!.contains('no id token')), hasLength(1));
+      expect(find.text(_googleFailed), findsOneWidget);
+    });
+
+    testWidgets('with whatever else went wrong', (tester) async {
+      final logs = await logsOf(
+        tester,
+        () async => throw PlatformException(code: 'sign_in_failed'),
+      );
+
+      expect(logs.where((l) => l!.contains('sign_in_failed')), hasLength(1));
+    });
   });
 }
