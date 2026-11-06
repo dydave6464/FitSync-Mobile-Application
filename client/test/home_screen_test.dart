@@ -786,6 +786,50 @@ void main() {
     });
   });
 
+  group('headings', () {
+    bool isHeader(WidgetTester tester, String text) => tester
+        .getSemantics(find.text(text))
+        .getSemanticsData()
+        .flagsCollection
+        .isHeader;
+
+    testWidgets('the greeting and each card title are headings', (
+      tester,
+    ) async {
+      // A screen reader moving by heading found nothing on Home.
+      _tallScreen(tester);
+      final handle = tester.ensureSemantics();
+      await _pumpHome(tester);
+
+      for (final title in [
+        'Kumusta, Juan',
+        "TODAY'S PLAN",
+        'Your progress',
+        "Today's routine",
+      ]) {
+        expect(isHeader(tester, title), isTrue, reason: title);
+      }
+      // A heading is the title alone, not the line under it.
+      expect(isHeader(tester, 'Upper Body · Push'), isFalse);
+      handle.dispose();
+    });
+
+    testWidgets('with no plan, that card is headed too', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pumpHome(tester, plan: null);
+      expect(isHeader(tester, "TODAY'S PLAN"), isTrue);
+      expect(isHeader(tester, 'No plan yet'), isFalse);
+      handle.dispose();
+    });
+
+    testWidgets('a workout under way is headed too', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pumpHome(tester, sessions: _FakeSessionRepository(_planSession()));
+      expect(isHeader(tester, 'WORKOUT IN PROGRESS'), isTrue);
+      handle.dispose();
+    });
+  });
+
   group('readiness and progress', () {
     testWidgets('Home reads top to bottom as the prototype does', (
       tester,

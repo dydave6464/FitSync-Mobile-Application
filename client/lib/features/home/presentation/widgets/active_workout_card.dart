@@ -54,7 +54,13 @@ class ActiveWorkoutCard extends StatelessWidget {
             children: [
               Icon(Icons.bolt, size: 16, color: t.accentText),
               const SizedBox(width: 6),
-              const Expanded(child: FsEyebrow('Workout in progress')),
+              Expanded(
+                child: Semantics(
+                  container: true,
+                  header: true,
+                  child: const FsEyebrow('Workout in progress'),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 8),

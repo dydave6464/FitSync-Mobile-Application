@@ -261,7 +261,11 @@ class _NoPlan extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const FsEyebrow("Today's plan"),
+          Semantics(
+            container: true,
+            header: true,
+            child: const FsEyebrow("Today's plan"),
+          ),
           const SizedBox(height: 8),
           Text('No plan yet', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),

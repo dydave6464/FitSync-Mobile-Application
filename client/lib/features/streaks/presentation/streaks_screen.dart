@@ -35,7 +35,13 @@ class StreaksScreen extends ConsumerWidget {
           const SizedBox(height: 22),
           Row(
             children: [
-              const Expanded(child: FsEyebrow('Goals')),
+              Expanded(
+                child: Semantics(
+                  container: true,
+                  header: true,
+                  child: const FsEyebrow('Goals'),
+                ),
+              ),
               IconButton(
                 key: const Key('streaks.goals.add'),
                 tooltip: 'Add a goal',

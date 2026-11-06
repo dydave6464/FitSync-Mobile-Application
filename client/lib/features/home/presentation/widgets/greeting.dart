@@ -114,7 +114,15 @@ class Greeting extends StatelessWidget {
                 style: TextStyle(fontSize: 11, color: t.text3),
               ),
               const SizedBox(height: 2),
-              Text('Kumusta, $_firstName', style: theme.textTheme.titleMedium),
+              // Home has no app bar: this line is the screen's heading.
+              Semantics(
+                container: true,
+                header: true,
+                child: Text(
+                  'Kumusta, $_firstName',
+                  style: theme.textTheme.titleMedium,
+                ),
+              ),
             ],
           ),
         ),

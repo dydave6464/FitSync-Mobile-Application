@@ -385,6 +385,21 @@ void main() {
     expect(find.text('New goal'), findsOneWidget);
   });
 
+  testWidgets("the goals section's title is a heading", (tester) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester);
+
+    expect(
+      tester
+          .getSemantics(find.text('GOALS'))
+          .getSemanticsData()
+          .flagsCollection
+          .isHeader,
+      isTrue,
+    );
+    handle.dispose();
+  });
+
   testWidgets('the + opens the add-goal sheet', (tester) async {
     await _pump(tester);
 

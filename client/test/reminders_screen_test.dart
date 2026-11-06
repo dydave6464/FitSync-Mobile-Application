@@ -825,6 +825,29 @@ void main() {
     handle.dispose();
   });
 
+  testWidgets('each section title is a heading', (tester) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester);
+
+    for (final title in [
+      'HABITS',
+      'WORKOUT ON TRAINING DAYS',
+      'MORNING CHECK-IN',
+    ]) {
+      await tester.scrollUntilVisible(find.text(title), 100);
+      expect(
+        tester
+            .getSemantics(find.text(title))
+            .getSemanticsData()
+            .flagsCollection
+            .isHeader,
+        isTrue,
+        reason: title,
+      );
+    }
+    handle.dispose();
+  });
+
   testWidgets('the lead time is a set of chips, one of them selected', (
     tester,
   ) async {

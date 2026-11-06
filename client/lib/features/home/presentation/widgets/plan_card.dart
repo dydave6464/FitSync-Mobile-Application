@@ -179,7 +179,11 @@ class PlanCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const FsEyebrow("Today's plan"),
+                Semantics(
+                  container: true,
+                  header: true,
+                  child: const FsEyebrow("Today's plan"),
+                ),
                 const SizedBox(height: 8),
                 Text(plan.name, style: theme.textTheme.headlineSmall),
                 const SizedBox(height: 8),

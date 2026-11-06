@@ -260,7 +260,7 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
   }) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      FsEyebrow(title),
+      Semantics(container: true, header: true, child: FsEyebrow(title)),
       const SizedBox(height: 10),
       Opacity(
         opacity: enabled ? 1 : 0.45,
