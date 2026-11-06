@@ -147,7 +147,7 @@ class HomeScreen extends ConsumerWidget {
                           dayNo: workoutPlan.todayDayNo(completedDays.length),
                           // The way to the plan the welcome points at, so
                           // taking it puts the welcome away as See plan does.
-                          onStart: () {
+                          onOpenPlan: () {
                             ref.read(planReadyProvider.notifier).dismiss();
                             onGoToTrain?.call();
                           },

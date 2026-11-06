@@ -20,16 +20,16 @@ class PlanCard extends StatelessWidget {
     super.key,
     required this.plan,
     required this.weightKg,
-    required this.onStart,
+    required this.onOpenPlan,
     this.dayNo,
   });
 
   final WorkoutPlan plan;
   final double? weightKg;
 
-  /// The button's tap: Home takes it to Train's Plan tab, where today's
+  /// "View today's plan": Home takes it to Train's Plan tab, where today's
   /// session is started.
-  final VoidCallback onStart;
+  final VoidCallback onOpenPlan;
 
   /// Which rotation day this card is describing — the caller works it out
   /// with [WorkoutPlan.todayDayNo], since it depends on how many sessions
@@ -218,7 +218,7 @@ class PlanCard extends StatelessWidget {
                   label: "View today's plan",
                   small: true,
                   icon: const Icon(Icons.event_note),
-                  onPressed: onStart,
+                  onPressed: onOpenPlan,
                 ),
               ],
             ),
