@@ -683,10 +683,18 @@ class _MusclesCard extends StatelessWidget {
           for (final m in muscles)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 5),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
+              // The group at the start and its day at the end while both
+              // fit; at large text the day drops under the group instead,
+              // rather than squeezing the name mid-word or running off the
+              // card.
+              child: SizedBox(
+                width: double.infinity,
+                child: Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 12,
+                  children: [
+                    Text(
                       m.label,
                       style: TextStyle(
                         fontSize: 13.5,
@@ -694,12 +702,12 @@ class _MusclesCard extends StatelessWidget {
                         color: t.text,
                       ),
                     ),
-                  ),
-                  Text(
-                    m.when,
-                    style: TextStyle(fontSize: 12.5, color: t.text2),
-                  ),
-                ],
+                    Text(
+                      m.when,
+                      style: TextStyle(fontSize: 12.5, color: t.text2),
+                    ),
+                  ],
+                ),
               ),
             ),
       ],

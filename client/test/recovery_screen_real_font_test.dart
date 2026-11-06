@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data' show ByteData;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter/services.dart' show FontLoader;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -40,7 +41,35 @@ const _noCheckinToday = RecoveryOverview(
   load: [],
 );
 
-Future<void> _pump(WidgetTester tester, double width, double textScale) async {
+/// Every group the server names, never trained and trained, so each row
+/// carries the longest "when" there is.
+const _muscles = RecoveryOverview(
+  todayCheckin: null,
+  latestEstimate: null,
+  load: [],
+  muscles: [
+    MuscleRecency(group: 'shoulders', lastTrained: null, daysAgo: null),
+    MuscleRecency(group: 'chest', lastTrained: '2026-10-01', daysAgo: 14),
+    MuscleRecency(group: 'legs', lastTrained: null, daysAgo: null),
+  ],
+);
+
+/// How many lines [text] was laid out on.
+int _lines(WidgetTester tester, String text) {
+  final paragraph = tester.renderObject<RenderParagraph>(find.text(text));
+  final boxes = paragraph.getBoxesForSelection(
+    TextSelection(baseOffset: 0, extentOffset: text.length),
+  );
+  return boxes.map((b) => b.top.round()).toSet().length;
+}
+
+Future<void> _pump(
+  WidgetTester tester,
+  double width,
+  double textScale, {
+  RecoveryOverview overview = _noCheckinToday,
+  String scrollTo = 'recovery.checkin',
+}) async {
   tester.view.physicalSize = Size(width, 800);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
@@ -49,7 +78,7 @@ Future<void> _pump(WidgetTester tester, double width, double textScale) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        recoveryOverviewProvider.overrideWith((ref) async => _noCheckinToday),
+        recoveryOverviewProvider.overrideWith((ref) async => overview),
         weightUnitProvider.overrideWithValue(WeightUnit.kg),
       ],
       child: MaterialApp(
@@ -59,10 +88,7 @@ Future<void> _pump(WidgetTester tester, double width, double textScale) async {
     ),
   );
   await tester.pumpAndSettle();
-  await tester.scrollUntilVisible(
-    find.byKey(const Key('recovery.checkin')),
-    200,
-  );
+  await tester.scrollUntilVisible(find.byKey(Key(scrollTo)), 200);
   await tester.pumpAndSettle();
 }
 
@@ -97,5 +123,35 @@ void main() {
     // iOS's accessibility sizes reach about 3.1x body text.
     await _pump(tester, 320, 3.2);
     expect(tester.takeException(), isNull);
+  });
+
+  group('last trained', () {
+    testWidgets('at 2x text the group name is never split mid-word', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        360,
+        2,
+        overview: _muscles,
+        scrollTo: 'recovery.muscles',
+      );
+      expect(tester.takeException(), isNull);
+      expect(_lines(tester, 'Shoulders'), 1);
+    });
+
+    testWidgets('at the largest iOS text a small phone does not overflow', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        320,
+        3.2,
+        overview: _muscles,
+        scrollTo: 'recovery.muscles',
+      );
+      expect(tester.takeException(), isNull);
+      expect(_lines(tester, 'Shoulders'), 1);
+    });
   });
 }
