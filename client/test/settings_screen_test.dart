@@ -163,17 +163,6 @@ class FakeProfileNotifier extends ProfileNotifier {
     weightUnit: weightUnit,
   );
 
-  /// Leaves the provider with no profile at all. Riverpod carries the last
-  /// value into every later loading or error state, so nothing public gets
-  /// back to "no value" once one has loaded; a loading state over a bare
-  /// error is the one it stores as given.
-  void unload() => state = const AsyncLoading<Profile>()
-      // ignore: invalid_use_of_internal_member
-      .copyWithPrevious(AsyncError<Profile>('gone', StackTrace.empty));
-
-  /// Puts a profile back after [unload].
-  void reload(Profile profile) => state = AsyncData(profile);
-
   /// Every `patch` call, counted on arrival -- before [patchGate] holds it
   /// and whether or not it goes on to succeed.
   int patchCalls = 0;
@@ -284,6 +273,12 @@ class _FlakyProfile extends ProfileNotifier {
     }
     return _baseProfile;
   }
+}
+
+/// A profile that never arrives: the provider stays loading with no value.
+class _NeverLoads extends ProfileNotifier {
+  @override
+  Future<Profile> build() => Completer<Profile>().future;
 }
 
 /// The profile notifier fake the running test's `_pump` installed. Set fresh
@@ -1643,7 +1638,9 @@ void main() {
         expect(find.text("Couldn't switch to lb. Try again."), findsOneWidget);
         expect(
           logs,
-          contains(allOf(contains('Weight unit switch'), contains('no answer'))),
+          contains(
+            allOf(contains('Weight unit switch'), contains('no answer')),
+          ),
         );
       });
     }
@@ -1656,12 +1653,42 @@ void main() {
   testWidgets('an editor without a profile waits under its own title', (
     tester,
   ) async {
-    await _pump(tester, goals: const ['lose_fat'], mainGoal: 'lose_fat');
+    // Riverpod carries a loaded value into every later state, so "no
+    // profile" is a second container whose profile never loads, swapped in
+    // under the open editor. Public API only (P-28): the state it needs had
+    // been forged with Riverpod's @internal copyWithPrevious.
+    ProviderContainer container(ProfileNotifier Function() profile) {
+      final made = ProviderContainer(
+        overrides: [
+          profileProvider.overrideWith(profile),
+          proRepositoryProvider.overrideWithValue(FakeProRepository()),
+        ],
+      );
+      addTearDown(made.dispose);
+      return made;
+    }
+
+    final loaded = container(
+      () => FakeProfileNotifier(
+        <Map<String, dynamic>>[],
+        goals: const ['lose_fat'],
+        mainGoal: 'lose_fat',
+      ),
+    );
+    final unloaded = container(_NeverLoads.new);
+    // The same MaterialApp under either container, so the open editor
+    // route survives the swap.
+    Widget app(ProviderContainer on) => UncontrolledProviderScope(
+      container: on,
+      child: const MaterialApp(home: SettingsScreen()),
+    );
+
+    await tester.pumpWidget(app(loaded));
+    await tester.pumpAndSettle();
     await _openRow(tester, const Key('edit.goal'));
     expect(find.byType(EditScaffold), findsOneWidget);
-    final loaded = _profile.state.value!;
 
-    _profile.unload();
+    await tester.pumpWidget(app(unloaded));
     await tester.pump();
     expect(find.byType(EditScaffold), findsNothing);
     expect(
@@ -1671,7 +1698,7 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     expect(find.byType(BackButton), findsOneWidget);
 
-    _profile.reload(loaded);
+    await tester.pumpWidget(app(loaded));
     await tester.pumpAndSettle();
     expect(find.byType(EditScaffold), findsOneWidget);
   });

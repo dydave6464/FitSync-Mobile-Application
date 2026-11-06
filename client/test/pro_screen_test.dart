@@ -677,7 +677,9 @@ void main() {
   // PS-24: the prototype's 56 px crown square is accent-filled.
   testWidgets('the header crown sits on an accent tile', (tester) async {
     await _pump(tester);
-    final tile = tester.widget<FsIconTile>(find.byType(FsIconTile).first);
+    // By its key, not as the first FsIconTile: any tile placed above it
+    // would have been checked instead (P-28).
+    final tile = tester.widget<FsIconTile>(find.byKey(const Key('pro.crown')));
     expect(tile.icon, Icons.workspace_premium_outlined);
     expect(tile.size, 56);
     expect(tile.selected, isTrue);

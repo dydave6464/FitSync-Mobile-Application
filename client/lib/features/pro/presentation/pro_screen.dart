@@ -305,6 +305,7 @@ class _ProScreenState extends ConsumerState<ProScreen> {
               children: [
                 // The prototype's crown square: accent-filled, crown in on-accent.
                 const FsIconTile(
+                  key: Key('pro.crown'),
                   icon: Icons.workspace_premium_outlined,
                   size: 56,
                   selected: true,
