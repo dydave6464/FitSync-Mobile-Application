@@ -616,6 +616,56 @@ void main() {
       expect(repo.sent, isNull);
     });
 
+    testWidgets('Cancel is off while a save is in flight', (tester) async {
+      // Cancel mid-save closed the sheet and the check-in saved anyway, so
+      // the button said Cancel without cancelling anything.
+      final completer = Completer<void>();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            recoveryRepositoryProvider.overrideWithValue(
+              _SlowFakeRepo(completer),
+            ),
+            pendingOutcomeProvider.overrideWith((ref) async => null),
+          ],
+          child: MaterialApp(
+            theme: fsLightTheme(),
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: TextButton(
+                  onPressed: () => showCheckinSheet(context),
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      await _answerAll(tester);
+      await tester.ensureVisible(find.byKey(const Key('checkin.save')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('checkin.save')));
+      await tester.pump();
+
+      final cancel = tester.widget<FsButton>(
+        find.byKey(const Key('checkin.cancel')),
+      );
+      expect(cancel.onPressed, isNull);
+      await tester.ensureVisible(find.byKey(const Key('checkin.cancel')));
+      await tester.tap(
+        find.byKey(const Key('checkin.cancel')),
+        warnIfMissed: false,
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Morning check-in'), findsOneWidget);
+
+      completer.complete();
+      await tester.pumpAndSettle();
+    });
+
     testWidgets('Cancel with answers given asks first', (tester) async {
       await _open(tester);
       await _tapKey(tester, 'checkin.sleepQuality.good');

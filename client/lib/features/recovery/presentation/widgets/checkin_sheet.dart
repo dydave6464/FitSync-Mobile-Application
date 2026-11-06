@@ -499,12 +499,14 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
           const SizedBox(height: 8),
           // A button as well as the drag, the scrim and back, so closing
           // never depends on a swipe. It asks the route to pop, so answers
-          // given still meet the discard question first.
+          // given still meet the discard question first. Off mid-save: the
+          // guard stands down then, and closing would not stop the save, so
+          // a Cancel there would cancel nothing.
           FsButton(
             key: const Key('checkin.cancel'),
             label: 'Cancel',
             kind: FsButtonKind.ghost,
-            onPressed: () => Navigator.of(context).maybePop(),
+            onPressed: _busy ? null : () => Navigator.of(context).maybePop(),
           ),
         ],
       ),
