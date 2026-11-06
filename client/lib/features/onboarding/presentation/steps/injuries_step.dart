@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/api_exception.dart';
 import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
-import '../../../exercises/presentation/exercise_list_screen.dart'
-    show describeError;
 import '../../../profile/domain/profile.dart';
 import '../../../profile/presentation/providers.dart';
 
@@ -128,20 +127,10 @@ class InjuriesStep extends ConsumerWidget {
             padding: EdgeInsets.symmetric(vertical: 32),
             child: Center(child: CircularProgressIndicator()),
           ),
-          error: (error, _) => Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Column(
-              children: [
-                Text(describeError(error), textAlign: TextAlign.center),
-                const SizedBox(height: 12),
-                FsButton(
-                  label: 'Retry',
-                  small: true,
-                  kind: FsButtonKind.secondary,
-                  onPressed: () => ref.invalidate(injuryOptionsProvider),
-                ),
-              ],
-            ),
+          error: (error, _) => FsRetry(
+            message: userMessage(error),
+            buttonKey: const Key('injuries.retry'),
+            onRetry: () => ref.invalidate(injuryOptionsProvider),
           ),
           data: (options) => Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -216,8 +205,11 @@ class _RegionCard extends StatelessWidget {
                 constraints: const BoxConstraints(minHeight: 48),
                 child: Padding(
                   // With the side chips under it, 8 of the 13 below moves to
-                  // their padding (below): the same gap on screen, but room
-                  // the chips' tap band can reach into.
+                  // their padding (below), room the chips' tap band can reach
+                  // into. Not quite the same gap on screen: 13 + name + 5 is
+                  // under the row's 48 dp minimum, so the name is centred in
+                  // the spare height -- a few dp lower than on an unpicked
+                  // card, with a few dp more than 13 under it.
                   padding: EdgeInsets.fromLTRB(13, 13, 13, showSides ? 5 : 13),
                   child: Row(
                     children: [
