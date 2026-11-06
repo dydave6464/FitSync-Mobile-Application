@@ -11,15 +11,10 @@ import 'package:fitsync/core/widgets/fs_kit.dart';
 
 import 'helpers/a11y.dart';
 
-Widget _host(Widget child) => MaterialApp(
-  theme: fsLightTheme(),
-  home: Scaffold(body: Center(child: child)),
-);
-
 void main() {
   testWidgets('a selected chip shows a check when asked', (tester) async {
     await tester.pumpWidget(
-      _host(
+      host(
         FsChip(label: 'Bench', selected: true, showCheck: true, onTap: () {}),
       ),
     );
@@ -28,7 +23,7 @@ void main() {
 
   testWidgets('an unselected chip shows no check', (tester) async {
     await tester.pumpWidget(
-      _host(
+      host(
         FsChip(label: 'Bench', selected: false, showCheck: true, onTap: () {}),
       ),
     );
@@ -37,7 +32,7 @@ void main() {
 
   testWidgets('a chip without showCheck never shows one', (tester) async {
     await tester.pumpWidget(
-      _host(FsChip(label: 'Home gym', selected: true, onTap: () {})),
+      host(FsChip(label: 'Home gym', selected: true, onTap: () {})),
     );
     expect(
       find.byIcon(Icons.check),
@@ -53,7 +48,7 @@ void main() {
     // enclosing Wrap and pushed neighbouring chips onto another line.
     Future<double> widthWhen(bool selected) async {
       await tester.pumpWidget(
-        _host(
+        host(
           FsChip(
             label: 'Pull-up bar',
             selected: selected,
@@ -74,12 +69,12 @@ void main() {
     // The reserved slot must not leak onto the location chips, which would
     // gain 18px of dead space for a check they never render.
     await tester.pumpWidget(
-      _host(const FsChip(label: 'Home gym', selected: false, onTap: _noop)),
+      host(const FsChip(label: 'Home gym', selected: false, onTap: _noop)),
     );
     final plain = tester.getSize(find.byType(FsChip)).width;
 
     await tester.pumpWidget(
-      _host(
+      host(
         const FsChip(
           label: 'Home gym',
           selected: false,
@@ -94,7 +89,7 @@ void main() {
   });
 
   testWidgets('FsTag renders its text', (tester) async {
-    await tester.pumpWidget(_host(const FsTag('4 selected')));
+    await tester.pumpWidget(host(const FsTag('4 selected')));
     expect(find.text('4 selected'), findsOneWidget);
   });
 
@@ -108,7 +103,7 @@ void main() {
       // longer soft-wrap to the Wrap's bounded width. 320dp mirrors a small
       // phone; 2.0x mirrors Android 14's maximum text scale.
       await tester.pumpWidget(
-        _host(
+        host(
           MediaQuery(
             data: const MediaQueryData(
               size: Size(320, 800),
@@ -141,7 +136,7 @@ void main() {
       // Guards the fix in the other direction: Flexible must not make the
       // chip stretch to fill the Wrap's width when nothing forces wrapping.
       await tester.pumpWidget(
-        _host(
+        host(
           const SizedBox(
             width: 320,
             child: Wrap(
@@ -165,7 +160,7 @@ void main() {
   ) async {
     final taps = <int>[];
     await tester.pumpWidget(
-      _host(
+      host(
         FsNav(
           currentIndex: 0,
           onSelect: taps.add,
@@ -193,7 +188,7 @@ void main() {
   testWidgets('the current tab reads in the text green', (tester) async {
     // A 10 px label in the brand green was 2.87:1 on the light bar.
     await tester.pumpWidget(
-      _host(
+      host(
         FsNav(
           currentIndex: 0,
           onSelect: (_) {},
@@ -222,7 +217,7 @@ void main() {
     // maxLines: 1 and overflow: TextOverflow.ellipsis.
     // 320dp mirrors a small phone; 2.0x mirrors Android 14's maximum text scale.
     await tester.pumpWidget(
-      _host(
+      host(
         MediaQuery(
           data: const MediaQueryData(
             size: Size(320, 800),
@@ -258,7 +253,7 @@ void main() {
       // width left inside a card on a 320dp phone after its padding; 2.0x
       // mirrors Android 14's maximum text scale.
       await tester.pumpWidget(
-        _host(
+        host(
           MediaQuery(
             data: const MediaQueryData(
               size: Size(320, 800),
@@ -317,7 +312,7 @@ void main() {
       required String label,
       required bool wrap,
     }) => tester.pumpWidget(
-      _host(
+      host(
         SizedBox(
           width: 160,
           child: FsButton(label: label, wrapLabel: wrap, onPressed: () {}),
@@ -433,7 +428,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      _host(
+      host(
         const FsSegmented(
           options: [
             (value: 'male', label: 'Male'),
@@ -467,7 +462,7 @@ void main() {
   ) async {
     final picked = <String>[];
     await tester.pumpWidget(
-      _host(
+      host(
         FsSegmented(
           options: const [
             (value: 'beginner', label: 'Beginner'),
@@ -493,7 +488,7 @@ void main() {
     // — arrive here matching no segment at all, and must not blank the
     // control or throw.
     await tester.pumpWidget(
-      _host(
+      host(
         const FsSegmented(
           options: [
             (value: 'male', label: 'Male'),
@@ -514,7 +509,7 @@ void main() {
     final controller = TextEditingController();
     addTearDown(controller.dispose);
     await tester.pumpWidget(
-      _host(
+      host(
         FsStatField(
           fieldKey: const Key('heightCm'),
           label: 'Height',
@@ -538,7 +533,7 @@ void main() {
     final controller = TextEditingController();
     addTearDown(controller.dispose);
     await tester.pumpWidget(
-      _host(
+      host(
         FsStatField(
           fieldKey: const Key('weightKg'),
           label: 'Weight',
@@ -563,7 +558,7 @@ void main() {
     addTearDown(controller.dispose);
 
     await tester.pumpWidget(
-      _host(
+      host(
         FsStatField(
           fieldKey: const Key('heightCm'),
           label: 'Height',
@@ -623,7 +618,7 @@ void main() {
     ) async {
       final handle = tester.ensureSemantics();
       await tester.pumpWidget(
-        _host(FsChip(label: 'Bench', selected: true, onTap: _noop)),
+        host(FsChip(label: 'Bench', selected: true, onTap: _noop)),
       );
       expect(
         tester.getSemantics(find.byType(FsChip)),
@@ -641,7 +636,7 @@ void main() {
       );
 
       await tester.pumpWidget(
-        _host(FsChip(label: 'Bench', selected: false, onTap: _noop)),
+        host(FsChip(label: 'Bench', selected: false, onTap: _noop)),
       );
       expect(
         tester.getSemantics(find.byType(FsChip)),
@@ -655,7 +650,7 @@ void main() {
     ) async {
       final handle = tester.ensureSemantics();
       await tester.pumpWidget(
-        _host(const FsChip(label: 'Bench', selected: false, onTap: null)),
+        host(const FsChip(label: 'Bench', selected: false, onTap: null)),
       );
       expect(
         tester.getSemantics(find.byType(FsChip)),
@@ -676,7 +671,7 @@ void main() {
     ) async {
       final handle = tester.ensureSemantics();
       await tester.pumpWidget(
-        _host(
+        host(
           SizedBox(
             width: 300,
             child: FsSegmented(
@@ -722,7 +717,7 @@ void main() {
     ) async {
       final handle = tester.ensureSemantics();
       await tester.pumpWidget(
-        _host(const FsCard(onTap: _noop, child: Text('Lose fat'))),
+        host(const FsCard(onTap: _noop, child: Text('Lose fat'))),
       );
       expect(
         tester.getSemantics(find.byType(FsCard)),
@@ -734,7 +729,7 @@ void main() {
         ),
       );
 
-      await tester.pumpWidget(_host(const FsCard(child: Text('Summary'))));
+      await tester.pumpWidget(host(const FsCard(child: Text('Summary'))));
       expect(
         tester.getSemantics(find.text('Summary')),
         isSemantics(label: 'Summary', isButton: false),
@@ -745,7 +740,7 @@ void main() {
     testWidgets('a card given a selected state exposes it', (tester) async {
       final handle = tester.ensureSemantics();
       await tester.pumpWidget(
-        _host(
+        host(
           const FsCard(
             onTap: _noop,
             accent: true,
@@ -771,7 +766,7 @@ void main() {
       (tester) async {
         final handle = tester.ensureSemantics();
         await tester.pumpWidget(
-          _host(const FsButton(label: 'Continue', onPressed: _noop)),
+          host(const FsButton(label: 'Continue', onPressed: _noop)),
         );
         expect(
           tester.getSemantics(find.byType(FsButton)),
@@ -785,7 +780,7 @@ void main() {
         );
 
         await tester.pumpWidget(
-          _host(const FsButton(label: 'Continue', onPressed: null)),
+          host(const FsButton(label: 'Continue', onPressed: null)),
         );
         expect(
           tester.getSemantics(find.byType(FsButton)),
@@ -805,7 +800,7 @@ void main() {
     ) async {
       final handle = tester.ensureSemantics();
       await tester.pumpWidget(
-        _host(const FsButton(label: 'Save', onPressed: _noop, busy: true)),
+        host(const FsButton(label: 'Save', onPressed: _noop, busy: true)),
       );
       expect(
         tester.getSemantics(find.byType(FsButton)),
@@ -826,7 +821,7 @@ void main() {
   group('tap targets', () {
     /// [child] with room all round, as a chip in a column of content has,
     /// so a tap just off it lands inside the column.
-    Widget roomy(Widget child) => _host(
+    Widget roomy(Widget child) => host(
       SizedBox(
         width: 300,
         child: Column(
@@ -882,7 +877,7 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        _host(const FsChip(label: 'Bench', selected: false, onTap: _noop)),
+        host(const FsChip(label: 'Bench', selected: false, onTap: _noop)),
       );
 
       // About 30 dp: the band is not layout, or every Wrap of chips would
@@ -893,7 +888,7 @@ void main() {
     testWidgets('a screen reader frames the chip at 48 dp too', (tester) async {
       final handle = tester.ensureSemantics();
       await tester.pumpWidget(
-        _host(
+        host(
           const FsChip(label: 'No', selected: false, small: true, onTap: _noop),
         ),
       );
@@ -1045,7 +1040,7 @@ void main() {
         final controller = TextEditingController();
         addTearDown(controller.dispose);
         await tester.pumpWidget(
-          _host(
+          host(
             SizedBox(
               width: 140,
               child: FsStatField(
@@ -1092,7 +1087,7 @@ void main() {
       final controller = TextEditingController();
       addTearDown(controller.dispose);
       await tester.pumpWidget(
-        _host(
+        host(
           SizedBox(
             width: 140,
             child: FsStatField(
@@ -1128,7 +1123,7 @@ void main() {
       final controller = TextEditingController();
       addTearDown(controller.dispose);
       await tester.pumpWidget(
-        _host(
+        host(
           SizedBox(
             width: 140,
             child: FsStatField(
@@ -1267,7 +1262,7 @@ void main() {
     testWidgets('a screen reader hears which unit is in force', (tester) async {
       final handle = tester.ensureSemantics();
       await tester.pumpWidget(
-        _host(FsUnitToggle(value: WeightUnit.kg, onChanged: (_) {})),
+        host(FsUnitToggle(value: WeightUnit.kg, onChanged: (_) {})),
       );
 
       final kg = tester.getSemantics(find.byKey(const Key('unit.kg')));
