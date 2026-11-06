@@ -295,10 +295,16 @@ class FsChip extends StatelessWidget {
     this.small = false,
     this.showCheck = false,
     this.toggle = true,
+    this.exclusive = false,
   });
 
   final String label;
   final bool selected;
+
+  /// True for a chip in a single-choice row (a meal, a reminder's lead
+  /// time), where picking one unpicks the rest. A screen reader then says
+  /// the chip is one of a group, not an independent toggle.
+  final bool exclusive;
 
   /// False for an action chip ("Add"), one that does something when pressed
   /// rather than standing for a choice that is on or off.
@@ -326,57 +332,63 @@ class FsChip extends StatelessWidget {
       // An action chip is pressed, not switched on, so it reports no selected
       // state at all rather than a permanent "not selected".
       selected: toggle ? selected : null,
-      child: Material(
-        color: selected ? t.accent : t.surface2,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(FsRadius.pill),
-          side: BorderSide(color: selected ? Colors.transparent : t.line),
-        ),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(FsRadius.pill),
-          child: Padding(
-            padding: small
-                ? const EdgeInsets.symmetric(horizontal: 10, vertical: 5)
-                : const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // The slot is reserved whenever the chip can show a check, not
-                // only while it does. Building it on selection alone made the
-                // chip 18px wider the moment it was ticked, which reflowed the
-                // enclosing Wrap and shunted its neighbours onto another line.
-                if (showCheck) ...[
-                  SizedBox(
-                    width: small ? 11 : 13,
-                    height: small ? 11 : 13,
-                    child: selected
-                        ? Icon(
-                            Icons.check,
-                            size: small ? 11 : 13,
-                            color: t.onAccent,
-                          )
-                        : null,
-                  ),
-                  const SizedBox(width: 5),
-                ],
-                Flexible(
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: small ? 11 : 12.5,
-                      fontWeight: FontWeight.w600,
-                      color: selected ? t.onAccent : t.text2,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+      // Folds into the band's node, as FsSegmented's does.
+      child: Semantics(
+        inMutuallyExclusiveGroup: exclusive ? true : null,
+        child: _chip(t),
       ),
     );
   }
+
+  Widget _chip(FsTokens t) => Material(
+    color: selected ? t.accent : t.surface2,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(FsRadius.pill),
+      side: BorderSide(color: selected ? Colors.transparent : t.line),
+    ),
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(FsRadius.pill),
+      child: Padding(
+        padding: small
+            ? const EdgeInsets.symmetric(horizontal: 10, vertical: 5)
+            : const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // The slot is reserved whenever the chip can show a check, not
+            // only while it does. Building it on selection alone made the
+            // chip 18px wider the moment it was ticked, which reflowed the
+            // enclosing Wrap and shunted its neighbours onto another line.
+            if (showCheck) ...[
+              SizedBox(
+                width: small ? 11 : 13,
+                height: small ? 11 : 13,
+                child: selected
+                    ? Icon(
+                        Icons.check,
+                        size: small ? 11 : 13,
+                        color: t.onAccent,
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 5),
+            ],
+            Flexible(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: small ? 11 : 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: selected ? t.onAccent : t.text2,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 /// `.field` — 52px, 16px radius, surface, accent border on focus.

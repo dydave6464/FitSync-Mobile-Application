@@ -1681,6 +1681,49 @@ void main() {
     });
   });
 
+  // L-7: a row where picking one chip unpicks the others (meal, lead time)
+  // was announced like a row of independent toggles.
+  group('single-choice chips', () {
+    testWidgets('an exclusive chip says it is one of a single-choice group', (
+      tester,
+    ) async {
+      final h = tester.ensureSemantics();
+      await tester.pumpWidget(
+        host(
+          FsChip(label: 'Lunch', selected: true, exclusive: true, onTap: () {}),
+        ),
+      );
+      expect(
+        tester.getSemantics(find.text('Lunch')),
+        isSemantics(
+          label: 'Lunch',
+          isButton: true,
+          isSelected: true,
+          isInMutuallyExclusiveGroup: true,
+        ),
+      );
+      h.dispose();
+    });
+
+    testWidgets('a chip is not in a single-choice group by default', (
+      tester,
+    ) async {
+      final h = tester.ensureSemantics();
+      await tester.pumpWidget(
+        host(FsChip(label: 'Bench', selected: true, onTap: () {})),
+      );
+      expect(
+        tester.getSemantics(find.text('Bench')),
+        isSemantics(
+          label: 'Bench',
+          isSelected: true,
+          isInMutuallyExclusiveGroup: false,
+        ),
+      );
+      h.dispose();
+    });
+  });
+
   // A placeholder vanishes once the user types, and a label beside the field
   // is a separate node: the field itself has to carry its name.
   group('field labels', () {
