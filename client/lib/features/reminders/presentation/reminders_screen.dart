@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
-import '../../exercises/presentation/exercise_list_screen.dart'
-    show describeError;
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
 import '../../routine/domain/routine.dart' show formatClock;
@@ -94,7 +93,7 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(describeError(error))));
+          .showSnackBar(SnackBar(content: Text(userMessage(error))));
     }
   }
 
@@ -149,10 +148,20 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
       appBar: AppBar(title: const Text('Reminders')),
       body: settings.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(child: Text(describeError(error))),
+        error: (error, _) => FsRetry(
+          fullScreen: true,
+          message: userMessage(error),
+          buttonKey: const Key('reminders.retry'),
+          onRetry: () => ref.invalidate(reminderSettingsProvider),
+        ),
         data: (loadedSettings) => profile.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => Center(child: Text(describeError(error))),
+          error: (error, _) => FsRetry(
+            fullScreen: true,
+            message: userMessage(error),
+            buttonKey: const Key('reminders.retry'),
+            onRetry: () => ref.invalidate(profileProvider),
+          ),
           data: (loadedProfile) => _body(loadedSettings, loadedProfile),
         ),
       ),

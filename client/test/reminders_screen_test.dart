@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
+import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/reminders/data/reminder_scheduler.dart';
 import 'package:fitsync/features/reminders/domain/reminders.dart';
@@ -72,6 +74,39 @@ class _FakeScheduler implements ReminderScheduler {
   Stream<String> get taps => const Stream.empty();
 }
 
+/// Fails its first load, then answers [ReminderSettings.defaults] -- the
+/// shape of a load that broke once and works on Try again.
+class _FlakyReminderSettings extends ReminderSettingsController {
+  _FlakyReminderSettings(this.loads);
+
+  final List<int> loads;
+
+  @override
+  Future<ReminderSettings> build() async {
+    loads.add(loads.length);
+    if (loads.length == 1) {
+      throw const ApiException('SERVER_ERROR', 'Reminder settings broke.');
+    }
+    return ReminderSettings.defaults;
+  }
+}
+
+/// The profile [FakeProfileNotifier] seeds, but failing its first load.
+class _FlakyProfile extends FakeProfileNotifier {
+  _FlakyProfile(this.loads) : super(<Map<String, dynamic>>[]);
+
+  final List<int> loads;
+
+  @override
+  Future<Profile> build() async {
+    loads.add(loads.length);
+    if (loads.length == 1) {
+      throw const ApiException('SERVER_ERROR', 'Profile broke.');
+    }
+    return super.build();
+  }
+}
+
 Future<_FakeScheduler> _pump(
   WidgetTester tester, {
   ReminderSettings settings = ReminderSettings.defaults,
@@ -80,6 +115,8 @@ Future<_FakeScheduler> _pump(
   bool granted = true,
   bool requestAnswer = true,
   Future<TimeOfDay?> Function(BuildContext, TimeOfDay)? pickTime,
+  ReminderSettingsController Function()? settingsController,
+  ProfileNotifier Function()? profileNotifier,
 }) async {
   final scheduler = _FakeScheduler(
     granted: granted,
@@ -90,10 +127,17 @@ Future<_FakeScheduler> _pump(
     ProviderScope(
       overrides: [
         reminderSettingsProvider.overrideWith(
-          () => _RecordingReminderSettings(settings, patches: settingsPatches),
+          settingsController ??
+              () => _RecordingReminderSettings(
+                settings,
+                patches: settingsPatches,
+              ),
         ),
         profileProvider.overrideWith(
-          () => FakeProfileNotifier(profilePatches ?? <Map<String, dynamic>>[]),
+          profileNotifier ??
+              () => FakeProfileNotifier(
+                profilePatches ?? <Map<String, dynamic>>[],
+              ),
         ),
         reminderSchedulerProvider.overrideWithValue(scheduler),
       ],
@@ -334,4 +378,44 @@ void main() {
       expect(settingsPatches, isEmpty);
     },
   );
+
+  testWidgets('a settings load error offers Try again, which reloads', (
+    tester,
+  ) async {
+    final loads = <int>[];
+    await _pump(
+      tester,
+      settingsController: () => _FlakyReminderSettings(loads),
+    );
+
+    expect(
+      find.text('Reminder settings broke.'),
+      findsOneWidget,
+      reason: 'the plain message (userMessage) is shown',
+    );
+    expect(find.byType(FsRetry), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('reminders.retry')));
+    await tester.pumpAndSettle();
+
+    expect(loads, hasLength(2));
+    expect(find.byType(FsRetry), findsNothing);
+    expect(find.byKey(const Key('reminders.master')), findsOneWidget);
+  });
+
+  testWidgets('a profile load error offers Try again, which reloads', (
+    tester,
+  ) async {
+    final loads = <int>[];
+    await _pump(tester, profileNotifier: () => _FlakyProfile(loads));
+
+    expect(find.text('Profile broke.'), findsOneWidget);
+    expect(find.byType(FsRetry), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('reminders.retry')));
+    await tester.pumpAndSettle();
+
+    expect(loads, hasLength(2));
+    expect(find.byKey(const Key('reminders.master')), findsOneWidget);
+  });
 }
