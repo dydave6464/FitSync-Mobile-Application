@@ -47,6 +47,39 @@ test('macros changed to 0/0/0 are refused, whatever the listed kcal', () => {
   assert.equal(fieldOf(() => checkManual({ name: 'Beer', proteinG: 0, carbsG: 0, fatG: 0 }, { basedOn: BEER })), 'food');
 });
 
+test("a label's kcal sent with a manual food is used, rounded to a whole number", () => {
+  const wafer = { name: 'Choco wafer', servingDesc: '1 pack (32 g)', proteinG: 1.5, carbsG: 21, fatG: 7 };
+  assert.equal(checkManual({ ...wafer, kcal: 160 }).kcal, 160, "not 4-4-9's 153");
+  assert.equal(checkManual({ ...wafer, kcal: 120.4 }).kcal, 120);
+  assert.equal(checkManual({ ...wafer, kcal: 0 }).kcal, 0);
+  assert.equal(checkManual({ ...wafer, kcal: 5000 }).kcal, 5000);
+});
+
+test("a label's kcal wins over a listed food whose macros match", () => {
+  assert.equal(checkManual({ name: 'Beer', proteinG: 1.1, carbsG: 10.6, fatG: 0, kcal: 140 }, { basedOn: BEER }).kcal, 140);
+});
+
+test("no label kcal (absent or null) keeps today's rule: a kept listed kcal, else 4-4-9", () => {
+  assert.equal(checkManual({ name: 'Turon', proteinG: 2, carbsG: 34, fatG: 6, kcal: null }).kcal, 198);
+  assert.equal(checkManual({ name: 'Beer', proteinG: 1.1, carbsG: 10.6, fatG: 0, kcal: null }, { basedOn: BEER }).kcal, 129);
+});
+
+test('0/0/0 is allowed with a label kcal above 0, and still refused at 0', () => {
+  assert.equal(checkManual({ name: 'Iced tea', proteinG: 0, carbsG: 0, fatG: 0, kcal: 90 }).kcal, 90);
+  assert.equal(fieldOf(() => checkManual({ name: 'Water', proteinG: 0, carbsG: 0, fatG: 0, kcal: 0 })), 'food');
+  assert.equal(fieldOf(() => checkManual({ name: 'Gin', proteinG: 0, carbsG: 0, fatG: 0, kcal: 0 }, { basedOn: SPIRIT })), 'food');
+});
+
+test('a label kcal out of 0 to 5000, or not a number, is a 400 on kcal', () => {
+  for (const bad of [-1, 5001, '160', NaN, Infinity, true]) {
+    assert.equal(fieldOf(() => checkManual({ name: 'Wafer', proteinG: 1.5, carbsG: 21, fatG: 7, kcal: bad })), 'kcal', String(bad));
+  }
+  try { checkManual({ name: 'Wafer', proteinG: 1.5, carbsG: 21, fatG: 7, kcal: 5001 }); } catch (e) {
+    assert.equal(e.code, 'INVALID_NUTRITION_FIELD');
+    assert.equal(e.message, 'kcal must be 0 to 5000.');
+  }
+});
+
 test('a basis id is absent (null) or a positive integer; anything else is a 400 on that field', () => {
   assert.equal(basisId({}, 'basedOnFoodId'), null);
   assert.equal(basisId({ basedOnFoodId: null }, 'basedOnFoodId'), null);

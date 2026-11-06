@@ -202,10 +202,10 @@ test('nutrition endpoints', async (t) => {
     assert.equal(entry.kcal, 24); // round(4.4 + 20)
   });
 
-  await t.test("the app's kcal is never used, and an unknown basedOnFoodId is today's 4-4-9", async () => {
+  await t.test("the label kcal sent is used, and an unknown basedOnFoodId is today's 4-4-9", async () => {
     const u = await freshUser();
     const sent = (await u.log({ mealType: 'dinner', servings: 1, food: beerEdit({ kcal: 900 }) }).expect(201)).body.data;
-    assert.equal(sent.entry.kcal, 129);
+    assert.equal(sent.entry.kcal, 900);
     const unknown = (await u.log({
       mealType: 'dinner', servings: 1, food: beerEdit({ basedOnFoodId: BEER + 100000 }),
     }).expect(201)).body.data;
@@ -215,6 +215,35 @@ test('nutrition endpoints', async (t) => {
       food: { source: 'manual', name: 'Gin', proteinG: 0, carbsG: 0, fatG: 0, basedOnFoodId: SPIRIT + 100000 },
     }).expect(400);
     assert.deepEqual(res.body.error.details, [{ field: 'food' }]);
+  });
+
+  await t.test("a manual food's label kcal is per serving, kept by later edits and re-logs, and replaced by a new one", async () => {
+    const u = await freshUser();
+    const wafer = { source: 'manual', name: 'Choco wafer', servingDesc: '1 pack (32 g)', proteinG: 1.5, carbsG: 21, fatG: 7 };
+    const logged = (await u.log({ mealType: 'snack', servings: 2, food: { ...wafer, kcal: 160 } }).expect(201)).body.data.entry;
+    assert.equal(logged.kcal, 320, "160 a pack, not 4-4-9's 153");
+    // Unchanged macros and no kcal: the entry's own 160 a serving is kept.
+    const edited = (await u.edit(logged.id, { mealType: 'snack', servings: 1, food: wafer }).expect(200)).body.data.entry;
+    assert.equal(edited.kcal, 160);
+    const again = (await u.log({ mealType: 'snack', servings: 1, food: { ...wafer, basedOnEntryId: logged.id } }).expect(201)).body.data.entry;
+    assert.equal(again.kcal, 160, 'logged again from Recents');
+    const relabelled = (await u.edit(logged.id, { mealType: 'snack', servings: 1.5, food: { ...wafer, kcal: 200 } }).expect(200)).body.data.entry;
+    assert.equal(relabelled.kcal, 300);
+  });
+
+  await t.test('a drink label: 0/0/0 with kcal logs at that kcal; kcal out of range is a 400 on kcal', async () => {
+    const u = await freshUser();
+    const tea = { source: 'manual', name: 'Iced tea', servingDesc: '1 bottle (500 ml)', proteinG: 0, carbsG: 0, fatG: 0 };
+    assert.equal((await u.log({ mealType: 'snack', servings: 1, food: { ...tea, kcal: 90 } }).expect(201)).body.data.entry.kcal, 90);
+    for (const kcal of [5001, -1, '90']) {
+      const res = await u.log({ mealType: 'snack', servings: 1, food: { ...tea, kcal } }).expect(400);
+      assert.equal(res.body.error.code, 'INVALID_NUTRITION_FIELD');
+      assert.equal(res.body.error.message, 'kcal must be 0 to 5000.');
+      assert.deepEqual(res.body.error.details, [{ field: 'kcal' }]);
+    }
+    const zero = await u.log({ mealType: 'snack', servings: 1, food: { ...tea, kcal: 0 } }).expect(400);
+    assert.equal(zero.body.error.message, 'A manual food needs some protein, carbs or fat.');
+    assert.deepEqual(zero.body.error.details, [{ field: 'food' }]);
   });
 
   // Recents gives back a manual entry, not a listed food: logging it again
