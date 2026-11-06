@@ -274,7 +274,7 @@ void main() {
           logged: null,
           drafts: drafts,
           unit: WeightUnit.lb,
-          repsHint: '8-12',
+          targetReps: '8-12',
         ),
       ),
     );
@@ -308,6 +308,41 @@ void main() {
         .label;
     expect(label, contains('Reps'));
     expect(label, isNot(contains('target')));
+    handle.dispose();
+  });
+
+  // The exercise's target comes straight from the plan, where no target is
+  // an empty string: that is no target, and the box says just "reps".
+  testWidgets('an empty target is no target', (tester) async {
+    final handle = tester.ensureSemantics();
+    await tester.pumpWidget(
+      _host(
+        SetRow(
+          setNumber: 1,
+          logged: null,
+          drafts: _drafts(tester),
+          targetReps: '',
+        ),
+      ),
+    );
+
+    final label = tester
+        .getSemantics(
+          find.descendant(
+            of: find.byKey(const Key('set.1.reps')),
+            matching: find.byType(EditableText),
+          ),
+        )
+        .label;
+    expect(label, contains('Reps'));
+    expect(label, isNot(contains('target')));
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('set.1.reps')),
+        matching: find.text('reps'),
+      ),
+      findsOneWidget,
+    );
     handle.dispose();
   });
 

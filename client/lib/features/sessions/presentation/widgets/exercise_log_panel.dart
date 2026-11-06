@@ -495,9 +495,7 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                             unit: widget.unit,
                             showWeight: showWeight,
                             active: setNumber == widget.activeSetNumber,
-                            repsHint: exercise.targetReps.isEmpty
-                                ? 'reps'
-                                : exercise.targetReps,
+                            targetReps: exercise.targetReps,
                             onReopen: () => widget.onUndoSet(setNumber),
                             trailingWidth: trailingWidth,
                             onRemove: setNumber == removable
