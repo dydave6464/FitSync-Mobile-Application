@@ -93,6 +93,9 @@ class SequenceProfileRepository implements ProfileRepository {
   @override
   Future<BodyWeightPoint> logBodyWeight(double weightKg, {String? loggedOn}) =>
       throw UnimplementedError();
+
+  @override
+  Future<void> deleteBodyWeight(String loggedOn) => throw UnimplementedError();
 }
 
 /// Hands out a different in-progress session on each call, so a cached one is

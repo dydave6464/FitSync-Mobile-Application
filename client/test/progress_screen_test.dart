@@ -291,6 +291,31 @@ void main() {
     );
   });
 
+  // PS-20: the card's "All weigh-ins" opens the list a weigh-in is deleted
+  // from.
+  testWidgets('All weigh-ins opens the weigh-ins sheet', (tester) async {
+    await _pump(
+      tester,
+      bodyWeight: const BodyWeightSeries(
+        widened: false,
+        points: [
+          BodyWeightPoint(loggedOn: '2026-09-15', weightKg: 80),
+          BodyWeightPoint(loggedOn: '2026-09-16', weightKg: 79.5),
+        ],
+        reference: null,
+        unit: 'kg',
+      ),
+    );
+
+    final chip = find.byKey(const Key('bodyWeight.entries'));
+    await tester.ensureVisible(chip);
+    await tester.pumpAndSettle();
+    await tester.tap(chip);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Your weigh-ins'), findsOneWidget);
+  });
+
   testWidgets('nothing trained yet says so plainly', (tester) async {
     // The placeholder this screen replaces said volume "appears here once you
     // have logged a few workouts" -- so a user who HAD logged one went

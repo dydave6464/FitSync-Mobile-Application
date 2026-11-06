@@ -110,4 +110,11 @@ class ProfileRepository {
       'loggedOn': ?loggedOn,
     }),
   );
+
+  /// Removes the weigh-in on [loggedOn] (`YYYY-MM-DD`). The server refuses
+  /// the user's only weigh-in (409 ONLY_WEIGH_IN) and answers 404
+  /// WEIGH_IN_NOT_FOUND for a day with none.
+  Future<void> deleteBodyWeight(String loggedOn) async {
+    await _api.deleteJson('/api/v1/profile/body-weight/$loggedOn');
+  }
 }

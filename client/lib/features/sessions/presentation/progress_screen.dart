@@ -10,6 +10,7 @@ import '../../profile/presentation/providers.dart'
     show bodyWeightProvider, weightUnitProvider;
 import '../../profile/presentation/widgets/body_weight_card.dart';
 import '../../profile/presentation/widgets/log_body_weight_sheet.dart';
+import '../../profile/presentation/widgets/weigh_ins_sheet.dart';
 import '../domain/session_dates.dart';
 import '../domain/session_history.dart';
 import 'providers.dart';
@@ -128,6 +129,7 @@ class ProgressScreen extends ConsumerWidget {
             unit: unit,
             period: period,
             onAdd: () => showLogBodyWeightSheet(context),
+            onShowEntries: () => showWeighInsSheet(context),
           ),
         ),
         const SizedBox(height: 12),

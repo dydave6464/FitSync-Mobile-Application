@@ -16,6 +16,7 @@ class BodyWeightCard extends StatelessWidget {
     required this.series,
     this.unit,
     this.onAdd,
+    this.onShowEntries,
     this.period = 'week',
     this.now = DateTime.now,
   });
@@ -42,6 +43,10 @@ class BodyWeightCard extends StatelessWidget {
   final VoidCallback? onAdd;
 
   VoidCallback get _add => onAdd ?? () {};
+
+  /// Opens the list of weigh-ins, where a mistaken one can be deleted
+  /// (PS-20). A no-op when not given, as [onAdd] is.
+  final VoidCallback? onShowEntries;
 
   /// [loggedOn] as a count of days, for spacing weigh-ins by their dates.
   /// Read as UTC midnight: a local one is 23 hours from the next across a
@@ -177,27 +182,44 @@ class BodyWeightCard extends StatelessWidget {
               ),
               const SizedBox(height: 8),
             ],
-            // The caption takes what the chip leaves and wraps there; as two
-            // fixed widths in one row they overflowed it at large text.
-            // The row is as tall as the chip, so it needs room of its own
-            // for the gap above; the column's carries the padding below.
+            // The caption at the start and the chips at the end, on one line
+            // while they fit. At large text (or beside a long caption) the
+            // chips go to a line of their own, and wrap again if two chips
+            // are wider than the card: as fixed widths in one row they
+            // overflowed it. The footer is as tall as its chips, so it needs
+            // room of its own for the gap above; the column's carries the
+            // padding below.
             FsTapRoom(
-              child: Row(
+              child: Wrap(
+                alignment: showChart
+                    ? WrapAlignment.spaceBetween
+                    : WrapAlignment.end,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 12,
+                runSpacing: 8,
                 children: [
                   // No chart, no caption naming what it covers.
-                  if (showChart) ...[
-                    Expanded(
-                      child: Text(
-                        series.widened
-                            ? 'All entries — fewer than two in this period'
-                            : _periodCaption(period),
-                        style: TextStyle(fontSize: 11, color: t.text3),
-                      ),
+                  if (showChart)
+                    Text(
+                      series.widened
+                          ? 'All entries — fewer than two in this period'
+                          : _periodCaption(period),
+                      style: TextStyle(fontSize: 11, color: t.text3),
                     ),
-                    const SizedBox(width: 12),
-                  ] else
-                    const Spacer(),
-                  FsChip(label: 'Add entry', selected: false, onTap: _add),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      FsChip(
+                        key: const Key('bodyWeight.entries'),
+                        label: 'All weigh-ins',
+                        selected: false,
+                        toggle: false,
+                        onTap: onShowEntries ?? () {},
+                      ),
+                      FsChip(label: 'Add entry', selected: false, onTap: _add),
+                    ],
+                  ),
                 ],
               ),
             ),
