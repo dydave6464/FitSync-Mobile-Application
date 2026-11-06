@@ -4,10 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/app_settings.dart';
 import 'package:fitsync/core/token_store.dart' show InMemorySecureStore;
 import 'package:fitsync/features/home/presentation/widgets/reminder_prompt_card.dart';
-import 'package:fitsync/features/nutrition/presentation/meal_photo/providers.dart'
-    show appSettingsOpenerProvider;
 import 'package:fitsync/features/reminders/data/reminder_prompt_store.dart';
 import 'package:fitsync/features/reminders/data/reminder_scheduler.dart';
 import 'package:fitsync/features/reminders/domain/reminders.dart';

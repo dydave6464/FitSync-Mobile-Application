@@ -6,9 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
+import 'package:fitsync/core/app_settings.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
-import 'package:fitsync/features/nutrition/presentation/meal_photo/providers.dart'
-    show appSettingsOpenerProvider;
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart'
     show activePlanProvider;

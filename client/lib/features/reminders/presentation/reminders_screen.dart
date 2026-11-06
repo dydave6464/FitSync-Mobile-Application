@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
+import '../../../core/app_settings.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
-import '../../nutrition/presentation/meal_photo/providers.dart'
-    show appSettingsOpenerProvider;
 import '../../plans/presentation/providers.dart' show activePlanProvider;
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';

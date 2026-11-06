@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/app_settings.dart';
 import '../../../../core/widgets/fs_kit.dart';
-import '../../../nutrition/presentation/meal_photo/providers.dart'
-    show appSettingsOpenerProvider;
 import '../../../reminders/data/reminder_prompt_store.dart';
 import '../../../reminders/data/reminder_scheduler.dart';
 import '../../../reminders/presentation/reminders_screen.dart'
