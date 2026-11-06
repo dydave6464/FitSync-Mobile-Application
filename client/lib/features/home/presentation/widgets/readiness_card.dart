@@ -121,7 +121,7 @@ class ReadinessCard extends StatelessWidget {
                             const SizedBox(height: 2),
                             Text(
                               'From ${formatShareExpiry(DateTime.parse(estimate.checkinDate))}',
-                              style: TextStyle(fontSize: 11.5, color: t.text3),
+                              style: TextStyle(fontSize: 11.5, color: t.text2),
                             ),
                           ],
                           const SizedBox(height: 10),
@@ -184,9 +184,10 @@ class _ReadinessRing extends StatelessWidget {
   }
 
   // A set line height: the theme's 1.43 stacked the two lines taller than
-  // the box, shrinking them at normal text for no reason.
+  // the box, shrinking them at normal text for no reason. Quiet text here is
+  // text2, not text3, which reads under 4.5:1 on the accent card's tint.
   Widget _centre(int? readiness, FsTokens t) => readiness == null
-      ? Text('–', style: TextStyle(fontSize: 20, height: 1.2, color: t.text3))
+      ? Text('–', style: TextStyle(fontSize: 20, height: 1.2, color: t.text2))
       : Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -205,7 +206,7 @@ class _ReadinessRing extends StatelessWidget {
                 fontSize: 8.5,
                 letterSpacing: 0.7,
                 height: 1.2,
-                color: t.text3,
+                color: t.text2,
               ),
             ),
           ],
