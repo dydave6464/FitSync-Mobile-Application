@@ -373,7 +373,7 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
           key: const Key('snap.analysing'),
           liveRegion: true,
           child: Text(
-            _slow ? 'Still looking — this can take up to half a minute.' : 'Looking at your meal…',
+            _slow ? 'Still looking — this can take up to a minute.' : 'Looking at your meal…',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.titleMedium,
           ),
@@ -430,7 +430,8 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
 
   Widget _confirm(BuildContext context) {
     final t = context.fs;
-    final note = TextStyle(color: t.text2, fontSize: 12, height: 1.5);
+    final small = TextStyle(color: t.text2, fontSize: 12);
+    final note = small.copyWith(height: 1.5);
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
       child: Column(
@@ -445,7 +446,7 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
           ),
           if (photosLeftText(_recognition!.remainingToday) case final left?) ...[
             const SizedBox(height: 4),
-            Text(left, key: const Key('snap.left'), style: TextStyle(color: t.text2, fontSize: 12)),
+            Text(left, key: const Key('snap.left'), style: small),
           ],
           const SizedBox(height: 16),
           // The day too, when it is not today (NU-7).

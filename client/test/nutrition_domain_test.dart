@@ -46,12 +46,17 @@ void main() {
       expect(shortDayLabel('2026-11-05', '2026-11-06'), 'Yesterday');
       expect(shortDayLabel('2026-11-03', '2026-11-06'), 'Nov 3');
       expect(shortDayLabel('2026-10-11', '2026-11-06'), 'Oct 11');
+      // Short in another year too: the line has no room for ", 2025", and
+      // the screen behind it already names the day in full.
+      expect(shortDayLabel('2025-12-30', '2026-01-02'), 'Dec 30');
     });
 
     test('onDay: nothing for today, else words to end a sentence with', () {
       expect(onDay('2026-11-06', '2026-11-06'), '');
       expect(onDay('2026-11-05', '2026-11-06'), ' yesterday');
       expect(onDay('2026-11-03', '2026-11-06'), ' on Tue, Nov 3');
+      expect(onDay('2025-12-31', '2026-01-01'), ' yesterday');
+      expect(onDay('2025-12-30', '2026-01-02'), ' on Tue, Dec 30, 2025');
     });
   });
 
