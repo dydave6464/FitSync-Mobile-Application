@@ -310,12 +310,18 @@ class _GoalSheetState extends ConsumerState<_GoalSheet> {
           style: TextStyle(fontSize: 13, color: t.text2),
         ),
         const SizedBox(height: 16),
-        FsField(
-          controller: _target,
-          hint: 'Target',
-          suffix: unit.api,
-          fieldKey: const Key('goal.edit.target'),
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        // Named for a screen reader: the field opens prefilled, so the
+        // 'Target' placeholder never shows and cannot carry the name. A
+        // Semantics label keeps the look of the add sheet's field.
+        Semantics(
+          label: 'Target',
+          child: FsField(
+            controller: _target,
+            hint: 'Target',
+            suffix: unit.api,
+            fieldKey: const Key('goal.edit.target'),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          ),
         ),
         // A live region: a screen reader says why Save did not close the
         // sheet.

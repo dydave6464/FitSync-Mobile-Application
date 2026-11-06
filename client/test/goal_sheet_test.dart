@@ -436,4 +436,31 @@ void main() {
     );
     handle.dispose();
   });
+  testWidgets('the prefilled target field is named for a screen reader', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _open(tester);
+    await _edit(tester);
+
+    // Opened prefilled, so the placeholder never shows: the name must come
+    // from the field itself, not from the hint text.
+    final editable = find.descendant(
+      of: find.byKey(const Key('goal.edit.target')),
+      matching: find.byType(EditableText),
+    );
+    final node = tester.getSemantics(editable);
+    expect(node, isSemantics(isTextField: true));
+    expect(node.label, startsWith('Target'));
+    expect(node.value, isNotEmpty);
+    // Said once, not a second stop beside the field.
+    expect(find.bySemanticsLabel(RegExp('^Target')), findsOneWidget);
+
+    // Emptied, the placeholder comes back without the name said twice.
+    await tester.enterText(find.byKey(const Key('goal.edit.target')), '');
+    await tester.pump();
+    final empty = tester.getSemantics(editable);
+    expect(RegExp('Target').allMatches(empty.label).length, 1);
+    handle.dispose();
+  });
 }
