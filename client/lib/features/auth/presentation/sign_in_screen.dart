@@ -11,6 +11,7 @@ import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../data/google_sign_in_gateway.dart';
 import 'auth_controller.dart';
+import 'auth_text_link.dart';
 import 'check_email_screen.dart';
 import 'forgot_password_screen.dart';
 
@@ -445,7 +446,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                 if (!_registering)
                   Align(
                     alignment: Alignment.centerRight,
-                    child: _TextLink(
+                    child: AuthTextLink(
                       key: const Key('forgotPassword'),
                       onTap: _busy ? null : _openForgotPassword,
                       child: Text(
@@ -465,7 +466,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   if (_emailTaken)
                     Align(
                       alignment: AlignmentDirectional.centerStart,
-                      child: _TextLink(
+                      child: AuthTextLink(
                         key: const Key('signInInstead'),
                         onTap: _busy ? null : () => _setRegistering(false),
                         child: Text(
@@ -519,7 +520,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                 ),
                 const SizedBox(height: 8),
                 Center(
-                  child: _TextLink(
+                  child: AuthTextLink(
                     key: const Key('toggleMode'),
                     onTap: _busy ? null : () => _setRegistering(!_registering),
                     child: Text.rich(
@@ -546,31 +547,6 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// A line of small text that acts as a button, inside a 48dp tap target.
-///
-/// The words stay as small as the design draws them; the target around them
-/// is what grows, so a thumb that lands just above or below still counts.
-class _TextLink extends StatelessWidget {
-  const _TextLink({super.key, required this.onTap, required this.child});
-
-  final VoidCallback? onTap;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      child: InkWell(
-        onTap: onTap,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-          child: Align(widthFactor: 1, heightFactor: 1, child: child),
         ),
       ),
     );
