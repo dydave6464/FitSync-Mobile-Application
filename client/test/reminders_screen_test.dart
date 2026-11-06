@@ -6,6 +6,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
+import 'package:fitsync/features/plans/domain/workout_plan.dart';
+import 'package:fitsync/features/plans/presentation/providers.dart'
+    show activePlanProvider;
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/reminders/data/reminder_scheduler.dart';
@@ -107,6 +110,36 @@ class _FlakyProfile extends FakeProfileNotifier {
   }
 }
 
+/// The seeded profile with the master switch off.
+class _MasterOffProfile extends FakeProfileNotifier {
+  _MasterOffProfile() : super(<Map<String, dynamic>>[]);
+
+  @override
+  Future<Profile> build() async {
+    final p = await super.build();
+    return Profile(
+      userId: p.userId,
+      email: p.email,
+      fullName: p.fullName,
+      onboardingCompleted: p.onboardingCompleted,
+      isPremium: p.isPremium,
+      notificationsEnabled: false,
+      equipment: p.equipment,
+      injuries: p.injuries,
+    );
+  }
+}
+
+const _plan = WorkoutPlan(
+  planId: 1,
+  name: 'Full Body',
+  splitStyle: 'full_body',
+  daysPerWeek: 3,
+  sessionLengthMin: 45,
+  weekNo: 1,
+  exercises: [],
+);
+
 Future<_FakeScheduler> _pump(
   WidgetTester tester, {
   ReminderSettings settings = ReminderSettings.defaults,
@@ -117,6 +150,7 @@ Future<_FakeScheduler> _pump(
   Future<TimeOfDay?> Function(BuildContext, TimeOfDay)? pickTime,
   ReminderSettingsController Function()? settingsController,
   ProfileNotifier Function()? profileNotifier,
+  WorkoutPlan? plan = _plan,
 }) async {
   final scheduler = _FakeScheduler(
     granted: granted,
@@ -140,6 +174,7 @@ Future<_FakeScheduler> _pump(
               ),
         ),
         reminderSchedulerProvider.overrideWithValue(scheduler),
+        activePlanProvider.overrideWith((ref) async => plan),
       ],
       child: MaterialApp(home: RemindersScreen(pickTime: pickTime)),
     ),
@@ -251,6 +286,11 @@ void main() {
     await _scrollAndTap(tester, const Key('reminders.checkin'));
 
     expect(settingsPatches, isEmpty);
+    // Back up to the top, where the banner is.
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('reminders.blocked')),
+      -200,
+    );
     expect(find.byKey(const Key('reminders.blocked')), findsOneWidget);
   });
 
@@ -447,5 +487,91 @@ void main() {
       );
     }
     handle.dispose();
+  });
+
+  testWidgets('with the master switch off the sections say so and are '
+      'disabled', (tester) async {
+    final settingsPatches = <Map<String, dynamic>>[];
+    await _pump(
+      tester,
+      profileNotifier: _MasterOffProfile.new,
+      settingsPatches: settingsPatches,
+    );
+
+    expect(
+      find.text(
+        'Reminders are off. Turn this on to get any of the reminders below.',
+      ),
+      findsOneWidget,
+    );
+    for (final key in [
+      'reminders.habits',
+      'reminders.workout',
+      'reminders.checkin',
+    ]) {
+      await tester.scrollUntilVisible(find.byKey(Key(key)), 200);
+      expect(
+        tester.widget<Switch>(find.byKey(Key(key))).onChanged,
+        isNull,
+        reason: '$key is disabled while nothing can fire',
+      );
+    }
+    // The master switch itself stays live: it is the way back.
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('reminders.master')),
+      -200,
+    );
+    expect(
+      tester
+          .widget<Switch>(find.byKey(const Key('reminders.master')))
+          .onChanged,
+      isNotNull,
+    );
+
+    // A tap on a disabled time row saves nothing.
+    await _scrollAndTap(tester, const Key('reminders.workoutTime'));
+    expect(settingsPatches, isEmpty);
+  });
+
+  testWidgets('with the master switch on there is no "off" line', (
+    tester,
+  ) async {
+    await _pump(tester);
+
+    expect(find.textContaining('Reminders are off.'), findsNothing);
+    expect(
+      tester
+          .widget<Switch>(find.byKey(const Key('reminders.habits')))
+          .onChanged,
+      isNotNull,
+    );
+  });
+
+  testWidgets('Habits says only timed habits are reminded', (tester) async {
+    await _pump(tester);
+
+    expect(
+      find.text('Only habits with a set time get a reminder.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('without a plan the workout section says it needs one', (
+    tester,
+  ) async {
+    await _pump(tester, plan: null);
+    await tester.scrollUntilVisible(
+      find.text('Workout reminders need a plan.'),
+      200,
+    );
+    expect(find.text('Workout reminders need a plan.'), findsOneWidget);
+  });
+
+  testWidgets('with a plan the workout section has no plan note', (
+    tester,
+  ) async {
+    await _pump(tester);
+
+    expect(find.text('Workout reminders need a plan.'), findsNothing);
   });
 }

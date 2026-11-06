@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
+import '../../plans/presentation/providers.dart' show activePlanProvider;
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
 import '../../routine/domain/routine.dart' show formatClock;
@@ -168,17 +169,68 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
     );
   }
 
-  Widget _body(ReminderSettings settings, Profile profile) => ListView(
-    padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+  /// With the master switch off nothing below it is scheduled
+  /// (`planReminders` returns nothing), so the three sections are shown
+  /// dimmed and disabled, with a line that says why, rather than looking
+  /// live.
+  Widget _body(ReminderSettings settings, Profile profile) {
+    final live = profile.notificationsEnabled;
+    // Only a plan known to be absent: while it loads, or if it failed, the
+    // note would be a guess.
+    final plan = ref.watch(activePlanProvider);
+    final noPlan = plan.hasValue && plan.value == null;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+      children: [
+        _masterRow(profile.notificationsEnabled),
+        if (!live) ...[
+          const SizedBox(height: 8),
+          _note(
+            'Reminders are off. Turn this on to get any of the reminders '
+            'below.',
+          ),
+        ],
+        if (!_granted) ...[const SizedBox(height: 14), _blockedBanner()],
+        const SizedBox(height: 22),
+        _habitsSection(settings, enabled: live),
+        const SizedBox(height: 22),
+        _workoutSection(settings, enabled: live, noPlan: noPlan),
+        const SizedBox(height: 22),
+        _checkinSection(settings, enabled: live),
+      ],
+    );
+  }
+
+  /// A line of explanation under a row or section.
+  Widget _note(String text) => Text(
+    text,
+    style: TextStyle(fontSize: 12, height: 1.4, color: context.fs.text2),
+  );
+
+  /// One section: its eyebrow, its card, and any notes under the card. A
+  /// disabled section's card is dimmed as FsButton dims a disabled button;
+  /// its controls are disabled by the caller, so a screen reader says so
+  /// too. The notes stay at full strength: they say why.
+  Widget _section({
+    required String title,
+    required bool enabled,
+    required List<Widget> children,
+    List<String> notes = const [],
+  }) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      _masterRow(profile.notificationsEnabled),
-      if (!_granted) ...[const SizedBox(height: 14), _blockedBanner()],
-      const SizedBox(height: 22),
-      _habitsSection(settings),
-      const SizedBox(height: 22),
-      _workoutSection(settings),
-      const SizedBox(height: 22),
-      _checkinSection(settings),
+      FsEyebrow(title),
+      const SizedBox(height: 10),
+      Opacity(
+        opacity: enabled ? 1 : 0.45,
+        child: FsCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: children,
+          ),
+        ),
+      ),
+      for (final note in notes) ...[const SizedBox(height: 8), _note(note)],
     ],
   );
 
@@ -203,7 +255,7 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
     required String label,
     required Key switchKey,
     required bool value,
-    required ValueChanged<bool> onChanged,
+    required ValueChanged<bool>? onChanged,
     List<Widget> leading = const [],
   }) {
     return MergeSemantics(
@@ -258,7 +310,7 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
     );
   }
 
-  Widget _timeRow(Key rowKey, String time, {required VoidCallback onTap}) {
+  Widget _timeRow(Key rowKey, String time, {required VoidCallback? onTap}) {
     final t = context.fs;
     return InkWell(
       key: rowKey,
@@ -280,28 +332,30 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
     );
   }
 
-  Widget _habitsSection(ReminderSettings settings) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      const FsEyebrow('Habits'),
-      const SizedBox(height: 10),
-      FsCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _switchRow(
-              label: 'Remind me about habits',
-              switchKey: const Key('reminders.habits'),
-              value: settings.habitsEnabled,
-              onChanged: (value) => _setEnabled(
-                value,
-                () => ref.read(reminderSettingsProvider.notifier).patch({
-                  'habitsEnabled': value,
-                }),
-              ),
-            ),
-            const SizedBox(height: 12),
-            FsSegmented(
+  Widget _habitsSection(ReminderSettings settings, {required bool enabled}) =>
+      _section(
+        title: 'Habits',
+        enabled: enabled,
+        // planReminders skips any-time habits: there is no moment to remind.
+        notes: const ['Only habits with a set time get a reminder.'],
+        children: [
+          _switchRow(
+            label: 'Remind me about habits',
+            switchKey: const Key('reminders.habits'),
+            value: settings.habitsEnabled,
+            onChanged: !enabled
+                ? null
+                : (value) => _setEnabled(
+                    value,
+                    () => ref.read(reminderSettingsProvider.notifier).patch({
+                      'habitsEnabled': value,
+                    }),
+                  ),
+          ),
+          const SizedBox(height: 12),
+          IgnorePointer(
+            ignoring: !enabled,
+            child: FsSegmented(
               options: _leadOptions,
               selected: settings.habitLeadMin.toString(),
               onSelected: (value) => _save(
@@ -310,77 +364,73 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
                 }),
               ),
             ),
-          ],
-        ),
-      ),
-    ],
-  );
+          ),
+        ],
+      );
 
-  Widget _workoutSection(ReminderSettings settings) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _workoutSection(
+    ReminderSettings settings, {
+    required bool enabled,
+    required bool noPlan,
+  }) => _section(
+    title: 'Workout on training days',
+    enabled: enabled,
+    notes: [if (noPlan) 'Workout reminders need a plan.'],
     children: [
-      const FsEyebrow('Workout on training days'),
-      const SizedBox(height: 10),
-      FsCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _switchRow(
-              label: 'Remind me before my workout',
-              switchKey: const Key('reminders.workout'),
-              value: settings.workoutEnabled,
-              onChanged: (value) => _setEnabled(
+      _switchRow(
+        label: 'Remind me before my workout',
+        switchKey: const Key('reminders.workout'),
+        value: settings.workoutEnabled,
+        onChanged: !enabled
+            ? null
+            : (value) => _setEnabled(
                 value,
                 () => ref.read(reminderSettingsProvider.notifier).patch({
                   'workoutEnabled': value,
                 }),
               ),
-            ),
-            _timeRow(
-              const Key('reminders.workoutTime'),
-              settings.workoutTime,
-              onTap: () => _pickTime(
+      ),
+      _timeRow(
+        const Key('reminders.workoutTime'),
+        settings.workoutTime,
+        onTap: !enabled
+            ? null
+            : () => _pickTime(
                 initial: settings.workoutTime,
                 field: 'workoutTime',
               ),
-            ),
-          ],
-        ),
       ),
     ],
   );
 
-  Widget _checkinSection(ReminderSettings settings) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      const FsEyebrow('Morning check-in'),
-      const SizedBox(height: 10),
-      FsCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _switchRow(
-              label: 'Remind me to check in',
-              switchKey: const Key('reminders.checkin'),
-              value: settings.checkinEnabled,
-              onChanged: (value) => _setEnabled(
-                value,
-                () => ref.read(reminderSettingsProvider.notifier).patch({
-                  'checkinEnabled': value,
-                }),
-              ),
-            ),
-            _timeRow(
-              const Key('reminders.checkinTime'),
-              settings.checkinTime,
-              onTap: () => _pickTime(
-                initial: settings.checkinTime,
-                field: 'checkinTime',
-              ),
-            ),
-          ],
-        ),
-      ),
-    ],
-  );
+  Widget _checkinSection(ReminderSettings settings, {required bool enabled}) =>
+      _section(
+        title: 'Morning check-in',
+        enabled: enabled,
+        children: [
+          _switchRow(
+            label: 'Remind me to check in',
+            switchKey: const Key('reminders.checkin'),
+            value: settings.checkinEnabled,
+            onChanged: !enabled
+                ? null
+                : (value) => _setEnabled(
+                    value,
+                    () => ref.read(reminderSettingsProvider.notifier).patch({
+                      'checkinEnabled': value,
+                    }),
+                  ),
+          ),
+          _timeRow(
+            const Key('reminders.checkinTime'),
+            settings.checkinTime,
+            onTap: !enabled
+                ? null
+                : () => _pickTime(
+                    initial: settings.checkinTime,
+                    field: 'checkinTime',
+                  ),
+          ),
+        ],
+      );
 }
