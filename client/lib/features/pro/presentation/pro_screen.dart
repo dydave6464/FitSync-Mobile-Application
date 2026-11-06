@@ -612,51 +612,56 @@ class _PlanCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
-    final card = MergeSemantics(
-      child: FsCard(
-        small: true,
-        accent: selected,
-        selected: selected,
-        onTap: onTap,
-        child: Semantics(
-          label: semanticsLabel,
-          inMutuallyExclusiveGroup: true,
-          enabled: onTap != null,
-          excludeSemantics: true,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: TextStyle(fontSize: 11, color: t.text2),
+    return MergeSemantics(
+      // Always wrapped, at full strength when not dimmed: adding the Opacity
+      // only as a payment started changed the tree's shape and remounted the
+      // card (P-25). Inside MergeSemantics, so the card's node stays the
+      // widget's own.
+      child: Opacity(
+        opacity: onTap != null || selected ? 1 : 0.45,
+        child: FsCard(
+          small: true,
+          accent: selected,
+          selected: selected,
+          onTap: onTap,
+          child: Semantics(
+            label: semanticsLabel,
+            inMutuallyExclusiveGroup: true,
+            enabled: onTap != null,
+            excludeSemantics: true,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: TextStyle(fontSize: 11, color: t.text2),
+                      ),
                     ),
-                  ),
-                  if (tag != null) FsTag(tag!),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                price,
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: t.text,
+                    if (tag != null) FsTag(tag!),
+                  ],
                 ),
-              ),
-              Text(
-                note,
-                style: TextStyle(fontSize: 10, color: t.text2, height: 1.3),
-              ),
-            ],
+                const SizedBox(height: 4),
+                Text(
+                  price,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: t.text,
+                  ),
+                ),
+                Text(
+                  note,
+                  style: TextStyle(fontSize: 10, color: t.text2, height: 1.3),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
-    if (onTap != null || selected) return card;
-    return Opacity(opacity: 0.45, child: card);
   }
 }
 

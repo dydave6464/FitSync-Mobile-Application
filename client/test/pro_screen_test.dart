@@ -450,6 +450,24 @@ void main() {
     handle.dispose();
   });
 
+  // P-25: dimming the plan not being paid for wrapped it in a new Opacity,
+  // which tore the card down and built a fresh one as the payment started.
+  testWidgets('dimming a plan keeps the same card, not a rebuilt one', (
+    tester,
+  ) async {
+    await _pump(tester);
+    Element inkOf(String key) => tester.element(
+      find.descendant(of: find.byKey(Key(key)), matching: find.byType(InkWell)),
+    );
+    final before = inkOf('pro.plan.monthly');
+
+    await tester.tap(find.byKey(const Key('pro.pay')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('pro.waiting')), findsOneWidget);
+
+    expect(identical(inkOf('pro.plan.monthly'), before), isTrue);
+  });
+
   // PS-18: "with PayMongo" and "again" were cut off at larger text.
   testWidgets('Pay and Open payment page again are read whole at 2x text', (
     tester,
