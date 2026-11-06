@@ -44,6 +44,7 @@ class ExerciseDetail {
     required this.thumbnailUrl,
     required this.animationUrl,
     required this.cues,
+    this.contraindicated = false,
   });
 
   final int exerciseId;
@@ -53,6 +54,14 @@ class ExerciseDetail {
   final String? thumbnailUrl;
   final String? animationUrl;
   final List<String> cues;
+
+  /// Whether this exercise loads a region the signed-in user has reported an
+  /// injury in, as of this fetch -- the same flag [ExerciseSummary] carries,
+  /// so a screen opened without a library row (the Plan tab) can still warn.
+  ///
+  /// Defaults to false so a payload from before the field existed reads as
+  /// "nothing known", never as a crash.
+  final bool contraindicated;
 
   factory ExerciseDetail.fromJson(Map<String, dynamic> json) => ExerciseDetail(
     exerciseId: json['exerciseId'] as int,
@@ -64,6 +73,7 @@ class ExerciseDetail {
     cues: (json['cues'] as List<dynamic>? ?? const [])
         .map((c) => c as String)
         .toList(growable: false),
+    contraindicated: json['contraindicated'] as bool? ?? false,
   );
 }
 
