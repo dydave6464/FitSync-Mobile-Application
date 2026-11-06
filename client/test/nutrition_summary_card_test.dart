@@ -153,9 +153,10 @@ void main() {
     handle.dispose();
   });
 
-  testWidgets('More nutrients has a tap target at least 44dp tall', (tester) async {
+  // Android's minimum, not iOS's 44 (NU-16).
+  testWidgets('More nutrients has a tap target at least 48dp tall', (tester) async {
     await _pump(tester, width: 390, day: _dayWithSugarSodium());
-    expect(tester.getSize(find.byKey(const Key('nutrition.moreNutrients'))).height, greaterThanOrEqualTo(44));
+    expect(tester.getSize(find.byKey(const Key('nutrition.moreNutrients'))).height, greaterThanOrEqualTo(48));
   });
 
   testWidgets('each More nutrients row merges its label and value into one semantics node', (tester) async {
