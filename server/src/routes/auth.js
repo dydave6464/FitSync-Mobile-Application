@@ -2,7 +2,10 @@
 const express = require('express');
 const AppError = require('../lib/app-error');
 const { signToken } = require('../lib/tokens');
-const { hashPassword, verifyPassword, DUMMY_HASH } = require('../lib/passwords');
+const {
+  hashPassword, verifyPassword, confirmPassword, DUMMY_HASH,
+  MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH,
+} = require('../lib/passwords');
 const {
   findUserByEmail, findUserById, createUserWithPassword, findOrCreateGoogleUser,
   markEmailVerified, replacePasswordAndSignOut,
@@ -11,13 +14,6 @@ const { codeKey, normaliseCode, TTL_MINUTES } = require('../lib/auth-codes');
 const { issueCode, checkCode } = require('../db/auth-codes');
 const requireAuth = require('../middleware/require-auth');
 
-const MIN_PASSWORD_LENGTH = 8;
-// bcrypt (via bcryptjs) only reads the first 72 bytes of its input — anything
-// beyond that contributes nothing to the hash. Without a cap, an anonymous
-// caller can send an arbitrarily large password and force the server to spend
-// real CPU running it through a deliberately slow hash function: a cheap
-// denial-of-service against the one route that has no auth to gate it.
-const MAX_PASSWORD_LENGTH = 72;
 // users.email and users.full_name are both VARCHAR(255). Anything longer must
 // be rejected here as a 400, not discovered as ER_DATA_TOO_LONG from MySQL —
 // see the identical MAX_LENGTH map in src/routes/profile.js.
@@ -333,19 +329,8 @@ module.exports = function buildAuthRouter({
           'NO_PASSWORD', 'This account signs in with Google and has no password.',
         );
       }
-      // Trimmed like login's, so it compares against the hash register made.
-      // One answer for anything that is not the current password: missing,
-      // blank or over-length included, since register never stored such a
-      // password. Those skip bcrypt -- the cap keeps its work bounded -- and
-      // the app shows the message under the current-password field.
-      const currentPassword = typeof req.body.currentPassword === 'string'
-        ? req.body.currentPassword.trim() : '';
-      const matches = currentPassword.length > 0
-        && currentPassword.length <= MAX_PASSWORD_LENGTH
-        && await verifyPassword(currentPassword, user.password_hash);
-      if (!matches) {
-        throw AppError.badRequest('WRONG_PASSWORD', "That password isn't right.");
-      }
+      // 400 WRONG_PASSWORD for anything that is not the current password.
+      await confirmPassword(req.body.currentPassword, user.password_hash);
       const generation = await replacePasswordAndSignOut(
         pool, user.user_id, await hashPassword(newPassword),
       );
@@ -388,4 +373,3 @@ module.exports = function buildAuthRouter({
 
 module.exports.toPublicUser = toPublicUser;
 module.exports.requireString = requireString;
-module.exports.MAX_PASSWORD_LENGTH = MAX_PASSWORD_LENGTH;

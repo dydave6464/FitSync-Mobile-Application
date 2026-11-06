@@ -226,6 +226,23 @@ test('delete account from the app', async (t) => {
     await me(maria.token).expect(200);
   });
 
+  await t.test('a Google sign-in that does not verify is REAUTH_REQUIRED and deletes nothing', async () => {
+    await reset();
+    // The contract lists 400s only (plus 401 for the app's own session): a
+    // 401 here would read as "signed out" to the app.
+    const { userId, token } = await googleUser('stub-token-juan');
+    await seed(userId);
+    const before = await rowsAnywhere(userId);
+
+    const res = await del(token, { idToken: 'not-a-google-token' });
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error.code, 'REAUTH_REQUIRED');
+    assert.equal(res.body.error.message, "Confirm it's you to delete your account.");
+
+    assert.equal(await rowsAnywhere(userId), before);
+    await me(token).expect(200);
+  });
+
   await t.test('a password account that also links Google may confirm with either', async () => {
     await reset();
     // Same address as the stub's Juan: signing in with Google links it.

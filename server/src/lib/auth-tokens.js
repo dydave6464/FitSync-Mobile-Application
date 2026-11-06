@@ -1,5 +1,6 @@
 'use strict';
 const crypto = require('node:crypto');
+const { TTL_MINUTES: CODE_TTL_MINUTES } = require('./auth-codes');
 
 // A verification link proves someone can read mail at an address. A reset link
 // hands over an account. Both are therefore treated as credentials:
@@ -11,15 +12,16 @@ const crypto = require('node:crypto');
 //
 // See the design, section 4.
 
-const RESET_TTL_SECONDS = 60 * 60;
 const TTL_SECONDS = Object.freeze({
   verify_email: 24 * 60 * 60,
   // Deliberately far shorter. An outstanding reset token is a live account
-  // takeover; an outstanding verification token is not.
-  reset_password: RESET_TTL_SECONDS,
-  // The web deletion page's emailed link: as destructive as a reset, so the
-  // same short life.
-  delete_account: RESET_TTL_SECONDS,
+  // takeover; an outstanding verification token is not. No route issues
+  // reset links any more: the live password reset is the emailed code.
+  reset_password: 60 * 60,
+  // The web deletion page's emailed link. The spec gives it the password
+  // reset's expiry rule, and the live reset is the code in lib/auth-codes.js
+  // (15 minutes), so it follows that value rather than the unused one above.
+  delete_account: CODE_TTL_MINUTES.reset_password * 60,
 });
 
 /// SHA-256, hex. Exported because shared_reports.token_hash holds the same

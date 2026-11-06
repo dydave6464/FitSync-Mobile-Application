@@ -3,13 +3,12 @@ const express = require('express');
 const helmet = require('helmet');
 const AppError = require('../lib/app-error');
 const requireAuth = require('../middleware/require-auth');
-const { verifyPassword } = require('../lib/passwords');
+const { confirmPassword } = require('../lib/passwords');
 const { findLiveToken, TTL_SECONDS } = require('../lib/auth-tokens');
 const { findUserById, findUserByEmail } = require('../db/users');
 const {
   deleteUser, deleteUserByToken, isGoogleIdentityOf, issueDeleteLink,
 } = require('../db/account');
-const { MAX_PASSWORD_LENGTH } = require('./auth');
 const { renderPage, escapeHtml } = require('./auth-pages');
 
 const LINK_MINUTES = TTL_SECONDS.delete_account / 60;
@@ -18,6 +17,19 @@ const MAX_EMAIL_LENGTH = 255;
 const reauthRequired = () => AppError.badRequest(
   'REAUTH_REQUIRED', "Confirm it's you to delete your account.",
 );
+
+/// A Google sign-in that does not verify has not confirmed anything, so it
+/// is REAUTH_REQUIRED: the contract's errors here are 400s, and a 401 would
+/// read to the app as its own session ending. Only a bad token is mapped; a
+/// verifier that cannot reach Google still fails as a server error.
+async function verifyGoogleReauth(google, idToken) {
+  try {
+    return await google.verifyIdToken(idToken);
+  } catch (err) {
+    if (err instanceof AppError && err.code === 'INVALID_GOOGLE_TOKEN') throw reauthRequired();
+    throw err;
+  }
+}
 
 const p = (text) => `<p>${escapeHtml(text)}</p>`;
 
@@ -67,17 +79,10 @@ module.exports = function buildAccountRouter(deps) {
       }
       const { password, idToken } = req.body ?? {};
       if (typeof password === 'string' && user.password_hash !== null) {
-        // Trimmed and capped as POST /auth/password does: one answer for
-        // anything that is not the password, and bcrypt's work bounded.
-        const typed = password.trim();
-        const matches = typed.length > 0 && typed.length <= MAX_PASSWORD_LENGTH
-          && await verifyPassword(typed, user.password_hash);
-        if (!matches) {
-          throw AppError.badRequest('WRONG_PASSWORD', "That password isn't right.");
-        }
+        // The same check as POST /auth/password: 400 WRONG_PASSWORD.
+        await confirmPassword(password, user.password_hash);
       } else if (typeof idToken === 'string' && Number(user.has_google) === 1) {
-        // A token that does not verify fails as it does at sign-in.
-        const identity = await google.verifyIdToken(idToken);
+        const identity = await verifyGoogleReauth(google, idToken);
         if (!await isGoogleIdentityOf(pool, user.user_id, identity.subject)) {
           throw AppError.badRequest(
             'GOOGLE_ACCOUNT_MISMATCH', "That Google account isn't the one this account uses.",

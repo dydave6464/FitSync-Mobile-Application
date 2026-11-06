@@ -95,6 +95,20 @@ test('delete account from the web', async (t) => {
     assert.equal(rows[0].token_hash, hashToken(tokenIn(link)), 'only the hash is stored');
   });
 
+  await t.test('the link expires in 15 minutes, as the password reset does, and says so', async () => {
+    await reset();
+    const userId = await newUser();
+    const res = await ask('ana@example.com').expect(200);
+
+    const [[row]] = await pool.query(
+      `SELECT TIMESTAMPDIFF(SECOND, NOW(), expires_at) AS left_s FROM auth_tokens
+        WHERE user_id = ? AND purpose = 'delete_account'`, [userId],
+    );
+    assert.ok(row.left_s > 14 * 60 && row.left_s <= 15 * 60, `seconds left: ${row.left_s}`);
+    assert.match(mail.sent[0].text, /expires in 15 minutes/);
+    assert.match(res.text, /expires in 15 minutes/);
+  });
+
   await t.test('a blank or malformed email gets the same page and sends nothing', async () => {
     await reset();
     await newUser();
