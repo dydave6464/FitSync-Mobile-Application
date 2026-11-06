@@ -626,11 +626,22 @@ class _LoadCard extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const FsEyebrow('7-day training load'),
-        const SizedBox(height: 14),
-        FsBarChart(
-          label: '7-day training load',
-          bars: [for (var i = 0; i < load.length; i++) _bar(i, unit, today)],
-        ),
+        // The server always sends seven days, zero-filled, so a rest week
+        // would draw a bare baseline that reads as a broken chart.
+        if (load.every((bucket) => bucket.volumeKg <= 0)) ...[
+          const SizedBox(height: 12),
+          Text(
+            'No workouts in the last 7 days. Finished workouts show here as '
+            'training load.',
+            style: TextStyle(fontSize: 13, color: t.text2),
+          ),
+        ] else ...[
+          const SizedBox(height: 14),
+          FsBarChart(
+            label: '7-day training load',
+            bars: [for (var i = 0; i < load.length; i++) _bar(i, unit, today)],
+          ),
+        ],
       ],
     );
   }
