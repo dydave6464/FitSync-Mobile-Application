@@ -220,18 +220,32 @@ class LevelStep extends ConsumerWidget {
             children: [
               Icon(Icons.home_outlined, size: 18, color: t.text2),
               const SizedBox(width: 11),
-              const Expanded(
-                child: Text(
-                  'Training location',
-                  style: TextStyle(fontSize: 13.5),
-                ),
-              ),
-              Text(
-                _locationLabel,
-                style: TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                  color: value.trainingLocation == null ? t.text3 : t.text,
+              // Label left and value right on one line, as the design draws
+              // them, while both fit. At large text the value moves under
+              // the label instead of squeezing it into a column of single
+              // letters, or pushing the row off the card.
+              Expanded(
+                child: Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
+                  runSpacing: 2,
+                  children: [
+                    const Text(
+                      'Training location',
+                      style: TextStyle(fontSize: 13.5),
+                    ),
+                    Text(
+                      _locationLabel,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        color: value.trainingLocation == null
+                            ? t.text3
+                            : t.text,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(width: 6),
