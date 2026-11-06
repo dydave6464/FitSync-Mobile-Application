@@ -30,10 +30,10 @@ const proPollTicks = 150;
 
 const _openFailed = "Couldn't open the payment page. Try again.";
 
-/// How long one payment of [plan] lasts: "1 month", "12 months". Screen
-/// copy, so it lives here rather than in the domain's [ProPlan].
-String planPeriod(ProPlan plan) =>
-    plan.months == 1 ? '1 month' : '${plan.months} months';
+/// How long one payment lasts, from its plan's [months] (ProPlanTerms):
+/// "1 month", "12 months". Screen copy, so it lives here rather than in
+/// the domain.
+String planPeriod(int months) => months == 1 ? '1 month' : '$months months';
 
 /// Opens the Pro screen. Every lock in the app routes through here.
 Future<void> openProScreen(BuildContext context) =>
@@ -357,6 +357,9 @@ class _ProScreenState extends ConsumerState<ProScreen> {
 
   List<Widget> _body(ProStatus s) {
     final canBuy = s.source != ProSource.granted;
+    // Where the server says a payment now would start; an older server
+    // sends no such date, and its start is the current end.
+    final extendsFrom = s.nextPeriodStartsAt ?? s.until;
     return [
       if (s.pro) ...[_StatusCard(status: s), const SizedBox(height: 14)],
       if (s.endsSoon && s.until != null) ...[
@@ -373,18 +376,19 @@ class _ProScreenState extends ConsumerState<ProScreen> {
           const SizedBox(height: 10),
           // The server starts a new period at the later of now and the
           // current end, so no days already paid for are lost.
-          if (s.until != null) ...[
+          if (extendsFrom != null) ...[
             Text(
-              'Adds ${planPeriod(_plan)} after ${formatProDate(s.until!)}.',
+              'Adds ${planPeriod(s.plans[_plan]!.months)} '
+              'after ${formatProDate(extendsFrom)}.',
               key: const Key('pro.extendsFrom'),
               style: TextStyle(fontSize: 12.5, color: context.fs.text2),
             ),
             const SizedBox(height: 10),
           ],
         ],
-        _plans(s.prices),
+        _plans(s),
         const SizedBox(height: 14),
-        _payArea(s.prices),
+        _payArea(s),
         const SizedBox(height: 20),
       ],
       const FsEyebrow('Unlocks today'),
@@ -401,7 +405,10 @@ class _ProScreenState extends ConsumerState<ProScreen> {
     ];
   }
 
-  Widget _plans(ProPrices p) {
+  Widget _plans(ProStatus s) {
+    final p = s.prices;
+    final monthly = planPeriod(s.plans[ProPlan.monthly]!.months);
+    final annual = planPeriod(s.plans[ProPlan.annual]!.months);
     final locked = _pay != _Pay.idle;
     void pick(ProPlan plan) => setState(() => _plan = plan);
     return Row(
@@ -414,9 +421,8 @@ class _ProScreenState extends ConsumerState<ProScreen> {
             price: peso(p.monthly),
             // Said as a period, not a rate: one payment buys one month and
             // nothing renews, which "per month" left in doubt.
-            note: 'for ${planPeriod(ProPlan.monthly)}',
-            semanticsLabel:
-                'Monthly, ${peso(p.monthly)} for ${planPeriod(ProPlan.monthly)}',
+            note: 'for $monthly',
+            semanticsLabel: 'Monthly, ${peso(p.monthly)} for $monthly',
             selected: _plan == ProPlan.monthly,
             onTap: locked ? null : () => pick(ProPlan.monthly),
           ),
@@ -431,11 +437,11 @@ class _ProScreenState extends ConsumerState<ProScreen> {
             // it ₱149 read as the annual price.
             note:
                 'a month · ${peso(p.annual)} once, '
-                'for ${planPeriod(ProPlan.annual)}',
+                'for $annual',
             tag: '-${p.annualSavingPct}%',
             semanticsLabel:
                 'Annual, ${peso(p.annualPerMonth)} a month, '
-                '${peso(p.annual)} once, for ${planPeriod(ProPlan.annual)}',
+                '${peso(p.annual)} once, for $annual',
             selected: _plan == ProPlan.annual,
             onTap: locked ? null : () => pick(ProPlan.annual),
           ),
@@ -444,7 +450,8 @@ class _ProScreenState extends ConsumerState<ProScreen> {
     );
   }
 
-  Widget _payArea(ProPrices p) {
+  Widget _payArea(ProStatus s) {
+    final p = s.prices;
     final check = FsButton(
       key: const Key('pro.check'),
       label: 'Check payment',
@@ -492,14 +499,17 @@ class _ProScreenState extends ConsumerState<ProScreen> {
               wrapLabel: true,
             ),
             // The terms, where the prototype states them: under the button
-            // that commits to them.
-            const SizedBox(height: 8),
-            Text(
-              "One-time payment. Pro doesn't renew by itself.",
-              key: const Key('pro.terms'),
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: context.fs.text2),
-            ),
+            // that commits to them. Said only while the server says Pro
+            // does not renew, which is always today.
+            if (!s.renews) ...[
+              const SizedBox(height: 8),
+              Text(
+                "One-time payment. Pro doesn't renew by itself.",
+                key: const Key('pro.terms'),
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: context.fs.text2),
+              ),
+            ],
             if (openError != null) ...[const SizedBox(height: 10), openError],
           ],
         );
