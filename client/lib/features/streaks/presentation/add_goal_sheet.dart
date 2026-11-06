@@ -11,6 +11,7 @@ import '../../../core/widgets/fs_kit.dart';
 import '../../profile/presentation/providers.dart' show weightUnitProvider;
 import '../domain/streaks.dart';
 import 'goal_sheet.dart';
+import 'goal_target.dart';
 import 'providers.dart';
 
 /// Adds a lift goal in two steps: choose the exercise, then the target.
@@ -117,6 +118,10 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
   bool _busy = false;
   String? _error;
 
+  /// A marked row is reloading the goals to open its goal; a second tap
+  /// waits rather than opening it twice.
+  bool _finding = false;
+
   @override
   void dispose() {
     _debounce?.cancel();
@@ -158,14 +163,24 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
   }
 
   /// The user's unreached goals by exercise, once the list has loaded.
-  /// Until then, or if it fails, every row is offered as before and the
-  /// server still refuses a second goal.
+  /// Until then, or if it fails, a row is marked only by its option's own
+  /// hasOpenGoal, and the server still refuses a second goal.
   Map<int, LiftGoal> _openGoals() => {
     for (final g in ref.watch(goalsProvider).value ?? const <LiftGoal>[])
       if (!g.reached) g.exerciseId: g,
   };
 
-  /// A row's tap: its open goal when it has one, else step two.
+  /// The open goal the options list names for [exerciseId], when the goals
+  /// list has not (it failed, is loading, or is stale).
+  int? _markedGoalId(List<GoalOption> known, int exerciseId) {
+    for (final o in known) {
+      if (o.exerciseId == exerciseId && o.hasOpenGoal) return o.goalId;
+    }
+    return null;
+  }
+
+  /// A row's tap: its open goal when it has one, else step two. A goal the
+  /// options mark but the loaded list lacks is looked up afresh first.
   VoidCallback _onRow(
     Map<int, LiftGoal> open,
     int exerciseId,
@@ -173,10 +188,44 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
     List<GoalOption> known,
   ) {
     final goal = open[exerciseId];
-    return goal == null
-        ? () => _pick(exerciseId, name, known)
-        : () => _openGoal(goal);
+    if (goal != null) return () => _openGoal(goal);
+    final goalId = _markedGoalId(known, exerciseId);
+    if (goalId == null) return () => _pick(exerciseId, name, known);
+    return () async {
+      if (_finding) return;
+      _finding = true;
+      final container = ProviderScope.containerOf(context, listen: false);
+      final found = await _findOpenGoal(container, goalId);
+      _finding = false;
+      if (!mounted) return;
+      found == null ? _pick(exerciseId, name, known) : _openGoal(found);
+    };
   }
+
+  /// Goal [goalId] from a fresh goals list, if it is there and unreached.
+  static Future<LiftGoal?> _findOpenGoal(
+    ProviderContainer container,
+    int goalId,
+  ) async {
+    try {
+      container.invalidate(goalsProvider);
+      final goals = await container.read(goalsProvider.future);
+      for (final g in goals) {
+        if (g.goalId == goalId && !g.reached) return g;
+      }
+    } catch (_) {
+      // Not found, as far as the sheet can tell; the caller falls back.
+    }
+    return null;
+  }
+
+  /// The open goal a GOAL_EXISTS refusal names, or null.
+  static int? _existingGoalId(Object error) => switch (error) {
+    ApiException(code: 'GOAL_EXISTS', :final details)
+        when details.isNotEmpty && details.first['goalId'] is int =>
+      details.first['goalId'] as int,
+    _ => null,
+  };
 
   Future<void> _save() async {
     final picked = _picked!;
@@ -184,34 +233,13 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
     // Capture the container before any await; the sheet can be dismissed
     // mid-save, making ref invalid. The container outlives the widget.
     final container = ProviderScope.containerOf(context, listen: false);
-    final kg = parseWeight(_target.text, unit);
-    if (kg == null) {
-      setState(() => _error = 'Enter a target weight.');
-      return;
-    }
-    // Rounded to what set_logs and the POST body actually carry (DECIMAL
-    // 6,2): a target that only beats the best before rounding would pass
-    // this check on the unrounded value, then be refused by the server on
-    // the rounded one -- in kilograms, whatever the user's unit is.
-    final sendKg = double.parse(kg.toStringAsFixed(2));
-    if (sendKg <= 0) {
-      setState(() => _error = 'Enter a target weight.');
-      return;
-    }
-    if (sendKg < 0.5 || sendKg > 999.99) {
-      setState(
-        () => _error =
-            'Enter a target between ${formatWeightWithUnit(0.5, unit)} and '
-            '${formatWeightWithUnit(999.99, unit)}.',
-      );
-      return;
-    }
-    final best = picked.bestKg;
-    if (best != null && sendKg <= best) {
-      setState(
-        () => _error =
-            'Your best is already ${formatWeightWithUnit(best, unit)}.',
-      );
+    final (sendKg, invalid) = goalTargetError(
+      _target.text,
+      unit,
+      picked.bestKg,
+    );
+    if (sendKg == null) {
+      setState(() => _error = invalid);
       return;
     }
     setState(() {
@@ -226,9 +254,30 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
       if (mounted) Navigator.of(context).pop();
     } catch (error) {
       if (!mounted) return;
+      // The lift has a goal the sheet did not know of: open it instead.
+      final existingId = _existingGoalId(error);
+      if (existingId != null) {
+        container.invalidate(goalOptionsProvider);
+        final goal = await _findOpenGoal(container, existingId);
+        if (!mounted) return;
+        if (goal != null) {
+          _openGoal(goal);
+          return;
+        }
+      }
+      // The server knew a best the sheet did not (or a newer one).
+      final best = goalErrorBestKg(error);
+      if (best != null) container.invalidate(goalOptionsProvider);
       setState(() {
+        if (best != null) {
+          _picked = (
+            exerciseId: picked.exerciseId,
+            name: picked.name,
+            bestKg: best,
+          );
+        }
         _busy = false;
-        _error = userMessage(error);
+        _error = goalErrorMessage(error, unit);
       });
     }
   }
@@ -326,7 +375,7 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
                     key: Key('goal.option.${o.exerciseId}'),
                     title: o.name,
                     subtitle: 'Best ${formatWeightWithUnit(o.bestKg, unit)}',
-                    goalSet: open.containsKey(o.exerciseId),
+                    goalSet: open.containsKey(o.exerciseId) || o.hasOpenGoal,
                     onTap: _onRow(open, o.exerciseId, o.name, list),
                   ),
               ],
@@ -354,7 +403,9 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
                         key: Key('goal.result.${e.exerciseId}'),
                         title: e.name,
                         subtitle: null,
-                        goalSet: open.containsKey(e.exerciseId),
+                        goalSet:
+                            open.containsKey(e.exerciseId) ||
+                            _markedGoalId(known, e.exerciseId) != null,
                         onTap: _onRow(open, e.exerciseId, e.name, known),
                       ),
                   ],
