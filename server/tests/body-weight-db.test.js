@@ -61,7 +61,12 @@ test('body weight db', async (t) => {
     const userId = await makeUser(pool, 'range@example.com');
     await assert.rejects(
       () => bw.writeEntry(pool, userId, { weightKg: 4 }),
-      (err) => err.code === 'WEIGHT_OUT_OF_RANGE',
+      (err) => {
+        assert.equal(err.code, 'WEIGHT_OUT_OF_RANGE');
+        assert.equal(err.message, 'Enter a weight between 20 and 500 kg.');
+        assert.deepEqual(err.details, [{ field: 'weightKg', min: 20, max: 500, unit: 'kg' }]);
+        return true;
+      },
     );
   });
 
@@ -171,7 +176,12 @@ test('body weight db', async (t) => {
 
     await assert.rejects(
       () => updateProfile(pool, userId, { weightKg: 600 }),
-      (err) => err.code === 'WEIGHT_OUT_OF_RANGE',
+      (err) => {
+        assert.equal(err.code, 'WEIGHT_OUT_OF_RANGE');
+        assert.equal(err.message, 'Enter a weight between 20 and 500 kg.');
+        assert.deepEqual(err.details, [{ field: 'weightKg', min: 20, max: 500, unit: 'kg' }]);
+        return true;
+      },
     );
 
     const [[user]] = await pool.query(

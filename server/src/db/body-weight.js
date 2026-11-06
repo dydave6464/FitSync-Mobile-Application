@@ -9,6 +9,31 @@ const { formatDate, toNumber, periodDays } = require('./sessions');
 const MIN_KG = 20;
 const MAX_KG = 500;
 
+// The same kind of bound for height. Like the weight bound it sits wider
+// than the app's soft "ask once" range (100-250 cm), so a value the user
+// confirmed still saves, while a slip such as 17 cm or 1.7 (metres) does not.
+const MIN_CM = 50;
+const MAX_CM = 275;
+
+/// The hard range of each profile number, with the words the app shows when
+/// a value falls outside it.
+const BODY_RANGES = {
+  heightCm: { min: MIN_CM, max: MAX_CM, unit: 'cm', noun: 'height' },
+  weightKg: { min: MIN_KG, max: MAX_KG, unit: 'kg', noun: 'weight' },
+  goalWeightKg: { min: MIN_KG, max: MAX_KG, unit: 'kg', noun: 'goal weight' },
+};
+
+/// A 400 for [field] outside its range. details[0] carries the range itself,
+/// so the app can flag the field and restate the range in the user's unit.
+function outOfRange(code, field) {
+  const { min, max, unit, noun } = BODY_RANGES[field];
+  return AppError.badRequest(
+    code,
+    `Enter a ${noun} between ${min} and ${max} ${unit}.`,
+    [{ field, min, max, unit }],
+  );
+}
+
 // How far a widened series may reach back. Enough to draw a shape, few enough
 // that a user logging daily for a year does not ship 365 points to a card
 // 84 pixels tall.
@@ -124,10 +149,7 @@ async function readStart(pool, userId) {
 async function writeEntry(pool, userId, { weightKg, loggedOn = null }) {
   const weight = Number(weightKg);
   if (!Number.isFinite(weight) || weight < MIN_KG || weight > MAX_KG) {
-    throw AppError.badRequest(
-      'WEIGHT_OUT_OF_RANGE',
-      `weightKg must be a number between ${MIN_KG} and ${MAX_KG}.`,
-    );
+    throw outOfRange('WEIGHT_OUT_OF_RANGE', 'weightKg');
   }
 
   const conn = await pool.getConnection();
@@ -180,4 +202,7 @@ async function writeEntry(pool, userId, { weightKg, loggedOn = null }) {
   return toPoint(row);
 }
 
-module.exports = { readSeries, readReference, readStart, writeEntry, MIN_KG, MAX_KG, MAX_POINTS };
+module.exports = {
+  readSeries, readReference, readStart, writeEntry, outOfRange,
+  MIN_KG, MAX_KG, MIN_CM, MAX_CM, BODY_RANGES, MAX_POINTS,
+};

@@ -83,8 +83,11 @@ test('body weight routes', async (t) => {
   });
 
   await t.test('a nonsense weight is a 400, not a stored row', async () => {
-    await request(app).post('/api/v1/profile/body-weight')
+    const res = await request(app).post('/api/v1/profile/body-weight')
       .set(auth).send({ weightKg: 714 }).expect(400);
+    assert.equal(res.body.error.code, 'WEIGHT_OUT_OF_RANGE');
+    assert.equal(res.body.error.message, 'Enter a weight between 20 and 500 kg.');
+    assert.deepEqual(res.body.error.details, [{ field: 'weightKg', min: 20, max: 500, unit: 'kg' }]);
     const [rows] = await pool.query('SELECT COUNT(*) AS n FROM body_weight_logs');
     assert.equal(Number(rows[0].n), 1, 'still just the good one');
   });

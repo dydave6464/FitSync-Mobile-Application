@@ -18,7 +18,9 @@ const ENUMS = {
   trainingLocation: ['home_gym', 'commercial_gym', 'both', 'other'],
   weightUnit: ['kg', 'lb'],
 };
-const NUMERIC = ['heightCm', 'weightKg', 'goalWeightKg'];
+// heightCm, weightKg and goalWeightKg: each has a plausible hard range
+// (bodyWeight.BODY_RANGES), wider than the app's soft "ask once" ranges.
+const NUMERIC = Object.keys(bodyWeight.BODY_RANGES);
 const SIDES = ['left', 'right', 'both'];
 
 // users.full_name, users.notifications_enabled and users.weight_unit are
@@ -72,9 +74,13 @@ function validatePatch(body) {
       throw invalid(key, `${key} must be one of: ${ENUMS[key].join(', ')}.`);
     }
     if (NUMERIC.includes(key)) {
-      const n = Number(value);
-      if (!Number.isFinite(n) || n <= 0 || n >= 1000) {
-        throw invalid(key, `${key} must be a number between 0 and 1000.`);
+      // Only a number or a numeric string: Number() would otherwise read
+      // true as 1, [170] as 170 and '' as 0.
+      const n = typeof value === 'number' || (typeof value === 'string' && value.trim() !== '')
+        ? Number(value) : NaN;
+      const { min, max } = bodyWeight.BODY_RANGES[key];
+      if (!Number.isFinite(n) || n < min || n > max) {
+        throw bodyWeight.outOfRange('INVALID_PROFILE_FIELD', key);
       }
       fields[key] = n;
       continue;
