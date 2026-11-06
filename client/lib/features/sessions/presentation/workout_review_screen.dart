@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/domain/exercise.dart';
-import '../../exercises/presentation/equipment_icon.dart';
+import '../../exercises/presentation/exercise_thumb.dart';
 import '../../exercises/presentation/exercise_list_screen.dart'
     show ExerciseListScreen, describeError;
 import '../../exercises/presentation/providers.dart';
@@ -645,19 +645,11 @@ class _ReviewRow extends StatelessWidget {
             ),
             if (showThumb) ...[
               const SizedBox(width: 2),
-              SizedBox(
-                width: 44,
-                height: 44,
-                child: exercise.thumbnailUrl == null
-                    ? _ThumbPlaceholder(equipment: exercise.equipment)
-                    : Image.network(
-                        '$baseUrl${exercise.thumbnailUrl}',
-                        fit: BoxFit.cover,
-                        // One unreachable thumbnail must not take the row
-                        // down.
-                        errorBuilder: (_, _, _) =>
-                            _ThumbPlaceholder(equipment: exercise.equipment),
-                      ),
+              ExerciseThumb(
+                size: 44,
+                baseUrl: baseUrl,
+                thumbnailUrl: exercise.thumbnailUrl,
+                equipment: exercise.equipment,
               ),
             ],
           ],
@@ -719,16 +711,4 @@ class _ReviewRow extends StatelessWidget {
       ),
     );
   }
-}
-
-class _ThumbPlaceholder extends StatelessWidget {
-  const _ThumbPlaceholder({this.equipment});
-
-  final String? equipment;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-    child: Icon(equipmentIcon(equipment), size: 18),
-  );
 }

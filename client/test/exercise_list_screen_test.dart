@@ -3,12 +3,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
+import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/exercises/data/exercise_repository.dart';
 import 'package:fitsync/features/exercises/domain/exercise_cues.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/domain/exercise_filters.dart';
 import 'package:fitsync/features/exercises/presentation/exercise_list_screen.dart';
+import 'package:fitsync/features/exercises/presentation/exercise_thumb.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
+import 'package:fitsync/features/exercises/presentation/widgets/search_field.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/sheet_header.dart';
 
 import 'helpers/no_recent_exercises.dart';
@@ -161,8 +165,11 @@ void main() {
 
     expect(find.textContaining('Unsupported filter value.'), findsOneWidget);
     expect(repo.listCalls, 1);
+    // The kit's retry, not a Material FilledButton under a cloud.
+    expect(find.byType(FsRetry), findsOneWidget);
+    expect(find.byType(FilledButton), findsNothing);
 
-    await tester.tap(find.text('Retry'));
+    await tester.tap(find.text('Try again'));
     await tester.pumpAndSettle();
 
     expect(repo.listCalls, 2, reason: 'retry must actually refetch');
@@ -223,6 +230,37 @@ void main() {
 
     expect(find.text('Barbell'), findsOneWidget);
     expect(find.text('Equipment'), findsNothing);
+  });
+
+  // The tiles' own 4 dp inset left the rows 4 dp from the edge, under a
+  // search box and chips inset 12.
+  testWidgets('rows line up with the search box above them', (tester) async {
+    // In the app's theme, which sets the tiles' own 4 dp inset.
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          exerciseRepositoryProvider.overrideWithValue(FakeRepository()),
+          noRecentExercises,
+        ],
+        child: MaterialApp(
+          theme: fsLightTheme(),
+          home: const ExerciseListScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final field = tester
+        .getTopLeft(
+          find.descendant(
+            of: find.byType(ExerciseSearchField),
+            matching: find.byType(FsField),
+          ),
+        )
+        .dx;
+    final firstRow = tester.getTopLeft(find.byType(ExerciseThumb).first).dx;
+    expect(field, 12);
+    expect(firstRow, field);
   });
 
   testWidgets('the equipment button says it is a filter, and what is on', (
@@ -376,7 +414,7 @@ void main() {
     await tester.pumpWidget(harness(repo));
     await tester.pumpAndSettle();
 
-    expect(find.text('Retry'), findsOneWidget);
+    expect(find.text('Try again'), findsOneWidget);
     expect(
       find.byKey(const Key('library.equipment')),
       findsNothing,
@@ -384,7 +422,7 @@ void main() {
     );
 
     repo.failWith = null;
-    await tester.tap(find.text('Retry'));
+    await tester.tap(find.text('Try again'));
     await tester.pumpAndSettle();
 
     expect(find.text('Sit-up 1'), findsOneWidget, reason: 'list recovered');

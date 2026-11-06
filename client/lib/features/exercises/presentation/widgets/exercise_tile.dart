@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme.dart';
 
-import '../equipment_icon.dart';
+import '../exercise_thumb.dart';
 
 import '../../domain/exercise.dart';
 import '../../domain/exercise_labels.dart';
@@ -39,18 +39,13 @@ class ExerciseTile extends StatelessWidget {
       // the icons and the line under the name keep their own colours.
       selected: selected,
       iconColor: WidgetStateColor.resolveWith((_) => t.text2),
-      leading: SizedBox(
-        width: 56,
-        height: 56,
-        child: exercise.thumbnailUrl == null
-            ? _ThumbPlaceholder(equipment: exercise.equipment)
-            : Image.network(
-                '$baseUrl${exercise.thumbnailUrl}',
-                fit: BoxFit.cover,
-                // One unreachable thumbnail must not take the row down with it.
-                errorBuilder: (_, _, _) =>
-                    _ThumbPlaceholder(equipment: exercise.equipment),
-              ),
+      // The kit's thumb: rounded, with the themed equipment placeholder for
+      // an exercise with no artwork or one that will not load.
+      leading: ExerciseThumb(
+        size: 56,
+        baseUrl: baseUrl,
+        thumbnailUrl: exercise.thumbnailUrl,
+        equipment: exercise.equipment,
       ),
       title: Text(exerciseDisplayName(exercise.name)),
       // The warning gets a line of its own and is never cut: it is the
@@ -138,16 +133,4 @@ class _SelectMark extends StatelessWidget {
       ),
     );
   }
-}
-
-class _ThumbPlaceholder extends StatelessWidget {
-  const _ThumbPlaceholder({this.equipment});
-
-  final String? equipment;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-    child: Icon(equipmentIcon(equipment), size: 20),
-  );
 }

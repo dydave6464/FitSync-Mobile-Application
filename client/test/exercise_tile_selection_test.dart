@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
+import 'package:fitsync/features/exercises/presentation/exercise_thumb.dart';
 import 'package:fitsync/features/exercises/presentation/widgets/exercise_tile.dart';
 
 const _exercise = ExerciseSummary(
@@ -102,6 +103,14 @@ void main() {
     final plain = await colours(selected: false);
     final picked = await colours(selected: true);
     expect(picked, plain);
+  });
+
+  testWidgets('the row draws its exercise with the shared thumb', (
+    tester,
+  ) async {
+    await _pump(tester);
+
+    expect(tester.widget<ExerciseThumb>(find.byType(ExerciseThumb)).size, 56);
   });
 
   testWidgets('an exercise that loads a reported injury is marked', (
