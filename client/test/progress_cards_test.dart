@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/units.dart';
 import 'package:fitsync/core/widgets/fs_charts.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
@@ -10,6 +11,7 @@ import 'package:fitsync/features/pro/presentation/pro_screen.dart';
 import 'package:fitsync/features/pro/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/progress_cards.dart';
 
+import 'helpers/a11y.dart';
 import 'helpers/fake_pro_repository.dart';
 
 void main() {
@@ -196,6 +198,31 @@ void main() {
       );
       expect(bar.value, closeTo(2 / 3, 0.001));
     });
+
+    // The bar is data, so it uses the fill shade of the green: the brand
+    // green is 2.45:1 on the light track, under the 3:1 a mark needs (SE-5).
+    for (final dark in [false, true]) {
+      testWidgets(
+        'the sessions bar reads at 3:1 on its track (${dark ? 'dark' : 'light'})',
+        (tester) async {
+          await tester.pumpWidget(
+            host(
+              const AdherenceCard(
+                adherence: Adherence(done: 2, target: 3, weeks: 1),
+              ),
+              dark: dark,
+            ),
+          );
+
+          final t = dark ? FsTokens.dark : FsTokens.light;
+          final bar = tester.widget<LinearProgressIndicator>(
+            find.byType(LinearProgressIndicator),
+          );
+          expect(bar.color, t.accentFill);
+          expect(contrast(bar.color!, bar.backgroundColor!), greaterThan(3.0));
+        },
+      );
+    }
 
     // A user with no active plan has nothing to be two-thirds of. The bar is
     // what would be meaningless, not the count.

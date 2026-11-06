@@ -28,6 +28,17 @@ class SetDrafts {
   TextEditingController reps(int setNumber) =>
       _reps.putIfAbsent(setNumber, TextEditingController.new);
 
+  final Map<int, FocusNode> _weightFocus = {};
+  final Map<int, FocusNode> _repsFocus = {};
+
+  /// Each field's focus, held here beside its text so the band around the
+  /// drawn cell can hand a tap to the field -- see SetRow.
+  FocusNode weightFocus(int setNumber) =>
+      _weightFocus.putIfAbsent(setNumber, FocusNode.new);
+
+  FocusNode repsFocus(int setNumber) =>
+      _repsFocus.putIfAbsent(setNumber, FocusNode.new);
+
   /// Fills this set's fields from the last session, or from the set the
   /// server already holds.
   ///
@@ -130,8 +141,13 @@ class SetDrafts {
     for (final field in _reps.values) {
       field.dispose();
     }
+    for (final node in [..._weightFocus.values, ..._repsFocus.values]) {
+      node.dispose();
+    }
     _weight.clear();
     _reps.clear();
+    _weightFocus.clear();
+    _repsFocus.clear();
     _fromRecord.clear();
   }
 

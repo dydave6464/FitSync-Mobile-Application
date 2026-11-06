@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
@@ -88,7 +89,7 @@ void main() {
       );
       final subtitle = tester.widget<RichText>(
         find.descendant(
-          of: find.textContaining('pectorals'),
+          of: find.textContaining('Chest'),
           matching: find.byType(RichText),
         ),
       );
@@ -117,5 +118,50 @@ void main() {
     await _pump(tester, selected: false);
 
     expect(find.byKey(const Key('tile.risk.101')), findsNothing);
+  });
+
+  // The warning shared one ellipsized line with the muscle and equipment, so
+  // at 1.0x it pushed them out and at large text it was itself cut short:
+  // the safety reason lost exactly for those who need it (SE-7).
+  group('the injury warning has a line of its own', () {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets('uncut at ${scale}x on a 360 dp phone', (tester) async {
+        tester.view.physicalSize = const Size(360, 640);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(
+          MediaQuery(
+            data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+            child: MaterialApp(
+              theme: fsLightTheme(),
+              home: Scaffold(
+                body: ListView(
+                  children: [
+                    ExerciseTile(
+                      exercise: _risky,
+                      baseUrl: 'http://test.local',
+                      onTap: () {},
+                      selected: false,
+                      onInfo: () {},
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+
+        expect(tester.takeException(), isNull);
+        final warning = find.text('Loads an injury you reported');
+        expect(warning, findsOneWidget);
+        expect(
+          tester.renderObject<RenderParagraph>(warning).didExceedMaxLines,
+          isFalse,
+        );
+        // Muscle and equipment keep their own line, not pushed out.
+        expect(find.textContaining('Barbell'), findsWidgets);
+        expect(find.textContaining('lute'), findsOneWidget);
+      });
+    }
   });
 }

@@ -4,6 +4,7 @@ import '../../../../core/theme.dart';
 import '../../../exercises/presentation/widgets/coaching_tag.dart';
 import '../../../plans/domain/workout_plan.dart';
 import '../../domain/active_session.dart';
+import '../../../exercises/domain/exercise_labels.dart';
 
 /// Opens [ExerciseJumpSheet] over the logger: resolves to the index chosen,
 /// or null when dismissed without choosing.
@@ -148,7 +149,7 @@ class ExerciseJumpSheet extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    exercise.name,
+                    exerciseDisplayName(exercise.name),
                     style: TextStyle(
                       fontSize: 13.5,
                       fontWeight: current ? FontWeight.w700 : FontWeight.w500,

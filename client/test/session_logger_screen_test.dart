@@ -25,9 +25,11 @@ import 'package:fitsync/features/sessions/data/rest_alerts.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/session_logger_screen.dart';
+import 'package:fitsync/features/sessions/presentation/widgets/encouragement_card.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/rest_timer.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/set_row.dart';
 
+import 'helpers/a11y.dart';
 import 'helpers/dialog_buttons.dart';
 import 'helpers/fake_rest_alerts.dart';
 import 'helpers/fake_training_settings.dart';
@@ -38,7 +40,14 @@ List<String> _recordHaptics(WidgetTester tester) {
   tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
     SystemChannels.platform,
     (call) async {
-      if (call.method.startsWith('HapticFeedback')) calls.add(call.method);
+      if (call.method.startsWith('HapticFeedback')) {
+        // A plain buzz carries no type; a light tap names its own.
+        calls.add(
+          call.arguments == null
+              ? call.method
+              : '${call.method}:${call.arguments}',
+        );
+      }
       return null;
     },
   );
@@ -658,6 +667,11 @@ Future<FakeSessionController> _pump(
   }
   return controller;
 }
+
+/// What leaving says: the sets are kept, but an open workout is not counted
+/// in History, the streak or Progress until it is finished (SE-9).
+const _keptOpen =
+    'Workout kept open — your sets are saved. Finish it from Train to count it.';
 
 const _repsPrefill = {
   101: LastPerformance(exerciseId: 101, reps: 10, sessionDate: '2026-09-12'),
@@ -2016,10 +2030,7 @@ void main() {
 
       expect(find.byType(SessionLoggerScreen), findsNothing);
       expect(find.text('Set 1 reopened'), findsNothing);
-      expect(
-        find.text('Workout saved. Resume it any time from Train.'),
-        findsOneWidget,
-      );
+      expect(find.text(_keptOpen), findsOneWidget);
     });
 
     // The footer is the next tap after a reopen -- Complete set 1 is how the
@@ -2173,10 +2184,7 @@ void main() {
 
       expect(find.byType(SessionLoggerScreen), findsNothing);
       expect(find.text('open logger'), findsOneWidget);
-      expect(
-        find.text('Workout saved. Resume it any time from Train.'),
-        findsOneWidget,
-      );
+      expect(find.text(_keptOpen), findsOneWidget);
       // Nothing written: still in progress, still resumable.
       expect(controller.calls, isEmpty);
       expect(controller.heldSession, isNotNull);
@@ -2203,10 +2211,7 @@ void main() {
 
       await _menu(tester, 'leave');
 
-      expect(
-        find.text('Workout saved. Resume it any time from Train.'),
-        findsOneWidget,
-      );
+      expect(find.text(_keptOpen), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });
@@ -3370,7 +3375,9 @@ void main() {
       );
       // Which closing line shows varies by session; every one points at Finish.
       expect(
-        find.textContaining('Tap Finish session to save it.'),
+        find.textContaining(
+          'Tap Finish session to count it toward your streak.',
+        ),
         findsOneWidget,
       );
     });
@@ -3702,6 +3709,8 @@ void main() {
         await _pumpLogging(tester);
         await tester.tap(find.byKey(const Key('logger.primary')));
         await tester.pump();
+        // The set's own light tap; this is about the rest's end.
+        haptics.clear();
         tester.takeAnnouncements();
 
         await tester.pump(const Duration(seconds: 90));
@@ -3729,6 +3738,8 @@ void main() {
       await _pumpLogging(tester);
       await tester.tap(find.byKey(const Key('logger.primary')));
       await tester.pump();
+      // The set's own light tap; these are about the rest's end.
+      haptics.clear();
 
       await tester.tap(find.byKey(const Key('rest.open')));
       await tester.pump();
@@ -3747,6 +3758,8 @@ void main() {
       await _pumpLogging(tester);
       await tester.tap(find.byKey(const Key('logger.primary')));
       await tester.pump();
+      // The set's own light tap; these are about the rest's end.
+      haptics.clear();
       await tester.pump(const Duration(seconds: 70));
 
       await tester.tap(find.byKey(const Key('rest.open')));
@@ -3902,6 +3915,8 @@ void main() {
         await _pumpLogging(tester);
         await tester.tap(find.byKey(const Key('logger.primary')));
         await tester.pump();
+        // The set's own light tap; this is about the rest's end.
+        haptics.clear();
         await _background(tester);
 
         await tester.pump(const Duration(seconds: 120));
@@ -4523,4 +4538,238 @@ void main() {
       expect(find.byKey(const Key('set.1.weight')), findsOneWidget);
     });
   });
+
+  // The overall bar is the only visual count of sets done, so it is drawn in
+  // the fill shade, which holds 3:1 on its light track (SE-5).
+  testWidgets('the progress bar is drawn in the data fill colour', (
+    tester,
+  ) async {
+    await _pump(tester);
+
+    final bar = tester.widget<LinearProgressIndicator>(
+      find.descendant(
+        of: find.byKey(const Key('logger.progress')),
+        matching: find.byType(LinearProgressIndicator),
+      ),
+    );
+    expect(bar.valueColor!.value, FsTokens.light.accentFill);
+    expect(
+      contrast(bar.valueColor!.value!, bar.backgroundColor!),
+      greaterThan(3.0),
+    );
+  });
+
+  group('a plan that will not load (SE-1)', () {
+    testWidgets(
+      'says so, with the reason and a retry, not "Nothing to train"',
+      (tester) async {
+        final plans = _FlakyPlanRepository(failing: true);
+        await _pump(tester, session: _session(planId: 42), plans: plans);
+
+        expect(find.text('Nothing to train here'), findsNothing);
+        expect(find.byKey(const Key('logger.planError')), findsOneWidget);
+        expect(find.text("Couldn't load today's workout"), findsOneWidget);
+        expect(
+          find.text(
+            "Couldn't reach FitSync. Check your connection and try again.",
+          ),
+          findsOneWidget,
+        );
+        // Still a session someone can leave or discard.
+        expect(find.byKey(const Key('logger.back')), findsOneWidget);
+        expect(find.byKey(const Key('logger.menu')), findsOneWidget);
+
+        // Back in signal: the retry is what fetches the plan again.
+        plans.failing = false;
+        await tester.tap(find.byKey(const Key('logger.planError.retry')));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('logger.planError')), findsNothing);
+        expect(find.byKey(const Key('logger.demo')), findsOneWidget);
+      },
+    );
+
+    testWidgets('a plan still loading keeps the back control', (tester) async {
+      final gate = Completer<WorkoutPlan?>();
+      await _pump(
+        tester,
+        session: _session(planId: 42),
+        plans: _FlakyPlanRepository(hold: gate),
+        settle: false,
+      );
+
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byKey(const Key('logger.back')), findsOneWidget);
+
+      gate.complete(_plan);
+      await tester.pumpAndSettle();
+    });
+  });
+
+  // The only back control on iOS mid-workout, where the swipe is off: a
+  // named button with a 48 dp target, the 38 dp square drawn inside (SE-3).
+  testWidgets('the back button is a 48 dp named button', (tester) async {
+    final semantics = tester.ensureSemantics();
+    await _pump(tester);
+
+    final back = find.byKey(const Key('logger.back'));
+    final size = tester.getSize(back);
+    expect(size.width, greaterThanOrEqualTo(48));
+    expect(size.height, greaterThanOrEqualTo(48));
+    expect(
+      tester.getSemantics(back),
+      matchesSemantics(
+        // The tooltip is the name a screen reader speaks.
+        tooltip: 'Back',
+        isButton: true,
+        hasTapAction: true,
+        hasFocusAction: true,
+        isFocusable: true,
+      ),
+    );
+    await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+    semantics.dispose();
+  });
+
+  // The most-used button used to say nothing: the tick, the REST tag and the
+  // next set's label are all visual (SE-4).
+  group('completing a set tells the user', () {
+    testWidgets('a light tap, and "Set 1 logged. Rest ..." spoken', (
+      tester,
+    ) async {
+      final haptics = _recordHaptics(tester);
+      await _pumpLogging(tester);
+      tester.takeAnnouncements();
+
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      expect(haptics, [
+        'HapticFeedback.vibrate:HapticFeedbackType.lightImpact',
+      ]);
+      expect(tester.takeAnnouncements().map((a) => a.message), [
+        'Set 1 logged. Rest 1 minute 30 seconds.',
+      ]);
+    });
+
+    testWidgets('the set that finishes an exercise speaks its praise', (
+      tester,
+    ) async {
+      await _pumpLogging(
+        tester,
+        session: _session(
+          sets: const [
+            LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+            LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
+          ],
+        ),
+      );
+      tester.takeAnnouncements();
+
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      final card = tester.widget<EncouragementCard>(
+        find.byKey(const Key('logger.encouragement')),
+      );
+      expect(tester.takeAnnouncements().map((a) => a.message), [
+        card.message.headline,
+      ]);
+    });
+  });
+
+  // Back on exercise 1's demo closes the logger. With sets logged, it says
+  // the same as Leave, rather than nothing at all (SE-9).
+  group('back out of the first exercise', () {
+    testWidgets('with sets logged, says the workout is kept open', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        session: _session(
+          sets: const [
+            LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+          ],
+        ),
+      );
+      expect(find.byKey(const Key('logger.demo')), findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SessionLoggerScreen), findsNothing);
+      expect(find.text(_keptOpen), findsOneWidget);
+    });
+
+    testWidgets('with nothing logged, closes quietly', (tester) async {
+      await _pump(tester);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SessionLoggerScreen), findsNothing);
+      expect(find.byType(SnackBar), findsNothing);
+    });
+  });
+
+  // The fields' focus is held with their text, one store per exercise
+  // (SE-2). Going from one table straight to another, with a field still
+  // focused, hands the same rows a fresh store; nothing may trip over the
+  // old one on the way.
+  testWidgets('a focused field survives a jump from table to table', (
+    tester,
+  ) async {
+    await _pumpLogging(
+      tester,
+      session: _session(
+        sets: const [
+          LoggedSet(exerciseId: 102, setNumber: 1, weightKg: 20, reps: 10),
+        ],
+      ),
+    );
+    await tester.tap(find.byKey(const Key('set.1.reps')));
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('logger.position')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('jump.102')));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const Key('logger.demo')), findsNothing);
+    // The band still answers on the new table.
+    final cell = tester.getRect(find.byKey(const Key('set.2.reps')));
+    await tester.tapAt(cell.topCenter - const Offset(0, 4));
+    await tester.pump();
+    expect(
+      tester
+          .widget<EditableText>(
+            find.descendant(
+              of: find.byKey(const Key('set.2.reps')),
+              matching: find.byType(EditableText),
+            ),
+          )
+          .focusNode
+          .hasFocus,
+      isTrue,
+    );
+  });
+}
+
+/// Fails every plan load the way a dropped connection does while [failing],
+/// and answers [_plan] after; or, with [hold], holds the load open.
+class _FlakyPlanRepository extends RecordingPlanRepository {
+  _FlakyPlanRepository({this.failing = false, this.hold});
+
+  bool failing;
+  final Completer<WorkoutPlan?>? hold;
+
+  @override
+  Future<WorkoutPlan?> activePlan() async {
+    if (hold != null) return hold!.future;
+    if (failing) {
+      throw const ApiException('NETWORK_ERROR', 'Could not reach the server.');
+    }
+    return _plan;
+  }
 }

@@ -199,11 +199,13 @@ class SetRow extends StatelessWidget {
                     // Named for screen readers: the hint is only the unit, and it
                     // goes once a number is typed.
                     child: _FieldGap(
+                      focus: editable ? drafts.weightFocus(setNumber) : null,
                       child: Semantics(
                         label: 'Weight',
                         child: TextField(
                           key: Key('set.$setNumber.weight'),
                           controller: drafts.weight(setNumber),
+                          focusNode: drafts.weightFocus(setNumber),
                           enabled: editable,
                           onTapOutside: _letGo,
                           textAlign: TextAlign.center,
@@ -232,11 +234,13 @@ class SetRow extends StatelessWidget {
                 ],
                 Expanded(
                   child: _FieldGap(
+                    focus: editable ? drafts.repsFocus(setNumber) : null,
                     child: Semantics(
                       label: 'Reps',
                       child: TextField(
                         key: Key('set.$setNumber.reps'),
                         controller: drafts.reps(setNumber),
+                        focusNode: drafts.repsFocus(setNumber),
                         enabled: editable,
                         onTapOutside: _letGo,
                         textAlign: TextAlign.center,
@@ -326,12 +330,37 @@ class SetRow extends StatelessWidget {
 
 /// The space above and below a set's fields: what separates one row's boxes
 /// from the next.
+///
+/// The drawn cell is about 37 dp, under the 48 dp minimum, on the control
+/// typed into most. The gap is what makes up the band, so a tap in it hands
+/// [focus] to the field instead of landing on nothing -- the cell keeps the
+/// mockup's size and the target is the whole band. Null for a stored row,
+/// whose fields are not typed in.
 class _FieldGap extends StatelessWidget {
-  const _FieldGap({required this.child});
+  const _FieldGap({required this.child, this.focus});
 
   final Widget child;
+  final FocusNode? focus;
 
   @override
-  Widget build(BuildContext context) =>
-      Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: child);
+  Widget build(BuildContext context) {
+    final gap = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: child,
+    );
+    final node = focus;
+    if (node == null) return gap;
+    // Inside the text fields' tap group: otherwise pointer-down here counts as
+    // a tap outside the focused field, which lets go and closes the keyboard,
+    // and pointer-up reopens it for this one.
+    return TextFieldTapRegion(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        // The field inside is the node a screen reader lands on already.
+        excludeFromSemantics: true,
+        onTap: node.requestFocus,
+        child: gap,
+      ),
+    );
+  }
 }

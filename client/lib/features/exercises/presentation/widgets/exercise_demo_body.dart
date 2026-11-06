@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme.dart';
+import '../../../../core/widgets/fs_kit.dart';
 import '../../domain/exercise.dart';
 import '../../domain/exercise_cues.dart';
 import '../equipment_icon.dart';
 import 'ai_cue_list.dart';
+import '../../domain/exercise_labels.dart';
 
 /// The animation, chips and "How to perform" list for one exercise.
 ///
@@ -62,14 +64,20 @@ class ExerciseDemoBody extends StatelessWidget {
           ),
         const SizedBox(height: 16),
         if (header != null) ...[header!, const SizedBox(height: 8)],
-        Text(exercise.name, style: Theme.of(context).textTheme.headlineSmall),
+        Text(
+          exerciseDisplayName(exercise.name),
+          style: Theme.of(context).textTheme.headlineSmall,
+        ),
         const SizedBox(height: 8),
+        // The kit's tags, read as the library's filter reads: 'Chest',
+        // 'Bodyweight' rather than the catalogue's 'pectorals', 'body weight'.
         Wrap(
           spacing: 8,
+          runSpacing: 8,
           children: [
-            Chip(label: Text(exercise.muscleGroup)),
+            FsTag(muscleLabel(exercise.muscleGroup)),
             if (exercise.equipment != null)
-              Chip(label: Text(exercise.equipment!)),
+              FsTag(equipmentLabel(exercise.equipment!)),
           ],
         ),
         ?belowChips,
