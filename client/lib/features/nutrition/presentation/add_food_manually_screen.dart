@@ -126,7 +126,7 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 16),
-            Text('Macros · per serving', style: theme.textTheme.titleSmall),
+            Semantics(header: true, child: const FsEyebrow('Macros · per serving')),
             const SizedBox(height: 8),
             // Two rows of two, not one row of four: four boxes in a row
             // overflow a narrow phone at large text.

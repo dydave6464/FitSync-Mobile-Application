@@ -880,6 +880,17 @@ void main() {
     });
   });
 
+  testWidgets("'Your numbers, per serving' is an eyebrow heading (NU-17)", (tester) async {
+    final h = tester.ensureSemantics();
+    await _open(tester, _rice);
+    await tester.tap(find.byKey(const Key('logSheet.edit')));
+    await tester.pumpAndSettle();
+    expect(find.text('Your numbers, per serving'), findsNothing);
+    expect(find.text('YOUR NUMBERS, PER SERVING'), findsOneWidget);
+    expect(tester.getSemantics(find.text('YOUR NUMBERS, PER SERVING')), isSemantics(isHeader: true));
+    h.dispose();
+  });
+
   group('the meal choice (NU-11)', () {
     testWidgets('is the same chips as Snap a meal, and picks a meal', (tester) async {
       final h = tester.ensureSemantics();

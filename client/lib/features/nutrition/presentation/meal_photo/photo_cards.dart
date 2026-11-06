@@ -43,7 +43,7 @@ class PhotoItemCard extends StatelessWidget {
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(top: 12),
-                  child: Text(food.name, style: theme.textTheme.titleSmall),
+                  child: Text(food.name, style: theme.textTheme.titleMedium),
                 ),
               ),
               IconButton(
@@ -249,7 +249,7 @@ class PhotoTotalCard extends StatelessWidget {
             crossAxisAlignment: WrapCrossAlignment.center,
             spacing: 12,
             children: [
-              Text('Estimated total', style: theme.textTheme.titleSmall),
+              Text('Estimated total', style: theme.textTheme.titleMedium),
               Text('${totals.kcal} kcal', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: t.accentText)),
             ],
           ),

@@ -52,6 +52,18 @@ void main() {
     expect([searched, removed], [1, 1]);
   });
 
+  // titleSmall is not one of the theme's styles, so it fell back to
+  // Material's 14/w500 (NU-17); the dish name and the total are titleMedium.
+  testWidgets("the dish name and 'Estimated total' use the theme's titleMedium", (tester) async {
+    await _pump(tester, Column(children: [
+      PhotoItemCard(card: _card(), onSwap: (_) {}, onSearch: () {}, onServings: (_) {}, onRemove: () {}),
+      const PhotoTotalCard(totals: MacroTotals(kcal: 608, proteinG: 9.3, carbsG: 127.55, fatG: 6.85, fiberG: 0, sugarG: 0, sodiumMg: 0)),
+    ]));
+    final titleMedium = Theme.of(tester.element(find.text('White rice'))).textTheme.titleMedium;
+    expect(tester.widget<Text>(find.text('White rice')).style, titleMedium);
+    expect(tester.widget<Text>(find.text('Estimated total')).style, titleMedium);
+  });
+
   testWidgets('with no other guesses it still offers Search', (tester) async {
     await _pump(tester, PhotoItemCard(card: _card(alts: const []), onSwap: (_) {}, onSearch: () {}, onServings: (_) {}, onRemove: () {}));
     expect(find.text('Not right?'), findsOneWidget);

@@ -225,7 +225,7 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
               )
             else ...[
               const SizedBox(height: 12),
-              Text('Your numbers, per serving', style: theme.textTheme.titleSmall),
+              Semantics(header: true, child: const FsEyebrow('Your numbers, per serving')),
               const SizedBox(height: 8),
               // Two rows of two, not one row of four: four boxes in a row
               // overflow a narrow phone at large text.

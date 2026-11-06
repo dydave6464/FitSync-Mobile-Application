@@ -192,6 +192,17 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // The prototype's eyebrow, not Material's titleSmall (NU-17), and heard
+  // as the heading of the boxes under it.
+  testWidgets("'Macros · per serving' is an eyebrow heading", (tester) async {
+    final h = tester.ensureSemantics();
+    await _pump(tester, size: _tall);
+    expect(find.text('Macros · per serving'), findsNothing);
+    expect(find.text('MACROS · PER SERVING'), findsOneWidget);
+    expect(tester.getSemantics(find.text('MACROS · PER SERVING')), isSemantics(isHeader: true));
+    h.dispose();
+  });
+
   group('back with something typed (NU-3)', () {
     testWidgets('an empty form leaves without asking', (tester) async {
       await _pump(tester);
