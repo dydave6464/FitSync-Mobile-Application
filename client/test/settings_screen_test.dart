@@ -256,6 +256,23 @@ class _HealthLoad extends FakeHealthRepository {
   }
 }
 
+/// A profile whose first [failures] loads are refused, the count shared by
+/// every notifier the provider makes, so a test can retry into a good load.
+class _FlakyProfile extends ProfileNotifier {
+  _FlakyProfile(this.failures);
+
+  final List<int> failures;
+
+  @override
+  Future<Profile> build() async {
+    if (failures.first > 0) {
+      failures[0] -= 1;
+      throw const ApiException('SERVER_ERROR', 'Your profile could not load.');
+    }
+    return _baseProfile;
+  }
+}
+
 /// The profile notifier fake the running test's `_pump` installed. Set fresh
 /// on every call so a test can assert what it recorded -- `_profile.
 /// lastTrainingDays` -- without threading the fake through by hand.
@@ -349,6 +366,31 @@ Future<void> _openRow(WidgetTester tester, Key key) async {
 }
 
 void main() {
+  // A failed load used a local "Retry" over a raw description; the kit's
+  // FsRetry says why in plain words and offers "Try again".
+  testWidgets('a profile that will not load offers Try again, which reloads', (
+    tester,
+  ) async {
+    final failures = [1];
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          profileProvider.overrideWith(() => _FlakyProfile(failures)),
+          proRepositoryProvider.overrideWithValue(FakeProRepository()),
+        ],
+        child: const MaterialApp(home: SettingsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(FsRetry), findsOneWidget);
+    expect(find.text('Your profile could not load.'), findsOneWidget);
+    expect(find.text('Retry'), findsNothing);
+    await tester.tap(find.byKey(const Key('settings.retry')));
+    await tester.pumpAndSettle();
+    expect(find.text('Juan Dela Cruz'), findsOneWidget);
+  });
+
   testWidgets('shows who is signed in', (tester) async {
     await _pump(tester, patches: []);
 

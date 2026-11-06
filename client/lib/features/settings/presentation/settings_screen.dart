@@ -10,8 +10,6 @@ import '../../../core/theme_controller.dart';
 import '../../../core/units.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../auth/presentation/auth_controller.dart';
-import '../../exercises/presentation/exercise_list_screen.dart'
-    show describeError;
 import '../../health/domain/health_answers.dart';
 import '../../health/presentation/providers.dart';
 import '../../onboarding/presentation/edit_scaffold.dart';
@@ -52,22 +50,11 @@ class SettingsScreen extends ConsumerWidget {
       ),
       body: profile.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(describeError(error), textAlign: TextAlign.center),
-                const SizedBox(height: 16),
-                FsButton(
-                  label: 'Retry',
-                  small: true,
-                  onPressed: () => ref.invalidate(profileProvider),
-                ),
-              ],
-            ),
-          ),
+        error: (error, _) => FsRetry(
+          fullScreen: true,
+          message: userMessage(error),
+          buttonKey: const Key('settings.retry'),
+          onRetry: () => ref.invalidate(profileProvider),
         ),
         data: (loaded) => _SettingsList(profile: loaded),
       ),
