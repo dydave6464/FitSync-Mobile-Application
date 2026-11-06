@@ -2193,7 +2193,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(const Key('error.weightKg')),
-          matching: find.text('Enter a weight between 44 and 1102 lb.'),
+          matching: find.text('Enter a weight between 45 and 1102 lb.'),
         ),
         findsOneWidget,
       );

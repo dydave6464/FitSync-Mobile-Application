@@ -38,7 +38,8 @@ String? rejectedProfileField(Object error) => switch (error) {
 
 /// The server's limit for a refused number, said under its card in the
 /// unit on screen: "Enter a height between 50 and 275 cm.", or for a pound
-/// user "Enter a weight between 44 and 1102 lb.".
+/// user "Enter a weight between 45 and 1102 lb." -- whole numbers inside
+/// the range, so either end typed back is accepted.
 ///
 /// Read from `details[0]` (`{ field, min, max, unit }`) of an
 /// INVALID_PROFILE_FIELD or WEIGHT_OUT_OF_RANGE. Null when the details carry
@@ -67,9 +68,12 @@ String? rangeFieldMessage(Object error, WeightUnit unit) {
   if (range == null || name == null) return null;
   final (min, max, suffix) = switch (range.unit) {
     'cm' => (_plain(range.min), _plain(range.max), 'cm'),
+    // Rounded inward, never to the nearest: 20 kg is 44.09 lb, and a "44"
+    // typed back reads as 19.96 kg, which the server refuses again. So the
+    // low end rounds up (45) and the high end down (1102).
     'kg' => (
-      convertFromKg(range.min.toDouble(), unit).round().toString(),
-      convertFromKg(range.max.toDouble(), unit).round().toString(),
+      convertFromKg(range.min.toDouble(), unit).ceil().toString(),
+      convertFromKg(range.max.toDouble(), unit).floor().toString(),
       unit.api,
     ),
     _ => (null, null, null),

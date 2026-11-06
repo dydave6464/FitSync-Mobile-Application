@@ -726,14 +726,28 @@ void main() {
       );
     });
 
-    test('a weight reads in whole pounds for an lb user', () {
+    test('a weight reads in whole pounds for an lb user, inside the range', () {
       expect(
         rangeFieldMessage(
           refusal('weightKg', 'kg', min: 20, max: 500),
           WeightUnit.lb,
         ),
-        'Enter a weight between 44 and 1102 lb.',
+        'Enter a weight between 45 and 1102 lb.',
       );
+    });
+
+    test('the pounds shown are ones the server takes back', () {
+      // 20 kg is 44.09 lb: "44" would read back as 19.96 kg and be refused
+      // again, so the low end rounds up and the high end rounds down.
+      final message = rangeFieldMessage(
+        refusal('weightKg', 'kg', min: 20, max: 500),
+        WeightUnit.lb,
+      )!;
+      final bounds = RegExp(r'between (\d+) and (\d+) lb').firstMatch(message)!;
+      final low = parseWeight(bounds.group(1)!, WeightUnit.lb)!;
+      final high = parseWeight(bounds.group(2)!, WeightUnit.lb)!;
+      expect(low, greaterThanOrEqualTo(20));
+      expect(high, lessThanOrEqualTo(500));
     });
 
     test('a goal weight is named as one', () {
@@ -742,7 +756,7 @@ void main() {
           refusal('goalWeightKg', 'kg', min: 20, max: 500),
           WeightUnit.lb,
         ),
-        'Enter a goal weight between 44 and 1102 lb.',
+        'Enter a goal weight between 45 and 1102 lb.',
       );
     });
 
