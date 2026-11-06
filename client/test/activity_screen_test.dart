@@ -46,12 +46,13 @@ Future<_StubActivity> _pump(
   ActivityState state, {
   ActivityScreen screen = const ActivityScreen(),
   bool dark = false,
+  Stream<int> live = const Stream<int>.empty(),
 }) async {
   final stub = _StubActivity(state);
   await tester.pumpWidget(ProviderScope(
     overrides: [
       activityProvider.overrideWith(() => stub),
-      liveStepsProvider.overrideWith((ref) => const Stream<int>.empty()),
+      liveStepsProvider.overrideWith((ref) => live),
     ],
     child: MaterialApp(theme: dark ? fsDarkTheme() : fsLightTheme(), home: screen),
   ));
@@ -198,6 +199,27 @@ void main() {
     expect(_usualFill(), findsNothing);
     // The line under it stays put, so the usual's arriving moves nothing.
     expect(tester.getTopLeft(find.byKey(const Key('activity.usualLine'))).dy, withUsual);
+  });
+
+  testWidgets('kcal, km and active minutes keep up with the live count', (tester) async {
+    final live = StreamController<int>();
+    addTearDown(live.close);
+    await _pump(
+      tester,
+      ActivityState(today: const DaySteps(steps: 6420), week: _week(), offline: false),
+      live: live.stream,
+    );
+
+    // Twice the steps saved at the last sync: twice the walking.
+    live.add(12840);
+    await tester.pumpAndSettle();
+
+    expect(find.text('12,840'), findsOneWidget);
+    Finder figure(String key, String value) =>
+        find.descendant(of: find.byKey(Key('activity.$key')), matching: find.text(value));
+    expect(figure('kcal', '316'), findsOneWidget);
+    expect(figure('km', '9.04'), findsOneWidget);
+    expect(figure('minutes', '128'), findsOneWidget);
   });
 
   testWidgets('missing height shows dashes and a way to Profile', (tester) async {

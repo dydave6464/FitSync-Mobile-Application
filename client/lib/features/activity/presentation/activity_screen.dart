@@ -111,6 +111,13 @@ class _Body extends StatelessWidget {
     final noKm = week == null || week.missingHeight;
     final noKcal = week == null || week.missingHeight || week.missingWeight;
     final today = week?.today;
+    // The server works the estimates out from the count it last saved, up
+    // to five minutes behind the live one. All three grow in step with the
+    // steps, so they are carried along by the same factor until the next
+    // sync, rather than sitting still beside a climbing count. The formula
+    // stays the server's.
+    final saved = today?.steps;
+    final grown = saved != null && saved > 0 ? steps / saved : 1.0;
     final notes = [
       if (state.today.sinceTurnedOn) 'Counting since you turned it on',
       if (state.today.includesEarlierDays)
@@ -156,17 +163,23 @@ class _Body extends StatelessWidget {
                 children: [
                   _Figure(
                     key: const Key('activity.kcal'),
-                    value: noKcal ? '—' : formatSteps(today!.caloriesBurned ?? 0),
+                    value: noKcal
+                        ? '—'
+                        : formatSteps(((today!.caloriesBurned ?? 0) * grown).round()),
                     label: 'kcal',
                   ),
                   _Figure(
                     key: const Key('activity.km'),
-                    value: noKm ? '—' : (today!.distanceKm ?? 0).toStringAsFixed(2),
+                    value: noKm
+                        ? '—'
+                        : ((today!.distanceKm ?? 0) * grown).toStringAsFixed(2),
                     label: 'km',
                   ),
                   _Figure(
                     key: const Key('activity.minutes'),
-                    value: today?.activeMinutes == null ? '—' : '${today!.activeMinutes}',
+                    value: today?.activeMinutes == null
+                        ? '—'
+                        : '${(today!.activeMinutes! * grown).round()}',
                     label: 'active min',
                   ),
                 ],
