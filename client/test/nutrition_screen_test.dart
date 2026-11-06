@@ -94,6 +94,22 @@ void main() {
     expect(find.text('Today'), findsOneWidget);
   });
 
+  // Two foods in one meal are two cards, not one notched block: the
+  // prototype's 8 px between them (NU-6), and none after the last.
+  testWidgets('foods in one meal sit 8 dp apart', (tester) async {
+    final rice = FoodEntry(
+      id: 8, mealType: 'lunch', name: 'White rice', servingDesc: '1 cup', servings: 1,
+      kcal: 205, proteinG: 4, carbsG: 45, fatG: 0, source: 'local', foodId: 3,
+    );
+    await _pump(tester, today: _day('2026-10-14', lunch: [_adobo(), rice]));
+    Rect card(int id) => tester.getRect(
+        find.ancestor(of: find.byKey(Key('entry.$id')), matching: find.byType(Material)).first);
+    expect(card(8).top - card(7).bottom, 8);
+    // The meal's own 12 below its last food, as before.
+    final next = tester.getRect(find.byKey(const Key('meal.add.dinner')));
+    expect(next.top - card(8).bottom, 12);
+  });
+
   // Four rows of "0 kcal +" said nothing; an empty meal now says what to do.
   testWidgets('an empty meal is one Add row, with no zero subtotal', (tester) async {
     await _pump(tester, today: _day('2026-10-14'));

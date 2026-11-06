@@ -63,7 +63,10 @@ class MealSection extends StatelessWidget {
               ),
             ],
           ),
-          for (final e in entries)
+          for (final (i, e) in entries.indexed) ...[
+            // The prototype's 8 px between cards, so two foods never sit
+            // border to border; the section's own 12 follows the last.
+            if (i > 0) const SizedBox(height: 8),
             _EntryRow(
               entry: e,
               // A pending entry has no server id yet to change or delete.
@@ -71,6 +74,7 @@ class MealSection extends StatelessWidget {
               onDelete: enabled && e.id > 0 ? () => onDelete(e) : null,
               t: t,
             ),
+          ],
         ],
       ),
     );
