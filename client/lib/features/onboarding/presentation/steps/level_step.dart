@@ -105,6 +105,9 @@ const locationPrefill = <String, List<String>?>{
 /// Reads the equipment lookup because that list belongs to the server, not to
 /// the design — but still saves nothing and knows nothing about its scaffold.
 class LevelStep extends ConsumerWidget {
+  /// The step's heading, also said when onboarding moves to it.
+  static const title = 'Your level & equipment';
+
   const LevelStep({super.key, required this.value, required this.onChanged});
 
   final LevelAnswers value;
@@ -188,7 +191,12 @@ class LevelStep extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text('Your level & equipment', style: theme.textTheme.headlineSmall),
+        // A heading, so a screen reader can jump to it and hears it as the
+        // title of the step.
+        Semantics(
+          header: true,
+          child: Text(LevelStep.title, style: theme.textTheme.headlineSmall),
+        ),
         const SizedBox(height: 22),
         const FsEyebrow('Experience'),
         const SizedBox(height: 10),
@@ -212,18 +220,32 @@ class LevelStep extends ConsumerWidget {
             children: [
               Icon(Icons.home_outlined, size: 18, color: t.text2),
               const SizedBox(width: 11),
-              const Expanded(
-                child: Text(
-                  'Training location',
-                  style: TextStyle(fontSize: 13.5),
-                ),
-              ),
-              Text(
-                _locationLabel,
-                style: TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                  color: value.trainingLocation == null ? t.text3 : t.text,
+              // Label left and value right on one line, as the design draws
+              // them, while both fit. At large text the value moves under
+              // the label instead of squeezing it into a column of single
+              // letters, or pushing the row off the card.
+              Expanded(
+                child: Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
+                  runSpacing: 2,
+                  children: [
+                    const Text(
+                      'Training location',
+                      style: TextStyle(fontSize: 13.5),
+                    ),
+                    Text(
+                      _locationLabel,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        color: value.trainingLocation == null
+                            ? t.text3
+                            : t.text,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(width: 6),

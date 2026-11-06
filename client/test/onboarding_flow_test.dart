@@ -7,12 +7,14 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/token_store.dart' show InMemorySecureStore;
+import 'package:fitsync/core/units.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/health/domain/health_answers.dart';
 import 'package:fitsync/features/health/presentation/providers.dart';
 import 'package:fitsync/features/home/presentation/plan_ready.dart';
+import 'package:fitsync/features/onboarding/domain/daily_targets.dart';
 import 'package:fitsync/features/onboarding/presentation/generating_view.dart';
 import 'package:fitsync/features/onboarding/presentation/onboarding_flow.dart';
 import 'package:fitsync/features/onboarding/presentation/onboarding_scaffold.dart';
@@ -112,6 +114,26 @@ class FakeProfileNotifier extends ProfileNotifier {
   Future<void> patch(Map<String, dynamic> fields) async {
     patches.add(fields);
     if (onPatch != null) await onPatch!();
+    // The unit is a display preference the step reads back at once, as the
+    // real notifier's refreshed profile would give it.
+    if (fields['weightUnit'] case final String unit) {
+      final loaded = state.value!;
+      state = AsyncData(
+        Profile(
+          userId: loaded.userId,
+          email: loaded.email,
+          fullName: loaded.fullName,
+          onboardingCompleted: loaded.onboardingCompleted,
+          isPremium: loaded.isPremium,
+          notificationsEnabled: loaded.notificationsEnabled,
+          equipment: loaded.equipment,
+          injuries: loaded.injuries,
+          goals: loaded.goals,
+          mainGoal: loaded.mainGoal,
+          weightUnit: WeightUnit.fromApi(unit),
+        ),
+      );
+    }
   }
 
   @override
@@ -136,6 +158,26 @@ class FakeProfileNotifier extends ProfileNotifier {
     completions?.add(attempt);
     if (onComplete != null) await onComplete!(attempt);
     return (profile: _emptyProfile(), plan: const {'planId': 42});
+  }
+}
+
+/// A profile that cannot load until [fail] is cleared, counting attempts.
+class _FailingProfileNotifier extends FakeProfileNotifier {
+  _FailingProfileNotifier(this.attempts) : super([]);
+
+  final List<int> attempts;
+  static bool fail = true;
+
+  @override
+  Future<Profile> build() async {
+    attempts.add(attempts.length);
+    if (fail) {
+      throw const ApiException(
+        'NETWORK_ERROR',
+        'Could not reach http://10.0.2.2:3000. Check the server is running.',
+      );
+    }
+    return super.build();
   }
 }
 
@@ -268,23 +310,25 @@ Future<void> _pumpFlow(
   FakeHealthRepository? health,
   RecordingAuthController? auth,
   ReminderRepository? reminders,
+  ProfileNotifier Function()? profile,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         profileProvider.overrideWith(
-          () => FakeProfileNotifier(
-            patches,
-            onPatch: onPatch,
-            equipmentWrites: equipmentWrites,
-            injuryWrites: injuryWrites,
-            completions: completions,
-            onComplete: onComplete,
-            goalWrites: goalWrites,
-            onSetGoals: onSetGoals,
-            seedGoals: seedGoals,
-            seedMainGoal: seedMainGoal,
-          ),
+          profile ??
+              () => FakeProfileNotifier(
+                patches,
+                onPatch: onPatch,
+                equipmentWrites: equipmentWrites,
+                injuryWrites: injuryWrites,
+                completions: completions,
+                onComplete: onComplete,
+                goalWrites: goalWrites,
+                onSetGoals: onSetGoals,
+                seedGoals: seedGoals,
+                seedMainGoal: seedMainGoal,
+              ),
         ),
         authControllerProvider.overrideWith(
           () => auth ?? RecordingAuthController(completed ?? []),
@@ -1592,6 +1636,10 @@ void main() {
     await tester.enterText(find.byKey(const Key('weightKg')), '72');
     await tester.enterText(find.byKey(const Key('heightCm')), '0');
     await tester.pumpAndSettle();
+    // The first Continue queries the 0; the second keeps it.
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pumpAndSettle();
+    expect(patches, isEmpty);
     await tester.tap(find.byKey(const Key('continue')));
     await tester.pumpAndSettle();
 
@@ -1756,5 +1804,334 @@ void main() {
 
       expect(find.byKey(const Key('signOut')), findsNothing);
     });
+  });
+
+  group('A profile that cannot load', () {
+    testWidgets('says why in plain words and retries', (tester) async {
+      final attempts = <int>[];
+      _FailingProfileNotifier.fail = true;
+      addTearDown(() => _FailingProfileNotifier.fail = true);
+      await _pumpFlow(
+        tester,
+        patches: [],
+        profile: () => _FailingProfileNotifier(attempts),
+      );
+
+      expect(
+        find.text(
+          "Couldn't reach FitSync. Check your connection and try again.",
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('10.0.2.2'), findsNothing);
+      expect(find.byType(FsRetry), findsOneWidget);
+
+      _FailingProfileNotifier.fail = false;
+      final before = attempts.length;
+      await tester.tap(find.byKey(const Key('onboarding.retry')));
+      await tester.pumpAndSettle();
+
+      expect(attempts.length, greaterThan(before));
+      expect(find.text('STEP 1 / 6'), findsOneWidget);
+    });
+
+    testWidgets('offers a way back to sign-in', (tester) async {
+      final auth = RecordingAuthController([]);
+      await _pumpFlow(
+        tester,
+        patches: [],
+        auth: auth,
+        profile: () => _FailingProfileNotifier([]),
+      );
+
+      final signOut = find.byKey(const Key('signOut'));
+      expect(
+        find.ancestor(
+          of: find.text('Sign out'),
+          matching: find.byType(FsButton),
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(signOut);
+      await tester.pumpAndSettle();
+      expect(auth.signOuts, 1);
+    });
+
+    testWidgets('fits a small phone at 2.0x text', (tester) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+      await _pumpFlow(
+        tester,
+        patches: [],
+        profile: () => _FailingProfileNotifier([]),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(FilledButton), findsNothing);
+    });
+  });
+
+  group('About step answers that look wrong', () {
+    Future<void> toAbout(WidgetTester tester) async {
+      await _skip(tester);
+      expect(find.text('STEP 2 / 6'), findsOneWidget);
+    }
+
+    testWidgets('an implausible height is queried, then kept on a second '
+        'Continue', (tester) async {
+      final patches = <Map<String, dynamic>>[];
+      await _pumpFlow(tester, patches: patches);
+      await toAbout(tester);
+
+      await tester.enterText(find.byKey(const Key('heightCm')), '17');
+      await tester.enterText(find.byKey(const Key('weightKg')), '72');
+      await tester.pumpAndSettle();
+      await _tapKey(tester, const Key('continue'));
+
+      expect(patches, isEmpty, reason: 'nothing saved until it is checked');
+      expect(find.text('STEP 2 / 6'), findsOneWidget);
+      final inline = find.byKey(const Key('error.heightCm'));
+      expect(inline, findsOneWidget);
+      expect(
+        find.descendant(of: inline, matching: find.textContaining('17 cm')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('error')),
+          matching: find.textContaining('height'),
+        ),
+        findsOneWidget,
+      );
+
+      // The user meant it: a second Continue saves it as it is.
+      await _tapKey(tester, const Key('continue'));
+      expect(patches, [
+        {'heightCm': 17.0, 'weightKg': 72.0},
+      ]);
+      expect(find.text('STEP 3 / 6'), findsOneWidget);
+    });
+
+    testWidgets('fixing the queried answer clears its message and saves', (
+      tester,
+    ) async {
+      final patches = <Map<String, dynamic>>[];
+      await _pumpFlow(tester, patches: patches);
+      await toAbout(tester);
+
+      await tester.enterText(find.byKey(const Key('heightCm')), '17');
+      await tester.pumpAndSettle();
+      await _tapKey(tester, const Key('continue'));
+      expect(find.byKey(const Key('error.heightCm')), findsOneWidget);
+
+      await tester.enterText(find.byKey(const Key('heightCm')), '175');
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('error.heightCm')), findsNothing);
+      expect(find.byKey(const Key('error')), findsNothing);
+
+      await _tapKey(tester, const Key('continue'));
+      expect(patches, [
+        {'heightCm': 175.0},
+      ]);
+    });
+
+    testWidgets('a new implausible value is queried again', (tester) async {
+      final patches = <Map<String, dynamic>>[];
+      await _pumpFlow(tester, patches: patches);
+      await toAbout(tester);
+
+      await tester.enterText(find.byKey(const Key('heightCm')), '17');
+      await tester.pumpAndSettle();
+      await _tapKey(tester, const Key('continue'));
+      await tester.enterText(find.byKey(const Key('heightCm')), '18');
+      await tester.pumpAndSettle();
+      await _tapKey(tester, const Key('continue'));
+
+      expect(patches, isEmpty);
+      expect(find.byKey(const Key('error.heightCm')), findsOneWidget);
+    });
+
+    testWidgets('switching kg and lb under a queried weight is safe', (
+      tester,
+    ) async {
+      final patches = <Map<String, dynamic>>[];
+      await _pumpFlow(tester, patches: patches);
+      await toAbout(tester);
+
+      await tester.enterText(find.byKey(const Key('weightKg')), '7');
+      await tester.pumpAndSettle();
+      await _tapKey(tester, const Key('continue'));
+      expect(find.byKey(const Key('error.weightKg')), findsOneWidget);
+
+      await _tapKey(tester, const Key('unit.lb'));
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('STEP 2 / 6'), findsOneWidget);
+    });
+
+    testWidgets('a rejected answer names the field the server pointed at', (
+      tester,
+    ) async {
+      await _pumpFlow(
+        tester,
+        patches: [],
+        onPatch: () async => throw const ApiException(
+          'INVALID_PROFILE_FIELD',
+          'weightKg must be a number between 0 and 1000.',
+          details: [
+            {'field': 'weightKg'},
+          ],
+        ),
+      );
+      await toAbout(tester);
+
+      await tester.enterText(find.byKey(const Key('weightKg')), '72');
+      await tester.pumpAndSettle();
+      await _tapKey(tester, const Key('continue'));
+
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('error')),
+          matching: find.text(
+            "Your weight can't be saved as it is. Check it and try again.",
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('error.weightKg')), findsOneWidget);
+      expect(find.textContaining('weightKg'), findsNothing);
+      expect(find.text('STEP 2 / 6'), findsOneWidget);
+    });
+  });
+
+  group('Moving between steps', () {
+    double stepOffset(WidgetTester tester) => tester
+        .state<ScrollableState>(
+          find
+              .descendant(
+                of: find.byType(SingleChildScrollView),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        )
+        .position
+        .pixels;
+
+    testWidgets('each step opens at its top, forwards and back', (
+      tester,
+    ) async {
+      await _pumpFlow(tester, patches: []);
+      await _skip(tester);
+      expect(find.text('STEP 2 / 6'), findsOneWidget);
+
+      // Down the long About step, then on to the next one.
+      await tester.drag(
+        find.byType(SingleChildScrollView).first,
+        const Offset(0, -250),
+      );
+      await tester.pumpAndSettle();
+      expect(stepOffset(tester), greaterThan(0));
+      await _skip(tester);
+
+      expect(find.text('STEP 3 / 6'), findsOneWidget);
+      expect(stepOffset(tester), 0);
+
+      await tester.drag(
+        find.byType(SingleChildScrollView).first,
+        const Offset(0, -250),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('back')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('STEP 2 / 6'), findsOneWidget);
+      expect(stepOffset(tester), 0);
+    });
+
+    testWidgets('a screen reader hears which step it is now on', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _pumpFlow(tester, patches: []);
+      tester.takeAnnouncements();
+
+      await _skip(tester);
+      expect(tester.takeAnnouncements().map((a) => a.message), [
+        'Step 2 of 6: A bit about you',
+      ]);
+
+      await tester.tap(find.byKey(const Key('back')));
+      await tester.pumpAndSettle();
+      expect(tester.takeAnnouncements().map((a) => a.message), [
+        'Step 1 of 6: What are your goals?',
+      ]);
+      handle.dispose();
+    });
+
+    testWidgets('every step title is a heading', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pumpFlow(tester, patches: []);
+
+      bool isHeader(String title) => tester
+          .getSemantics(find.text(title))
+          .getSemanticsData()
+          .flagsCollection
+          .isHeader;
+
+      for (final title in [
+        'What are your goals?',
+        'A bit about you',
+        'Your level & equipment',
+        'Any injuries?',
+      ]) {
+        expect(isHeader(title), isTrue, reason: '"$title" heads its step');
+        await _skip(tester);
+      }
+      expect(isHeader('Your health'), isTrue);
+      await _passHealthClear(tester);
+      expect(isHeader('Stay on track'), isTrue);
+      handle.dispose();
+    });
+  });
+
+  testWidgets('step 2 estimates the target for the goal picked on step 1', (
+    tester,
+  ) async {
+    await _pumpFlow(tester, patches: []);
+    await tester.tap(find.byKey(const Key('goal.lose_weight')));
+    await tester.pumpAndSettle();
+    await _skip(tester);
+
+    await _tapKey(tester, const Key('segment.male'));
+    await _tapKey(tester, const Key('dateOfBirth'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('heightCm')), '175');
+    await tester.enterText(find.byKey(const Key('weightKg')), '72');
+    await tester.pumpAndSettle();
+    await _tapKey(tester, const Key('activity.light'));
+    await tester.pumpAndSettle();
+
+    // The picker opens on 1 January, 25 years back.
+    final born = DateTime(DateTime.now().year - 25);
+    String target(String? mainGoal) {
+      final kcal = estimateDailyTargets(
+        sex: 'male',
+        dateOfBirth: '${born.year}-01-01',
+        heightCm: 175,
+        weightKg: 72,
+        activityLevel: 'light',
+        mainGoal: mainGoal,
+      )!.kcal;
+      return '${kcal ~/ 1000},${(kcal % 1000).toString().padLeft(3, '0')} kcal';
+    }
+
+    expect(target('lose_weight'), isNot(target(null)));
+    expect(find.textContaining(target('lose_weight')), findsOneWidget);
   });
 }

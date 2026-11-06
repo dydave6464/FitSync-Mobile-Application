@@ -34,6 +34,9 @@ const _sides = <({String value, String label})>[
 /// which regions have sides would duplicate a fact the server already owns —
 /// and the server is what returns a 400 when the two disagree.
 class InjuriesStep extends ConsumerWidget {
+  /// The step's heading, also said when onboarding moves to it.
+  static const title = 'Any injuries?';
+
   const InjuriesStep({super.key, required this.value, required this.onChanged});
 
   final List<SelectedInjury> value;
@@ -100,7 +103,12 @@ class InjuriesStep extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text('Any injuries?', style: theme.textTheme.headlineSmall),
+        // A heading, so a screen reader can jump to it and hears it as the
+        // title of the step.
+        Semantics(
+          header: true,
+          child: Text(InjuriesStep.title, style: theme.textTheme.headlineSmall),
+        ),
         const SizedBox(height: 8),
         Text(
           'Tell us where you have had trouble, past or present. Your answers '
@@ -182,6 +190,7 @@ class _RegionCard extends StatelessWidget {
     final t = context.fs;
     final theme = Theme.of(context);
     final selected = selection != null;
+    final showSides = selected && option.isLateral;
 
     // The card's padding moves inside the tappable row, so the row reaches
     // the card's edges and is at least 48dp tall, rather than only as tall as
@@ -206,7 +215,10 @@ class _RegionCard extends StatelessWidget {
               child: ConstrainedBox(
                 constraints: const BoxConstraints(minHeight: 48),
                 child: Padding(
-                  padding: const EdgeInsets.all(13),
+                  // With the side chips under it, 8 of the 13 below moves to
+                  // their padding (below): the same gap on screen, but room
+                  // the chips' tap band can reach into.
+                  padding: EdgeInsets.fromLTRB(13, 13, 13, showSides ? 5 : 13),
                   child: Row(
                     children: [
                       Expanded(
@@ -224,19 +236,19 @@ class _RegionCard extends StatelessWidget {
           ),
           // Only a selected, lateral region gets a side. The server rejects a
           // side on anything else.
-          if (selected && option.isLateral)
+          if (showSides)
             Padding(
-              padding: const EdgeInsets.fromLTRB(13, 0, 13, 13),
+              padding: const EdgeInsets.fromLTRB(13, 8, 13, 13),
               // A Wrap, not a Row: at large text on a narrow phone the label
               // and three chips do not fit on one line.
-              // Small chips, the card's last line: the 13 dp of padding below
-              // is the bottom of their band. Nothing is above them to reach
-              // into -- the region's own row is right there.
+              // Normal 32 dp chips with 8 dp of this padding above and below
+              // them: their band is 48 dp, and 8 dp apart a thumb meant for
+              // Left does not land on Right. Picking the wrong side tells the
+              // plan to protect the wrong one.
               child: FsTapRoom(
-                reach: 11,
                 child: Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
+                  spacing: 8,
+                  runSpacing: 8,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Padding(
@@ -250,7 +262,6 @@ class _RegionCard extends StatelessWidget {
                       FsChip(
                         key: Key('side.${option.injuryId}.${side.value}'),
                         label: side.label,
-                        small: true,
                         selected: selection!.side == side.value,
                         onTap: () => onSide(side.value),
                       ),

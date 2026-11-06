@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/widgets/fs_kit.dart';
+
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/features/auth/data/auth_repository.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
@@ -141,6 +143,9 @@ Future<List<AuthUser>> _pump(
   await tester.pumpAndSettle();
   return seen;
 }
+
+bool _isLive(WidgetTester tester, Finder finder) =>
+    tester.getSemantics(finder).getSemanticsData().flagsCollection.isLiveRegion;
 
 void main() {
   testWidgets('asks for the code sent to the address', (tester) async {
@@ -405,5 +410,69 @@ void main() {
       findsOneWidget,
     );
     expect(find.textContaining('non-JSON'), findsNothing);
+  });
+
+  testWidgets('a wrong code is a red error line that is read aloud', (
+    tester,
+  ) async {
+    final repo = FakeAuthRepository(
+      onVerify: () async => throw const ApiException(
+        'CODE_INVALID',
+        'That code is wrong or has expired.',
+      ),
+      onLogin: () async => throw const ApiException(
+        'EMAIL_NOT_VERIFIED',
+        'Verify your email before signing in.',
+      ),
+    );
+    final handle = tester.ensureSemantics();
+    await _pump(tester, repo);
+
+    await tester.enterText(find.byKey(const Key('code')), '000000');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('verify')));
+    await tester.pumpAndSettle();
+
+    final message = find.text(wrongCodeMessage);
+    expect(
+      find.ancestor(of: message, matching: find.byType(FsErrorLine)),
+      findsOneWidget,
+    );
+    expect(_isLive(tester, message), isTrue);
+    handle.dispose();
+  });
+
+  testWidgets('a new code on its way is plain news, still read aloud', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester, FakeAuthRepository());
+
+    await tester.tap(find.byKey(const Key('resend')));
+    await tester.pumpAndSettle();
+
+    final message = find.text(newCodeMessage);
+    expect(message, findsOneWidget);
+    expect(
+      find.ancestor(of: message, matching: find.byType(FsErrorLine)),
+      findsNothing,
+      reason: 'a confirmation must not look like an error',
+    );
+    expect(_isLive(tester, message), isTrue);
+    handle.dispose();
+  });
+
+  testWidgets('the code field keeps a visible name a screen reader hears', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await _pump(tester, FakeAuthRepository());
+
+    expect(find.text('Code'), findsOneWidget);
+    expect(
+      tester.getSemantics(find.byKey(const Key('code'))).label,
+      contains('Code'),
+    );
+    semantics.dispose();
   });
 }

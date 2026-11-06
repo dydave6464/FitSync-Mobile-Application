@@ -77,6 +77,9 @@ class GoalAnswers {
 /// switchable there. Unticking the focus hands it to the first goal still
 /// ticked, in card order; unticking every goal clears it.
 class GoalStep extends StatelessWidget {
+  /// The step's heading, also said when onboarding moves to it.
+  static const title = 'What are your goals?';
+
   const GoalStep({super.key, required this.value, required this.onChanged});
 
   final GoalAnswers value;
@@ -112,7 +115,12 @@ class GoalStep extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text('What are your goals?', style: theme.textTheme.headlineSmall),
+        // A heading, so a screen reader can jump to it and hears it as the
+        // title of the step.
+        Semantics(
+          header: true,
+          child: Text(GoalStep.title, style: theme.textTheme.headlineSmall),
+        ),
         const SizedBox(height: 8),
         Text(
           'Pick all that apply. You can change them later.',

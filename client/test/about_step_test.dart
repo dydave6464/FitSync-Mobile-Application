@@ -43,6 +43,8 @@ Future<AboutAnswers?> _pumpAndEdit(
   AboutAnswers value = const AboutAnswers(),
   WeightUnit unit = WeightUnit.kg,
   List<String> goals = const [],
+  Map<String, String> fieldErrors = const {},
+  String? mainGoal,
 }) async {
   AboutAnswers? emitted;
   await tester.pumpWidget(
@@ -53,6 +55,8 @@ Future<AboutAnswers?> _pumpAndEdit(
             value: value,
             unit: unit,
             goals: goals,
+            fieldErrors: fieldErrors,
+            mainGoal: mainGoal,
             onChanged: (v) => emitted = v,
           ),
         ),
@@ -619,6 +623,128 @@ void main() {
     });
 
     expect(emitted?.activityLevel, _activityValues.last);
+  });
+
+  group('implausible numbers', () {
+    test('a height or weight well outside a person is queried', () {
+      final problems = aboutRangeProblems(
+        const AboutAnswers(heightCm: 17, weightKg: 7, goalWeightKg: 400),
+        WeightUnit.kg,
+      );
+
+      expect(problems.keys, ['heightCm', 'weightKg', 'goalWeightKg']);
+      expect(problems['heightCm'], contains('17 cm'));
+      expect(problems['heightCm'], contains('100–250 cm'));
+      expect(problems['weightKg'], contains('7 kg'));
+      expect(problems['weightKg'], contains('25–300 kg'));
+      expect(problems['goalWeightKg'], contains('400 kg'));
+    });
+
+    test('the edges of the ranges and blanks are fine', () {
+      expect(
+        aboutRangeProblems(
+          const AboutAnswers(heightCm: 100, weightKg: 300, goalWeightKg: 25),
+          WeightUnit.kg,
+        ),
+        isEmpty,
+      );
+      expect(aboutRangeProblems(const AboutAnswers(), WeightUnit.kg), isEmpty);
+    });
+
+    test('a weight is queried in the unit it was typed in', () {
+      final problems = aboutRangeProblems(
+        AboutAnswers(weightKg: parseWeight('15', WeightUnit.lb)),
+        WeightUnit.lb,
+      );
+
+      expect(problems['weightKg'], contains('15 lb'));
+      expect(problems['weightKg'], contains('55–661 lb'));
+    });
+
+    testWidgets('a queried answer is flagged right under its card', (
+      tester,
+    ) async {
+      await _pumpAndEdit(
+        tester,
+        (_) async {},
+        value: const AboutAnswers(heightCm: 17, weightKg: 72),
+        fieldErrors: const {'heightCm': 'Check this: 17 cm?'},
+      );
+
+      final error = find.byKey(const Key('error.heightCm'));
+      expect(error, findsOneWidget);
+      expect(
+        find.descendant(of: error, matching: find.text('Check this: 17 cm?')),
+        findsOneWidget,
+      );
+      final height = tester.getRect(find.byKey(const Key('heightCm')));
+      expect(tester.getRect(error).top, greaterThan(height.bottom));
+      expect(
+        tester.getRect(error).top - height.bottom,
+        lessThan(40),
+        reason: 'under the card, not at the end of the step',
+      );
+    });
+  });
+
+  testWidgets('the target follows the main goal, as Nutrition will', (
+    tester,
+  ) async {
+    await _pumpAndEdit(
+      tester,
+      (_) async {},
+      value: _complete,
+      mainGoal: 'lose_weight',
+    );
+
+    expect(
+      find.text('Estimated daily target ≈ 1,800 kcal · 115g protein'),
+      findsOneWidget,
+    );
+  });
+
+  group('the date of birth button', () {
+    testWidgets('says what it sets when nothing is set yet', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pumpAndEdit(tester, (_) async {});
+
+      final data = tester
+          .getSemantics(find.byKey(const Key('dateOfBirth')))
+          .getSemanticsData();
+      expect(data.label, 'Date of birth');
+      expect(data.value, 'Not set');
+      expect(data.flagsCollection.isButton, isTrue);
+      expect(data.hint, 'Opens a date picker');
+      handle.dispose();
+    });
+
+    testWidgets('reads the date and age as its value', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pumpAndEdit(
+        tester,
+        (_) async {},
+        value: const AboutAnswers(dateOfBirth: '1998-03-14'),
+      );
+
+      final data = tester
+          .getSemantics(find.byKey(const Key('dateOfBirth')))
+          .getSemanticsData();
+      expect(data.label, 'Date of birth');
+      expect(data.value, startsWith('14 March 1998, '));
+      expect(data.value, endsWith(' years old'));
+      handle.dispose();
+    });
+
+    testWidgets('its eyebrow is not read a second time', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pumpAndEdit(tester, (_) async {});
+
+      expect(
+        find.bySemanticsLabel(RegExp(r'^date of birth$', caseSensitive: false)),
+        findsOneWidget,
+      );
+      handle.dispose();
+    });
   });
 }
 

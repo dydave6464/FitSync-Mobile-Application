@@ -140,6 +140,10 @@ class OnboardingScaffold extends StatelessWidget {
             ),
             Expanded(
               child: SingleChildScrollView(
+                // One scroll position per step: without the key the next
+                // step opens as far down as the last one was scrolled, with
+                // its title and first question above the fold.
+                key: ValueKey(step),
                 padding: const EdgeInsets.fromLTRB(20, 22, 20, 24),
                 child: child,
               ),

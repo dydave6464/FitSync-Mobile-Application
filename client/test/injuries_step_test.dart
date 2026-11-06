@@ -294,8 +294,8 @@ void main() {
     expect(find.byKey(const Key('side.1.both')), findsOneWidget);
   });
 
-  // The side chips are small, about 26 dp, and the last line of their card:
-  // the card's padding below them is theirs to take.
+  // The side chips are 32 dp and the last line of their card: 8 dp of the
+  // card's padding below them is theirs to take.
   testWidgets('a side chip takes a tap just below its pill', (tester) async {
     final sink = await _pump(tester);
     await _tapKey(tester, const Key('injury.1'));
@@ -303,9 +303,44 @@ void main() {
     final chip = find.byKey(const Key('side.1.left'));
     await tester.ensureVisible(chip);
     await tester.pumpAndSettle();
-    await tester.tapAt(tester.getRect(chip).bottomCenter.translate(0, 9));
+    await tester.tapAt(tester.getRect(chip).bottomCenter.translate(0, 7));
     await tester.pumpAndSettle();
 
     expect(sink.last.single.side, 'left');
+  });
+
+  group('the side chips', () {
+    testWidgets('take a tap just above their pill', (tester) async {
+      final sink = await _pump(tester);
+      await _tapKey(tester, const Key('injury.1'));
+
+      final chip = find.byKey(const Key('side.1.right'));
+      await tester.ensureVisible(chip);
+      await tester.pumpAndSettle();
+      await tester.tapAt(tester.getRect(chip).topCenter.translate(0, -7));
+      await tester.pumpAndSettle();
+
+      expect(sink.last.single.side, 'right');
+    });
+
+    testWidgets('sit 8 dp apart', (tester) async {
+      await _pump(tester);
+      await _tapKey(tester, const Key('injury.1'));
+
+      final left = tester.getRect(find.byKey(const Key('side.1.left')));
+      final right = tester.getRect(find.byKey(const Key('side.1.right')));
+      final both = tester.getRect(find.byKey(const Key('side.1.both')));
+      expect(right.left - left.right, greaterThanOrEqualTo(8));
+      expect(both.left - right.right, greaterThanOrEqualTo(8));
+    });
+
+    testWidgets('meet the 48 dp tap target guideline', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pump(tester);
+      await _tapKey(tester, const Key('injury.1'));
+
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      handle.dispose();
+    });
   });
 }
