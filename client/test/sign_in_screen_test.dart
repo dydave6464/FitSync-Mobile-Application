@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart' show FaIcon;
 
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/widgets/fs_brand.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 
 import 'package:fitsync/core/api_exception.dart';
@@ -1131,5 +1132,16 @@ void main() {
     expect(find.byIcon(Icons.bolt), findsNothing);
     expect(find.byKey(const Key('logo.blades')), findsOneWidget);
     expect(tester.getSize(find.byKey(const Key('logo.blades'))).width, 22);
+  });
+
+  testWidgets('the logo is the app icon: green blades on the dark tile', (
+    tester,
+  ) async {
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+
+    expect(find.byType(FsBrandMark), findsOneWidget);
+    final tile = tester.widget<Container>(find.byKey(const Key('brand.tile')));
+    expect((tile.decoration! as BoxDecoration).color, FsTokens.dark.surface2);
   });
 }

@@ -1,11 +1,10 @@
-import 'dart:math' as math;
-
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
+import '../../../core/widgets/fs_brand.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../data/google_sign_in_gateway.dart';
 import 'auth_controller.dart';
@@ -572,7 +571,9 @@ class _SignOutNote extends StatelessWidget {
   }
 }
 
-/// The accent tile plus wordmark from the prototype's `Logo`.
+/// The brand mark plus wordmark from the prototype's `Logo`, with the mark
+/// drawn as the app icon draws it (the dark tile, not the prototype's accent
+/// tile), so the sign-in screen and the home screen show the same logo.
 class _Logo extends StatelessWidget {
   const _Logo();
 
@@ -582,21 +583,7 @@ class _Logo extends StatelessWidget {
 
     return Row(
       children: [
-        Container(
-          width: 34,
-          height: 34,
-          decoration: BoxDecoration(
-            color: t.accent,
-            borderRadius: BorderRadius.circular(11),
-          ),
-          alignment: Alignment.center,
-          // The prototype's FitBlades at two thirds of the tile.
-          child: CustomPaint(
-            key: const Key('logo.blades'),
-            size: const Size.square(22),
-            painter: _BladesPainter(t.onAccent),
-          ),
-        ),
+        const FsBrandMark(),
         const SizedBox(width: 9),
         // Shrinks rather than overflowing on a narrow phone at large text: a
         // wordmark cut to an ellipsis would no longer be the name.
@@ -619,44 +606,4 @@ class _Logo extends StatelessWidget {
       ],
     );
   }
-}
-
-/// FitSync's mark, the prototype's `FitBlades` (kit.jsx): one blade drawn
-/// three times, turned 0, 120 and 240 degrees about the centre, each fainter
-/// than the last.
-class _BladesPainter extends CustomPainter {
-  const _BladesPainter(this.color);
-
-  final Color color;
-
-  static const _opacities = [1.0, 0.6, 0.32];
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    // The SVG's 100-unit box, scaled to [size].
-    final scale = size.shortestSide / 100;
-    final blade = Path()
-      ..moveTo(50, 50)
-      ..cubicTo(52, 30, 62, 18, 80, 22)
-      ..cubicTo(70, 38, 66, 46, 50, 50)
-      ..close();
-
-    canvas
-      ..save()
-      ..scale(scale);
-    for (var i = 0; i < _opacities.length; i++) {
-      canvas.drawPath(
-        blade,
-        Paint()..color = color.withValues(alpha: _opacities[i]),
-      );
-      canvas
-        ..translate(50, 50)
-        ..rotate(2 * math.pi / 3)
-        ..translate(-50, -50);
-    }
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(_BladesPainter old) => old.color != color;
 }
