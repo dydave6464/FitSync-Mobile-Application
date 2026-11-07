@@ -2,6 +2,7 @@
 const express = require('express');
 const AppError = require('../lib/app-error');
 const { signToken } = require('../lib/tokens');
+const { signAdminToken } = require('../lib/admin-tokens');
 const {
   hashPassword, verifyPassword, confirmPassword, DUMMY_HASH,
   MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH,
@@ -12,6 +13,8 @@ const {
 } = require('../db/users');
 const { codeKey, normaliseCode, TTL_MINUTES } = require('../lib/auth-codes');
 const { issueCode, checkCode } = require('../db/auth-codes');
+const { findAdminByEmail } = require('../db/admins');
+const { toPublicAdmin } = require('./admin');
 const requireAuth = require('../middleware/require-auth');
 
 // users.email and users.full_name are both VARCHAR(255). Anything longer must
@@ -128,6 +131,11 @@ module.exports = function buildAuthRouter({
       if (await findUserByEmail(pool, email)) {
         throw AppError.conflict('EMAIL_TAKEN', 'That email is already registered.');
       }
+      // Sign-in looks in admins first, so an admin's address can never also
+      // be a trainee's.
+      if (await findAdminByEmail(pool, email)) {
+        throw AppError.conflict('EMAIL_TAKEN', 'That email is already registered.');
+      }
 
       const user = await createUserWithPassword(pool, {
         email, passwordHash: await hashPassword(password), fullName,
@@ -143,6 +151,20 @@ module.exports = function buildAuthRouter({
     try {
       const email = requireString('email', req.body.email).toLowerCase();
       const password = requireString('password', req.body.password);
+
+      // Admins sign in on the same form (spec 2026-11-07-admin-dashboard),
+      // looked up first; an address is never both (register, Google and
+      // admin:create keep them apart).
+      const admin = await findAdminByEmail(pool, email);
+      if (admin) {
+        // One bcrypt compare, as on the trainee path: an admin email costs the same.
+        if (!(await verifyPassword(password, admin.password_hash))) {
+          throw AppError.unauthorized('INVALID_CREDENTIALS', 'Email or password is incorrect.');
+        }
+        return res.json({
+          data: { role: 'admin', admin: toPublicAdmin(admin), token: signAdminToken(admin.admin_id, jwt) },
+        });
+      }
 
       const user = await findUserByEmail(pool, email);
       // One error, one message, whether the email is unknown or the password is
@@ -174,7 +196,11 @@ module.exports = function buildAuthRouter({
       // The generation read with the hash just compared: if a password change
       // landed during the compare, this token is already signed out.
       res.json({
-        data: { user: toPublicUser(user), token: signToken(user.user_id, jwt, user.token_version) },
+        data: {
+          role: 'trainee',
+          user: toPublicUser(user),
+          token: signToken(user.user_id, jwt, user.token_version),
+        },
       });
     } catch (err) { next(err); }
   });
@@ -357,6 +383,11 @@ module.exports = function buildAuthRouter({
     try {
       const idToken = requireString('idToken', req.body.idToken);
       const identity = await google.verifyIdToken(idToken);
+      // Google sign-in is trainee-only: an admin's address must not become a
+      // trainee account too.
+      if (identity.email && await findAdminByEmail(pool, identity.email)) {
+        throw AppError.conflict('EMAIL_TAKEN', 'That email is already registered.');
+      }
       const { user, isNew } = await findOrCreateGoogleUser(pool, identity);
       res.json({
         data: {
