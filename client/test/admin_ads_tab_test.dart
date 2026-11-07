@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/features/admin/domain/admin_models.dart';
 import 'package:fitsync/features/admin/presentation/ad_form_screen.dart';
 import 'package:fitsync/features/admin/presentation/ads_tab.dart';
 import 'package:fitsync/features/admin/presentation/providers.dart';
@@ -15,6 +18,7 @@ Future<ProviderContainer> _pump(
   FakeAdminRepository repo, {
   bool dark = false,
   double textScale = 1.0,
+  bool settle = true,
 }) async {
   final container = ProviderContainer(
     overrides: [adminRepositoryProvider.overrideWithValue(repo)],
@@ -34,7 +38,7 @@ Future<ProviderContainer> _pump(
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  if (settle) await tester.pumpAndSettle();
   return container;
 }
 
@@ -43,6 +47,24 @@ StatusTag _tag(WidgetTester tester, String word) => tester.widget<StatusTag>(
 );
 
 void main() {
+  testWidgets('a spinner shows while the ads are on their way', (tester) async {
+    final ads = Completer<List<AdminAd>>();
+    await _pump(
+      tester,
+      FakeAdminRepository(ads: () => ads.future),
+      settle: false,
+    );
+    await tester.pump();
+
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.text('No ads yet.'), findsNothing);
+
+    ads.complete([sampleAd()]);
+    await tester.pumpAndSettle();
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.text('Protein bars, 20% off'), findsOneWidget);
+  });
+
   testWidgets('a row shows the image, title, advertiser, run and counts', (
     tester,
   ) async {
