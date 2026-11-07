@@ -6,6 +6,7 @@ import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/admin/presentation/admin_shell.dart';
 import 'package:fitsync/features/admin/presentation/content_screen.dart';
 import 'package:fitsync/features/admin/presentation/providers.dart';
+import 'package:fitsync/features/admin/presentation/revenue_screen.dart';
 
 import 'helpers/fake_admin_repository.dart';
 
@@ -84,6 +85,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(ContentScreen), findsOneWidget);
+  });
+
+  testWidgets('the Revenue tab is the Revenue screen', (tester) async {
+    await _pump(tester);
+
+    await tester.tap(find.byKey(const Key('nav.3')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(RevenueScreen), findsOneWidget);
   });
 
   testWidgets('selectTab switches the tab and carries the Users filter', (

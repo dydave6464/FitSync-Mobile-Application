@@ -5,6 +5,7 @@ import '../../../core/widgets/fs_kit.dart';
 import 'content_screen.dart';
 import 'overview_screen.dart';
 import 'providers.dart';
+import 'revenue_screen.dart';
 import 'users_screen.dart';
 
 /// The admin's app: four tabs over an IndexedStack, as the trainee's
@@ -83,7 +84,7 @@ class _AdminShellState extends ConsumerState<AdminShell> {
             _tab(0, () => const OverviewScreen()),
             _tab(1, () => const UsersScreen()),
             _tab(2, () => const ContentScreen()),
-            _tab(3, () => const Center(child: Text('Revenue'))),
+            _tab(3, () => const RevenueScreen()),
           ],
         ),
         bottomNavigationBar: FsNav(
