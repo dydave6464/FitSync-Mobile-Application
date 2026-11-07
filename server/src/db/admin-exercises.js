@@ -161,6 +161,8 @@ async function publishExercise(pool, exerciseId, adminId) {
 /// Every trainee row that names an exercise: plans, manual sessions, set
 /// logs, plan swaps (either side) and the alternatives a swap offered, lift
 /// goals. One (user_id) per row; each part binds the exercise id once.
+/// ai_cue_uses is left out on purpose: it only meters the daily AI-cue
+/// allowance, and unpublishing does not change it.
 const USES_SQL = `
   SELECT wp.user_id FROM plan_exercises pe
     JOIN workout_plans wp ON wp.plan_id = pe.plan_id WHERE pe.exercise_id = ?
