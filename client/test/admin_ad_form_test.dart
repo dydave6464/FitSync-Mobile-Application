@@ -231,6 +231,22 @@ void main() {
     expect(find.byKey(const Key('admin.ad.image.preview')), findsOneWidget);
   });
 
+  testWidgets('the preview is square, as trainees see the image', (
+    tester,
+  ) async {
+    await _pump(tester, FakeAdminRepository(), picker: _FakePicker([_png]));
+
+    await _tap(tester, _field('image.pick'));
+    final preview = tester.getSize(
+      find.byKey(const Key('admin.ad.image.preview')),
+    );
+    expect(preview.width, preview.height);
+    expect(
+      find.text('JPEG or PNG, up to 1.5 MB. Shown small and square.'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('an image that is not a JPEG or PNG says so under Image', (
     tester,
   ) async {

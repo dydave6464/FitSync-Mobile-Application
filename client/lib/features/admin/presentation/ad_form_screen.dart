@@ -521,7 +521,7 @@ class _AdFormScreenState extends ConsumerState<AdFormScreen> {
     );
   }
 
-  /// The image: a 16:9 preview of the one picked here or, on an edit, the
+  /// The image: a square preview of the one picked here or, on an edit, the
   /// ad's own; the button to pick one; and what the server takes.
   Widget _imageSection(FsTokens t, AdminAd? ad, Widget? error) {
     final placeholder = Center(
@@ -553,12 +553,17 @@ class _AdFormScreenState extends ConsumerState<AdFormScreen> {
           Semantics(header: true, child: const FsEyebrow('Image')),
           const SizedBox(height: 6),
           if (image != null) ...[
-            ClipRRect(
-              key: const Key('admin.ad.image.preview'),
-              borderRadius: BorderRadius.circular(FsRadius.sm),
-              child: AspectRatio(
-                aspectRatio: 16 / 9,
-                child: ColoredBox(color: t.surface2, child: image),
+            // Square and cropped, as the trainee's card draws it beside
+            // the title; a little larger here so it can be checked.
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: ClipRRect(
+                key: const Key('admin.ad.image.preview'),
+                borderRadius: BorderRadius.circular(FsRadius.sm),
+                child: SizedBox.square(
+                  dimension: 96,
+                  child: ColoredBox(color: t.surface2, child: image),
+                ),
               ),
             ),
             const SizedBox(height: 10),
@@ -576,7 +581,7 @@ class _AdFormScreenState extends ConsumerState<AdFormScreen> {
           ),
           const SizedBox(height: 6),
           Text(
-            'JPEG or PNG, up to 1.5 MB. Shown wide, 16:9.',
+            'JPEG or PNG, up to 1.5 MB. Shown small and square.',
             style: TextStyle(fontSize: 12, height: 1.4, color: t.text3),
           ),
           ?error,
