@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/admin/domain/admin_models.dart';
 import 'package:fitsync/features/admin/presentation/providers.dart';
 import 'package:fitsync/features/admin/presentation/revenue_chart.dart';
@@ -74,6 +75,13 @@ Future<void> _scrollTo(WidgetTester tester, Finder finder) async {
   await tester.pumpAndSettle();
 }
 
+/// The card [inside] is drawn in: its nearest [FsCard].
+Finder _card(Finder inside) =>
+    find.ancestor(of: inside, matching: find.byType(FsCard)).first;
+
+Finder _in(Finder card, Finder finder) =>
+    find.descendant(of: card, matching: finder);
+
 void main() {
   testWidgets('shows the month, its total and its change from the month '
       'before', (tester) async {
@@ -82,10 +90,11 @@ void main() {
 
     expect(repo.revenueCalls, [null]);
     expect(find.text('November 2026'), findsOneWidget);
-    expect(find.text('₱3,486'), findsWidgets);
-    expect(find.text('this month'), findsOneWidget);
-    expect(find.text('+₱747'), findsOneWidget);
-    expect(find.byIcon(Icons.arrow_upward), findsOneWidget);
+    // In the total card itself: the chart's November bar also says ₱3,486.
+    final total = _card(find.text('this month'));
+    expect(_in(total, find.text('₱3,486')), findsOneWidget);
+    expect(_in(total, find.text('+₱747')), findsOneWidget);
+    expect(_in(total, find.byIcon(Icons.arrow_upward)), findsOneWidget);
   });
 
   testWidgets('splits the month into Pro subscriptions and ads', (
@@ -93,12 +102,14 @@ void main() {
   ) async {
     await _pump(tester, _repo());
 
-    expect(find.text('Pro subscriptions'), findsOneWidget);
-    expect(find.text('₱2,286'), findsOneWidget);
-    expect(find.text('2 monthly · 1 yearly'), findsOneWidget);
-    expect(find.text('Ads'), findsWidgets);
-    expect(find.text('₱1,200'), findsWidgets);
-    expect(find.text('1 ad'), findsOneWidget);
+    final pro = _card(find.text('2 monthly · 1 yearly'));
+    expect(_in(pro, find.text('Pro subscriptions')), findsOneWidget);
+    expect(_in(pro, find.text('₱2,286')), findsOneWidget);
+    // In the Ads card itself: the chart's legend says Ads, and the ad
+    // payments list ₱1,200.
+    final ads = _card(find.text('1 ad'));
+    expect(_in(ads, find.text('Ads')), findsOneWidget);
+    expect(_in(ads, find.text('₱1,200')), findsOneWidget);
   });
 
   testWidgets('says "2 ads" for more than one ad', (tester) async {
