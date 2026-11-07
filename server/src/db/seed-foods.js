@@ -15,10 +15,23 @@ const FIND_OWN = `
    LIMIT 1
 `;
 
+// An admin may also rename a seeded food. Editing never moves list_order, so
+// the food still sits at its place in the list, under a name the list doesn't
+// have: that row is this list food, and the seed must not add the old name
+// back beside it. An admin's food that still has a list name is that list
+// food, wherever it sits.
+const FIND_RENAMED_BY_ADMIN = `
+  SELECT f.food_id FROM foods f
+    LEFT JOIN food_sources s ON s.food_id = f.food_id
+   WHERE s.food_id IS NULL AND f.added_by IS NOT NULL AND f.list_order = ? AND f.name NOT IN (?)
+   LIMIT 1
+`;
+
 // A seed food renamed in foods.json: the existing row is renamed rather than
 // a second one inserted, so meals already logged keep pointing at it and
 // show the new name.
 const RENAMES = { 'Steamed white rice': 'White rice' };
+const LIST_NAMES = FOODS.map((f) => f.name);
 
 async function seedFoods(dbConfig) {
   const pool = createPool(dbConfig);
@@ -35,6 +48,11 @@ async function seedFoods(dbConfig) {
       const values = [f.category, f.type, i + 1, f.servingDesc, f.kcal, f.proteinG, f.carbsG, f.fatG, f.fiberG, f.sugarG ?? null, f.sodiumMg ?? null];
       const [[own]] = await pool.query(FIND_OWN, [f.name]);
       if (!own) {
+        const [[renamed]] = await pool.query(FIND_RENAMED_BY_ADMIN, [i + 1, LIST_NAMES]);
+        if (renamed) {
+          unchanged += 1;
+          continue;
+        }
         await pool.query(
           `INSERT INTO foods (name, category, food_type, list_order, serving_desc, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,

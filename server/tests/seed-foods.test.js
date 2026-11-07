@@ -136,6 +136,34 @@ test('food seed', async (t) => {
     assert.deepEqual(rows.map((r) => [r.calories, r.serving_desc]), [[1, 'admin cup']]);
   });
 
+  // The admin renamed a seeded food (PATCH keeps its list_order): the list's
+  // name finds nothing, but the food is still there under the admin's name,
+  // so the seed must not bring the old name back beside it.
+  await t.test("does not re-add a seeded food an admin renamed", async () => {
+    const [[admin]] = await pool.query("SELECT admin_id FROM admins WHERE email = 'seed-admin@fitsync.test'");
+    await pool.query(
+      "UPDATE foods SET name = 'Monggo guisado', added_by = ? WHERE name = 'Ginisang monggo'",
+      [admin.admin_id],
+    );
+    const s = await seedFoods(testDbConfig());
+    assert.equal(s.inserted, 0);
+    const [rows] = await pool.query("SELECT name FROM foods WHERE name IN ('Ginisang monggo', 'Monggo guisado')");
+    assert.deepEqual(rows.map((r) => r.name), ['Monggo guisado']);
+  });
+
+  // An admin's food that still has a list name is that list food, not a
+  // renamed one, even when it sits at another food's place in the list.
+  await t.test('still adds a missing list food when an admin food that kept its list name holds its place', async () => {
+    const [[admin]] = await pool.query("SELECT admin_id FROM admins WHERE email = 'seed-admin@fitsync.test'");
+    const tinola = FOODS.findIndex((f) => f.name === 'Tinolang manok') + 1;
+    await pool.query("DELETE FROM foods WHERE name = 'Tinolang manok'");
+    await pool.query("UPDATE foods SET list_order = ?, added_by = ? WHERE name = 'Bulalo'", [tinola, admin.admin_id]);
+    const s = await seedFoods(testDbConfig());
+    assert.equal(s.inserted, 1);
+    const [[{ n }]] = await pool.query("SELECT COUNT(*) AS n FROM foods WHERE name = 'Tinolang manok'");
+    assert.equal(Number(n), 1);
+  });
+
   await t.test('never touches a FatSecret copy with the same name', async () => {
     const [f] = await pool.query("INSERT INTO foods (name, category, calories) VALUES ('Banana', 'international', 999)");
     await pool.query("INSERT INTO food_sources (food_id, provider, external_id) VALUES (?, 'fatsecret', 'x1')", [f.insertId]);
