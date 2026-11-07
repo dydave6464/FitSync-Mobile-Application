@@ -118,6 +118,22 @@ void main() {
     expect(log, ['viewed 7', 'tapped 7', 'open https://shop.example.ph/promo']);
   });
 
+  testWidgets('a card whose image fails keeps its title and 48 dp', (
+    tester,
+  ) async {
+    // The test HTTP client answers every request 400, so the image fails.
+    await _pump(tester, FakeAdSource(ad: sampleHouseAd));
+
+    final card = find.byType(FsCard);
+    expect(
+      find.descendant(of: card, matching: find.byType(AspectRatio)),
+      findsNothing,
+      reason: 'a failed image leaves no empty frame',
+    );
+    expect(find.text('GymShark PH: 20% off'), findsOneWidget);
+    expect(tester.getSize(card).height, greaterThanOrEqualTo(48));
+  });
+
   testWidgets('a card without a link cannot be tapped', (tester) async {
     final log = await _pump(
       tester,
