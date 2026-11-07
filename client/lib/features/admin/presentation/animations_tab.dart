@@ -7,6 +7,7 @@ import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/domain/exercise_labels.dart';
 import '../../exercises/presentation/exercise_thumb.dart';
 import '../domain/admin_models.dart';
+import 'exercise_preview_screen.dart';
 import 'providers.dart';
 import 'widgets/admin_widgets.dart';
 import 'widgets/content_list.dart';
@@ -47,6 +48,13 @@ class AnimationsTab extends ConsumerWidget {
         key: ValueKey('admin.exercise.${exercise.id}'),
         exercise: exercise,
         baseUrl: baseUrl,
+        // Pushed over the tabs, so the preview has the whole screen and
+        // back returns to the list where it was left.
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => ExercisePreviewScreen(exercise: exercise),
+          ),
+        ),
       ),
     );
   }
