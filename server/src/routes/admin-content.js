@@ -5,6 +5,9 @@ const { parsePositiveInt } = require('../lib/query-params');
 const {
   STATUSES, asAdminExercise, listAdminExercises, publishExercise, unpublishExercise,
 } = require('../db/admin-exercises');
+const {
+  SHOW, listAdminFoods, createFood, updateFood, setFoodHidden,
+} = require('../db/admin-foods');
 
 const DEFAULT_LIMIT = 30;
 const MAX_LIMIT = 50;
@@ -15,6 +18,16 @@ function invalid(field, message) {
 
 function noSuchExercise() {
   return AppError.notFound('EXERCISE_NOT_FOUND', 'No such exercise.');
+}
+
+function noSuchFood() {
+  return AppError.notFound('FOOD_NOT_FOUND', 'No such food.');
+}
+
+/// The JSON body as an object; anything else reads as no fields at all.
+function bodyOf(req) {
+  const b = req.body;
+  return b && typeof b === 'object' && !Array.isArray(b) ? b : {};
 }
 
 /// The :id of a route, or null when it can't name a row (then the answer is
@@ -68,6 +81,56 @@ function buildAdminContentRouter({ pool, storage = null }) {
         const row = exerciseId === null ? null : await apply(exerciseId, req);
         if (!row) throw noSuchExercise();
         res.json({ data: { exercise: asAdminExercise(row, toUrl) } });
+      } catch (err) {
+        next(err);
+      }
+    });
+  }
+
+  router.get('/foods', async (req, res, next) => {
+    try {
+      const { show } = req.query;
+      if (typeof show !== 'string' || !Object.hasOwn(SHOW, show)) {
+        throw invalid('show', 'show must be shown or hidden.');
+      }
+      const q = searchParam(req.query.q);
+      const page = parsePositiveInt('page', req.query.page, 1);
+      const limit = parsePositiveInt('limit', req.query.limit, DEFAULT_LIMIT, MAX_LIMIT);
+      const { foods, counts, total } = await listAdminFoods(pool, { show, q, page, limit });
+      res.json({ data: { foods, counts, page, limit, total } });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/foods', async (req, res, next) => {
+    try {
+      const food = await createFood(pool, bodyOf(req), req.admin.adminId);
+      res.status(201).json({ data: { food } });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.patch('/foods/:id', async (req, res, next) => {
+    try {
+      const foodId = idParam(req.params.id);
+      const food = foodId === null ? null : await updateFood(pool, foodId, bodyOf(req), req.admin.adminId);
+      if (!food) throw noSuchFood();
+      res.json({ data: { food } });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Repeat calls are harmless: each answers the food as it now is.
+  for (const [action, hidden] of [['hide', true], ['show', false]]) {
+    router.post(`/foods/:id/${action}`, async (req, res, next) => {
+      try {
+        const foodId = idParam(req.params.id);
+        const food = foodId === null ? null : await setFoodHidden(pool, foodId, hidden);
+        if (!food) throw noSuchFood();
+        res.json({ data: { food } });
       } catch (err) {
         next(err);
       }
