@@ -3,6 +3,7 @@ const express = require('express');
 const requireAdmin = require('../middleware/require-admin');
 const { buildAdminUsersRouter } = require('./admin-users');
 const { buildAdminContentRouter } = require('./admin-content');
+const { buildAdminAdsRouter } = require('./admin-ads');
 
 // The row carries password_hash. Nothing outside this module may see it.
 function toPublicAdmin(row) {
@@ -25,6 +26,7 @@ function buildAdminRouter(deps) {
 
   router.use(buildAdminUsersRouter(deps));
   router.use(buildAdminContentRouter(deps));
+  router.use(buildAdminAdsRouter(deps));
 
   return router;
 }
