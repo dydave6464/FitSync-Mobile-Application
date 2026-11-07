@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/admin/domain/admin_models.dart';
 import 'package:fitsync/features/admin/presentation/providers.dart';
+import 'package:fitsync/features/admin/presentation/user_detail_screen.dart';
 import 'package:fitsync/features/admin/presentation/users_screen.dart';
 import 'package:fitsync/features/admin/presentation/widgets/admin_widgets.dart';
 
@@ -146,6 +147,19 @@ void main() {
     final row = find.byKey(const ValueKey('admin.user.7'));
     expect(tester.getSize(row).height, greaterThanOrEqualTo(48));
     handle.dispose();
+  });
+
+  testWidgets("tapping a row opens that trainee's page", (tester) async {
+    final repo = FakeAdminRepository(
+      users: (_, _, _) async => usersPage([sampleRow(id: 7)]),
+    );
+    await _pump(tester, repo);
+
+    await tester.tap(find.byKey(const ValueKey('admin.user.7')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(UserDetailScreen), findsOneWidget);
+    expect(repo.userCalls, [7]);
   });
 
   testWidgets('typing searches once, 300 ms after the last key', (

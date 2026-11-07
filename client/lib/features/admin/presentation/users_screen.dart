@@ -10,6 +10,7 @@ import '../../../core/widgets/fs_kit.dart';
 import '../domain/admin_format.dart';
 import '../domain/admin_models.dart';
 import 'providers.dart';
+import 'user_detail_screen.dart';
 import 'widgets/admin_widgets.dart';
 
 /// The admin's Users tab: every trainee, newest sign-ups first, searchable
@@ -172,6 +173,12 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
     );
   }
 
+  /// Pushed over the tabs, so the trainee's page has the whole screen and
+  /// back returns to the list where it was left.
+  void _open(AdminUserRow user) => Navigator.of(context).push(
+    MaterialPageRoute<void>(builder: (_) => UserDetailScreen(userId: user.id)),
+  );
+
   Widget _list(AdminUsersState state, AdminUsersQuery query) {
     final t = context.fs;
     final count = Padding(
@@ -228,7 +235,7 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
             key: ValueKey('admin.user.${user.id}'),
             user: user,
             lastActive: lastActiveLabel(user.lastActiveOn, today),
-            onTap: () {},
+            onTap: () => _open(user),
           ),
         );
       },

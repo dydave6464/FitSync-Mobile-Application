@@ -163,6 +163,13 @@ class AdminUsersNotifier extends AsyncNotifier<AdminUsersState> {
   }
 }
 
+/// One trainee's account, for their page.
+final adminUserProvider = FutureProvider.autoDispose
+    .family<AdminUserDetail, int>(
+      (ref, id) => ref.watch(adminRepositoryProvider).user(id),
+      retry: apiRetryPolicy,
+    );
+
 final adminUsersProvider =
     AsyncNotifierProvider.autoDispose<AdminUsersNotifier, AdminUsersState>(
       AdminUsersNotifier.new,
