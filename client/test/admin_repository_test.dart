@@ -786,4 +786,110 @@ void main() {
       );
     });
   });
+
+  group('revenue', () {
+    Map<String, dynamic> revenueJson() => {
+      'month': '2026-11',
+      'totalPhp': 3486.0,
+      'previousTotalPhp': 2739.0,
+      'pro': {'totalPhp': 2286.0, 'monthly': 2, 'annual': 1},
+      'ads': {'totalPhp': 1200, 'count': 1},
+      'lastSixMonths': [
+        {'month': '2026-06', 'proPhp': 0.0, 'adsPhp': 0.0},
+        {'month': '2026-11', 'proPhp': 2286.0, 'adsPhp': 1200.0},
+      ],
+      'proPayments': [
+        {
+          'paymentId': 4,
+          'name': 'Juan Dela Cruz',
+          'plan': 'monthly',
+          'method': 'gcash',
+          'amountPhp': 249.0,
+          'paidOn': '2026-11-05',
+        },
+        {
+          'paymentId': 5,
+          'name': null,
+          'plan': 'annual',
+          'method': null,
+          'amountPhp': 1788,
+          'paidOn': '2026-11-06',
+        },
+      ],
+      'adPayments': [
+        {
+          'adId': 1,
+          'advertiser': 'Kusina Co.',
+          'title': 'Fresh lunch boxes',
+          'amountPhp': 1200.0,
+          'startsOn': '2026-11-01',
+          'endsOn': '2026-11-30',
+        },
+      ],
+      'firstMonth': '2026-10',
+    };
+
+    test('revenue without a month asks for the current one', () async {
+      final sent = <http.Request>[];
+      final repo = _repo(sent, (_) => _ok(revenueJson()));
+
+      await repo.revenue();
+
+      expect(sent.single.method, 'GET');
+      expect(sent.single.url.path, '/api/v1/admin/revenue');
+      expect(sent.single.url.queryParameters, isEmpty);
+    });
+
+    test('revenue sends the month and reads every field', () async {
+      final sent = <http.Request>[];
+      final repo = _repo(sent, (_) => _ok(revenueJson()));
+
+      final r = await repo.revenue(month: '2026-11');
+
+      expect(sent.single.url.queryParameters, {'month': '2026-11'});
+      expect(r.month, '2026-11');
+      expect(r.totalPhp, 3486.0);
+      expect(r.previousTotalPhp, 2739.0);
+      expect(r.proTotalPhp, 2286.0);
+      expect(r.proMonthly, 2);
+      expect(r.proAnnual, 1);
+      expect(r.adsTotalPhp, 1200.0);
+      expect(r.adsCount, 1);
+      expect(r.lastSixMonths.map((b) => b.month), ['2026-06', '2026-11']);
+      expect(r.lastSixMonths.last.proPhp, 2286.0);
+      expect(r.lastSixMonths.last.adsPhp, 1200.0);
+      expect(r.firstMonth, '2026-10');
+
+      final juan = r.proPayments.first;
+      expect(juan.paymentId, 4);
+      expect(juan.name, 'Juan Dela Cruz');
+      expect(juan.plan, 'monthly');
+      expect(juan.method, 'gcash');
+      expect(juan.amountPhp, 249.0);
+      expect(juan.paidOn, '2026-11-05');
+      final deleted = r.proPayments.last;
+      expect(deleted.name, isNull);
+      expect(deleted.method, isNull);
+      expect(deleted.amountPhp, 1788.0);
+
+      final ad = r.adPayments.single;
+      expect(ad.adId, 1);
+      expect(ad.advertiser, 'Kusina Co.');
+      expect(ad.title, 'Fresh lunch boxes');
+      expect(ad.amountPhp, 1200.0);
+      expect(ad.startsOn, '2026-11-01');
+      expect(ad.endsOn, '2026-11-30');
+    });
+
+    test('a month with nothing before it has no firstMonth', () async {
+      final repo = _repo(
+        [],
+        (_) => _ok({...revenueJson(), 'firstMonth': null}),
+      );
+
+      final r = await repo.revenue();
+
+      expect(r.firstMonth, isNull);
+    });
+  });
 }

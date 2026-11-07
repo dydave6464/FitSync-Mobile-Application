@@ -327,3 +327,10 @@ final adminAdsProvider = FutureProvider.autoDispose<List<AdminAd>>(
   (ref) => ref.watch(adminRepositoryProvider).ads(),
   retry: apiRetryPolicy,
 );
+
+/// One Manila month's revenue, `YYYY-MM`; null is the server's this month.
+final adminRevenueProvider = FutureProvider.autoDispose
+    .family<RevenueMonth, String?>(
+      (ref, month) => ref.watch(adminRepositoryProvider).revenue(month: month),
+      retry: apiRetryPolicy,
+    );

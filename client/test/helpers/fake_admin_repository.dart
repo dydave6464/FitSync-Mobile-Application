@@ -26,6 +26,7 @@ class FakeAdminRepository implements AdminRepository {
     Future<AdminAd> Function(AdInput input)? createAd,
     Future<AdminAd> Function(int id, AdInput input)? updateAd,
     Future<AdminAd> Function(int id, bool active)? setAdActive,
+    this.onRevenue,
   }) : onAds = ads ?? (() async => const []),
        onCreateAd = createAd ?? ((_) async => sampleAd()),
        onUpdateAd = updateAd ?? ((id, _) async => sampleAd(id: id)),
@@ -91,6 +92,19 @@ class FakeAdminRepository implements AdminRepository {
   final createAdCalls = <AdInput>[];
   final updateAdCalls = <({int id, AdInput input})>[];
   final setAdActiveCalls = <({int id, bool active})>[];
+
+  /// Null keeps answering [sampleRevenue] for whichever month is asked.
+  Future<RevenueMonth> Function(String? month)? onRevenue;
+  final revenueCalls = <String?>[];
+
+  @override
+  Future<RevenueMonth> revenue({String? month}) {
+    revenueCalls.add(month);
+    final answer = onRevenue;
+    return answer != null
+        ? answer(month)
+        : Future.value(sampleRevenue(month: month ?? '2026-11'));
+  }
 
   @override
   Future<List<AdminAd>> ads() {
@@ -417,3 +431,82 @@ AdminAd sampleAd({
   views: views,
   taps: taps,
 );
+
+/// Appendix A's revenue example for [month]: ₱3,486 against ₱2,739 --
+/// Pro ₱2,286 from two monthly payments (one from a deleted account) and
+/// one yearly, plus one ₱1,200 ad -- with nothing before October 2026.
+RevenueMonth sampleRevenue({
+  String month = '2026-11',
+  String? firstMonth = '2026-10',
+  List<RevenueBar>? lastSixMonths,
+  List<RevenueProPayment>? proPayments,
+  List<RevenueAdPayment>? adPayments,
+  int proMonthly = 2,
+  int proAnnual = 1,
+  int adsCount = 1,
+  double totalPhp = 3486,
+  double previousTotalPhp = 2739,
+  double proTotalPhp = 2286,
+  double adsTotalPhp = 1200,
+}) => RevenueMonth(
+  month: month,
+  totalPhp: totalPhp,
+  previousTotalPhp: previousTotalPhp,
+  proTotalPhp: proTotalPhp,
+  proMonthly: proMonthly,
+  proAnnual: proAnnual,
+  adsTotalPhp: adsTotalPhp,
+  adsCount: adsCount,
+  lastSixMonths: lastSixMonths ?? sampleRevenueBars,
+  proPayments: proPayments ?? sampleProPayments,
+  adPayments: adPayments ?? sampleAdPayments,
+  firstMonth: firstMonth,
+);
+
+/// June to November 2026: nothing until October.
+const sampleRevenueBars = [
+  RevenueBar(month: '2026-06', proPhp: 0, adsPhp: 0),
+  RevenueBar(month: '2026-07', proPhp: 0, adsPhp: 0),
+  RevenueBar(month: '2026-08', proPhp: 0, adsPhp: 0),
+  RevenueBar(month: '2026-09', proPhp: 0, adsPhp: 0),
+  RevenueBar(month: '2026-10', proPhp: 2037, adsPhp: 702),
+  RevenueBar(month: '2026-11', proPhp: 2286, adsPhp: 1200),
+];
+
+const sampleProPayments = [
+  RevenueProPayment(
+    paymentId: 4,
+    name: 'Juan Dela Cruz',
+    plan: 'monthly',
+    method: 'gcash',
+    amountPhp: 249,
+    paidOn: '2026-11-05',
+  ),
+  RevenueProPayment(
+    paymentId: 5,
+    name: null,
+    plan: 'monthly',
+    method: 'paymaya',
+    amountPhp: 249,
+    paidOn: '2026-11-03',
+  ),
+  RevenueProPayment(
+    paymentId: 6,
+    name: 'Maria Santos',
+    plan: 'annual',
+    method: null,
+    amountPhp: 1788,
+    paidOn: '2026-11-01',
+  ),
+];
+
+const sampleAdPayments = [
+  RevenueAdPayment(
+    adId: 1,
+    advertiser: 'GymShark PH',
+    title: 'Protein bars, 20% off',
+    amountPhp: 1200,
+    startsOn: '2026-11-01',
+    endsOn: '2026-11-30',
+  ),
+];

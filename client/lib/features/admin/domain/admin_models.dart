@@ -548,3 +548,157 @@ class AdInput {
     },
   };
 }
+
+/// One month of the Revenue chart: what Pro and ads brought in.
+class RevenueBar {
+  const RevenueBar({
+    required this.month,
+    required this.proPhp,
+    required this.adsPhp,
+  });
+
+  /// `YYYY-MM`.
+  final String month;
+  final double proPhp;
+  final double adsPhp;
+
+  double get totalPhp => proPhp + adsPhp;
+
+  factory RevenueBar.fromJson(Map<String, dynamic> json) => RevenueBar(
+    month: json['month'] as String,
+    proPhp: _php(json['proPhp']),
+    adsPhp: _php(json['adsPhp']),
+  );
+}
+
+/// A Pro payment, counted in the month it was paid. [name] is null once the
+/// trainee's account is deleted: the amount is kept, the person is not.
+class RevenueProPayment {
+  const RevenueProPayment({
+    required this.paymentId,
+    required this.name,
+    required this.plan,
+    required this.method,
+    required this.amountPhp,
+    required this.paidOn,
+  });
+
+  final int paymentId;
+  final String? name;
+
+  /// `monthly` or `annual`.
+  final String plan;
+
+  /// `gcash`, `paymaya`, `card`, or null when none was recorded.
+  final String? method;
+  final double amountPhp;
+
+  /// Manila `YYYY-MM-DD`.
+  final String paidOn;
+
+  factory RevenueProPayment.fromJson(Map<String, dynamic> json) =>
+      RevenueProPayment(
+        paymentId: (json['paymentId'] as num).toInt(),
+        name: json['name'] as String?,
+        plan: json['plan'] as String,
+        method: json['method'] as String?,
+        amountPhp: _php(json['amountPhp']),
+        paidOn: json['paidOn'] as String,
+      );
+}
+
+/// What an advertiser paid for an ad, counted in the month it starts.
+class RevenueAdPayment {
+  const RevenueAdPayment({
+    required this.adId,
+    required this.advertiser,
+    required this.title,
+    required this.amountPhp,
+    required this.startsOn,
+    required this.endsOn,
+  });
+
+  final int adId;
+  final String advertiser;
+  final String title;
+  final double amountPhp;
+
+  /// Manila `YYYY-MM-DD`, both days included.
+  final String startsOn;
+  final String endsOn;
+
+  factory RevenueAdPayment.fromJson(Map<String, dynamic> json) =>
+      RevenueAdPayment(
+        adId: (json['adId'] as num).toInt(),
+        advertiser: json['advertiser'] as String,
+        title: json['title'] as String,
+        amountPhp: _php(json['amountPhp']),
+        startsOn: json['startsOn'] as String,
+        endsOn: json['endsOn'] as String,
+      );
+}
+
+/// One Manila month on the Revenue tab.
+class RevenueMonth {
+  const RevenueMonth({
+    required this.month,
+    required this.totalPhp,
+    required this.previousTotalPhp,
+    required this.proTotalPhp,
+    required this.proMonthly,
+    required this.proAnnual,
+    required this.adsTotalPhp,
+    required this.adsCount,
+    required this.lastSixMonths,
+    required this.proPayments,
+    required this.adPayments,
+    required this.firstMonth,
+  });
+
+  /// `YYYY-MM`.
+  final String month;
+  final double totalPhp;
+  final double previousTotalPhp;
+  final double proTotalPhp;
+  final int proMonthly;
+  final int proAnnual;
+  final double adsTotalPhp;
+  final int adsCount;
+
+  /// Six months, oldest first, ending at [month].
+  final List<RevenueBar> lastSixMonths;
+  final List<RevenueProPayment> proPayments;
+  final List<RevenueAdPayment> adPayments;
+
+  /// The month of the first payment or ad, `YYYY-MM`; null when there is
+  /// none yet.
+  final String? firstMonth;
+
+  factory RevenueMonth.fromJson(Map<String, dynamic> json) {
+    final pro = json['pro'] as Map<String, dynamic>;
+    final ads = json['ads'] as Map<String, dynamic>;
+    return RevenueMonth(
+      month: json['month'] as String,
+      totalPhp: _php(json['totalPhp']),
+      previousTotalPhp: _php(json['previousTotalPhp']),
+      proTotalPhp: _php(pro['totalPhp']),
+      proMonthly: (pro['monthly'] as num).toInt(),
+      proAnnual: (pro['annual'] as num).toInt(),
+      adsTotalPhp: _php(ads['totalPhp']),
+      adsCount: (ads['count'] as num).toInt(),
+      lastSixMonths: [
+        for (final bar in json['lastSixMonths'] as List)
+          RevenueBar.fromJson(bar as Map<String, dynamic>),
+      ],
+      proPayments: [
+        for (final p in json['proPayments'] as List)
+          RevenueProPayment.fromJson(p as Map<String, dynamic>),
+      ],
+      adPayments: [
+        for (final a in json['adPayments'] as List)
+          RevenueAdPayment.fromJson(a as Map<String, dynamic>),
+      ],
+      firstMonth: json['firstMonth'] as String?,
+    );
+  }
+}

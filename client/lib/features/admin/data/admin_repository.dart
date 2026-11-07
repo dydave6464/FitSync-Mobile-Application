@@ -127,6 +127,12 @@ class AdminRepository {
   Future<AdminAd> setAdActive(int id, {required bool active}) async =>
       _ad(await _api.patchJson('/api/v1/admin/ads/$id', {'active': active}));
 
+  /// One Manila month's revenue, `YYYY-MM`; null is this month. A future
+  /// month or a bad one is `400`.
+  Future<RevenueMonth> revenue({String? month}) async => RevenueMonth.fromJson(
+    await _api.getJson('/api/v1/admin/revenue', query: {'month': month}),
+  );
+
   AdminAd _ad(Map<String, dynamic> data) =>
       AdminAd.fromJson(data['ad'] as Map<String, dynamic>);
 
