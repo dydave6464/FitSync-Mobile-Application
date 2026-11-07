@@ -135,7 +135,12 @@ class AdminUsersNotifier extends AsyncNotifier<AdminUsersState> {
 
   /// Loads the next page onto the list. A failure keeps the pages already
   /// shown and is rethrown for the screen to report.
+  ///
+  /// Does nothing while the list is (re)loading: a refresh keeps the old
+  /// pages in its loading state, and a page asked for on top of them would
+  /// carry the new generation and so overwrite the refreshed list.
   Future<void> loadMore() async {
+    if (state.isLoading) return;
     final current = state.value;
     if (current == null || !current.hasMore || current.loadingMore) return;
     final generation = _generation;
