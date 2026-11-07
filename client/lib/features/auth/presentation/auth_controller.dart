@@ -6,6 +6,8 @@ import '../../../core/token_store.dart';
 import '../../activity/presentation/providers.dart'
     show activityProvider, stepAccessProvider;
 import '../../admin/domain/admin_user.dart';
+import '../../ads/presentation/ad_slot.dart'
+    show adViewsReportedProvider, currentAdProvider;
 import '../../admin/presentation/providers.dart' show adminRepositoryProvider;
 import '../../exercises/presentation/providers.dart';
 import '../../home/presentation/plan_ready.dart';
@@ -204,6 +206,10 @@ class AuthController extends AsyncNotifier<AuthState> {
   /// So does `proPendingCheckoutProvider`: the Pro screen re-checks the
   /// checkout it remembers, and the next account would ask the server about
   /// someone else's payment.
+  ///
+  /// `currentAdProvider` and `adViewsReportedProvider` are kept for the
+  /// session: the ad on the cards, and the views already reported. The next
+  /// account starts both afresh.
   void _clearUserScopedCaches() {
     ref.invalidate(profileProvider);
     ref.invalidate(activePlanProvider);
@@ -228,6 +234,8 @@ class AuthController extends AsyncNotifier<AuthState> {
     ref.invalidate(recentFoodsProvider);
     ref.invalidate(planReadyProvider);
     ref.invalidate(proPendingCheckoutProvider);
+    ref.invalidate(currentAdProvider);
+    ref.invalidate(adViewsReportedProvider);
   }
 
   Future<void> signOut() => _signOutLocally();

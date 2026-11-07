@@ -18,13 +18,22 @@ final adLinkOpenerProvider = Provider<Future<bool> Function(Uri)>(
       (uri) => launchUrl(uri, mode: LaunchMode.externalApplication),
 );
 
-/// The ad for the slots on screen, asked for once each time a slot first
-/// shows. Never retried: a missing ad costs nothing, and asking again is
-/// not worth the trainee's data.
-final currentAdProvider = FutureProvider.autoDispose<HouseAd?>(
-  (ref) => ref.watch(adSourceProvider).current(),
-  retry: (_, _) => null,
-);
+/// The ad for every slot, asked for when a slot first shows and then kept
+/// for the session (until sign-out): a slot scrolled away and back, or one
+/// on another screen, shows the same ad, never a different random one.
+/// Only an answer is kept; after a failure the next slot to show asks
+/// again. Never retried: a missing ad costs nothing, and asking again at
+/// once is not worth the trainee's data.
+final currentAdProvider = FutureProvider.autoDispose<HouseAd?>((ref) async {
+  final ad = await ref.watch(adSourceProvider).current();
+  ref.keepAlive();
+  return ad;
+}, retry: (_, _) => null);
+
+/// The (placement, ad id) pairs whose view was reported this session: a
+/// view is reported at most once per placement per ad per session (until
+/// sign-out). Plain and unwatched: nothing redraws when it changes.
+final adViewsReportedProvider = Provider<Set<(String, int)>>((ref) => {});
 
 /// A small ad card for free trainees, in calm spots only: the bottom of
 /// Home and of Nutrition, never a workout or the logger.
@@ -35,8 +44,9 @@ final currentAdProvider = FutureProvider.autoDispose<HouseAd?>(
 class AdSlot extends ConsumerWidget {
   const AdSlot({super.key, required this.placement});
 
-  /// Where the slot sits: `home` or `nutrition`. Not sent today; an ad
-  /// network behind [AdSource] may want it later.
+  /// Where the slot sits: `home` or `nutrition`. A view is counted once per
+  /// placement (see [adViewsReportedProvider]). Not sent to the server
+  /// today; an ad network behind [AdSource] may want it later.
   final String placement;
 
   @override
@@ -50,9 +60,9 @@ class AdSlot extends ConsumerWidget {
         .when(
           data: (ad) => ad == null
               ? const SizedBox.shrink()
-              // Keyed by the ad, so a different ad is a new card that
-              // reports its own view.
-              : _AdCard(key: ValueKey(ad.id), ad: ad),
+              // Keyed by the ad: a different ad (after sign-out) is a new
+              // card.
+              : _AdCard(key: ValueKey(ad.id), ad: ad, placement: placement),
           loading: () => const SizedBox.shrink(),
           error: (_, _) => const SizedBox.shrink(),
         );
@@ -60,9 +70,10 @@ class AdSlot extends ConsumerWidget {
 }
 
 class _AdCard extends ConsumerStatefulWidget {
-  const _AdCard({super.key, required this.ad});
+  const _AdCard({super.key, required this.ad, required this.placement});
 
   final HouseAd ad;
+  final String placement;
 
   @override
   ConsumerState<_AdCard> createState() => _AdCardState();
@@ -72,9 +83,14 @@ class _AdCardState extends ConsumerState<_AdCard> {
   @override
   void initState() {
     super.initState();
-    // Once per card: a rebuild (a theme or text size change, a scroll back
-    // into view of a kept card) is not another view.
-    unawaited(ref.read(adSourceProvider).viewed(widget.ad.id));
+    // At most once per placement per ad per session. Home's and
+    // Nutrition's lists dispose the card when it scrolls off and build it
+    // again when it comes back; that, a rebuild (a theme or text size
+    // change) or a return to the screen is not another view.
+    final reported = ref.read(adViewsReportedProvider);
+    if (reported.add((widget.placement, widget.ad.id))) {
+      unawaited(ref.read(adSourceProvider).viewed(widget.ad.id));
+    }
   }
 
   Future<void> _open(Uri link) async {

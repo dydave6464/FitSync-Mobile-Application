@@ -78,6 +78,41 @@ Future<List<String>> _pump(
   return log;
 }
 
+const _otherAd = HouseAd(
+  id: 8,
+  title: 'Whey protein, buy 1 take 1',
+  imageUrl: 'http://fitsync.test/storage/ads/8.jpg',
+  linkUrl: null,
+);
+
+/// [slots] at the top of a list far taller than the screen, so a scroll
+/// takes them off it (and disposes them) and back.
+Future<void> _pumpLong(
+  WidgetTester tester,
+  FakeAdSource source,
+  List<Widget> slots,
+) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        profileProvider.overrideWith(() => _StubProfile(false)),
+        adSourceProvider.overrideWithValue(source),
+        proRepositoryProvider.overrideWithValue(FakeProRepository()),
+      ],
+      child: MaterialApp(
+        theme: fsLightTheme(),
+        home: Scaffold(
+          body: ListView(
+            padding: const EdgeInsets.all(20),
+            children: [...slots, const SizedBox(height: 4000)],
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('a free trainee sees the card: the Ad label, image and title', (
     tester,
@@ -158,6 +193,45 @@ void main() {
     await _pump(tester, source, textScale: 1.5);
 
     expect(source.calls, ['viewed 7']);
+    expect(source.currentCalls, 1);
+  });
+
+  // Home and Nutrition are lists: the card is disposed when it scrolls off
+  // and built again when it comes back. That is the same ad, and not
+  // another view.
+  testWidgets('scrolling away and back keeps the ad and counts no new view', (
+    tester,
+  ) async {
+    final source = FakeAdSource(ad: sampleHouseAd);
+    await _pumpLong(tester, source, const [AdSlot(placement: 'home')]);
+    expect(source.calls, ['viewed 7']);
+
+    // Another ad is running by now: the slot must not swap to it.
+    source.ad = _otherAd;
+    await tester.drag(find.byType(ListView), const Offset(0, -2500));
+    await tester.pumpAndSettle();
+    expect(find.byType(FsCard), findsNothing, reason: 'the card was disposed');
+    await tester.drag(find.byType(ListView), const Offset(0, 2500));
+    await tester.pumpAndSettle();
+
+    expect(find.text(sampleHouseAd.title), findsOneWidget);
+    expect(find.text(_otherAd.title), findsNothing);
+    expect(source.currentCalls, 1);
+    expect(source.calls, ['viewed 7']);
+  });
+
+  testWidgets('the same ad counts one view in each placement', (tester) async {
+    final source = FakeAdSource(ad: sampleHouseAd);
+    await _pumpLong(tester, source, const [
+      AdSlot(placement: 'home'),
+      AdSlot(placement: 'nutrition'),
+    ]);
+    await tester.drag(find.byType(ListView), const Offset(0, -2500));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView), const Offset(0, 2500));
+    await tester.pumpAndSettle();
+
+    expect(source.calls, ['viewed 7', 'viewed 7']);
     expect(source.currentCalls, 1);
   });
 
