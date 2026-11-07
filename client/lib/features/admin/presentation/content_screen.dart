@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/widgets/fs_kit.dart';
 import 'animations_tab.dart';
+import 'food_form_screen.dart';
 import 'meals_tab.dart';
 
 /// The admin's Content tab: Animations · Meals · Ads, as the prototype
@@ -33,12 +34,15 @@ class _ContentScreenState extends State<ContentScreen> {
     _ => const Center(child: Text('Ads')),
   };
 
+  void _addFood() => Navigator.of(context)
+      .push(MaterialPageRoute<void>(builder: (_) => const FoodFormScreen()));
+
   @override
   Widget build(BuildContext context) {
     _visited.add(_segment);
-    final add = switch (_segment) {
-      'meals' => (tooltip: 'Add food', onPressed: null as VoidCallback?),
-      'ads' => (tooltip: 'Add ad', onPressed: null as VoidCallback?),
+    final addTooltip = switch (_segment) {
+      'meals' => 'Add food',
+      'ads' => 'Add ad',
       _ => null,
     };
 
@@ -62,12 +66,13 @@ class _ContentScreenState extends State<ContentScreen> {
                       ),
                     ),
                   ),
-                  if (add != null)
+                  if (addTooltip != null)
                     IconButton(
                       key: const Key('admin.content.add'),
                       icon: const Icon(Icons.add),
-                      tooltip: add.tooltip,
-                      onPressed: add.onPressed,
+                      tooltip: addTooltip,
+                      // The ad form comes with the Ads segment itself.
+                      onPressed: _segment == 'meals' ? _addFood : null,
                     ),
                 ],
               ),

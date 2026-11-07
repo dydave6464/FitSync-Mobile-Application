@@ -6,6 +6,7 @@ import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../domain/admin_format.dart';
 import '../domain/admin_models.dart';
+import 'food_form_screen.dart';
 import 'providers.dart';
 import 'widgets/admin_widgets.dart';
 import 'widgets/content_list.dart';
@@ -41,21 +42,28 @@ class MealsTab extends ConsumerWidget {
       onChip: ref.read(adminFoodsQueryProvider.notifier).setChip,
       onLoadMore: ref.read(adminFoodsProvider.notifier).loadMore,
       onRetry: () => ref.invalidate(adminFoodsProvider),
-      itemBuilder: (context, food) =>
-          FoodRow(key: ValueKey('admin.food.${food.id}'), food: food),
+      itemBuilder: (context, food) => _FoodRow(
+        key: ValueKey('admin.food.${food.id}'),
+        food: food,
+        // Pushed over the tabs, so the form has the whole screen and back
+        // returns to the list where it was left.
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => FoodFormScreen(food: food)),
+        ),
+      ),
     );
   }
 }
 
 /// "1 cup · 320 kcal", or "320 kcal" with no serving given.
-String foodSubtitle(AdminFood food) {
+String _subtitle(AdminFood food) {
   final kcal = '${groupThousands(food.kcal.toDouble())} kcal';
   final serving = food.servingDesc;
   return serving == null || serving.isEmpty ? kcal : '$serving · $kcal';
 }
 
-class FoodRow extends StatelessWidget {
-  const FoodRow({super.key, required this.food, this.onTap});
+class _FoodRow extends StatelessWidget {
+  const _FoodRow({super.key, required this.food, this.onTap});
 
   final AdminFood food;
   final VoidCallback? onTap;
@@ -63,7 +71,7 @@ class FoodRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
-    final subtitle = foodSubtitle(food);
+    final subtitle = _subtitle(food);
     final type = foodTypeLabels[food.foodType];
     final spoken = [
       food.name,
