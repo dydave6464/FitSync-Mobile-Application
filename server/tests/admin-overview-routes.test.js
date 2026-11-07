@@ -10,7 +10,7 @@ const { createTestAdmin } = require('./helpers/admin');
 const { signToken } = require('../src/lib/tokens');
 const { manilaDay } = require('../src/lib/manila-day');
 const { previousMonth } = require('../src/db/admin-stats');
-const { adRevenueByMonth } = require('../src/db/revenue');
+const { adRevenueByMonth, proRevenueByMonth } = require('../src/db/revenue');
 
 test('GET /admin/overview', async (t) => {
   const pool = createPool(testDbConfig());
@@ -142,6 +142,29 @@ test('GET /admin/overview', async (t) => {
     await ad(`${previousMonth(lastMonth)}-15`, `${previousMonth(lastMonth)}-20`, 999);
     const data = await overview();
     assert.deepEqual(data.adRevenue, { thisMonthPhp: 1200, lastMonthPhp: 500 });
+  });
+
+  await t.test('Pro revenue: each paid payment in the Manila month it was paid', async () => {
+    const thisMonth = manilaDay().slice(0, 7);
+    const lastMonth = previousMonth(thisMonth);
+    const copy = (paymentId, plan, amount, paidOn) => pool.query(
+      'INSERT INTO revenue_payments (payment_id, plan, amount_php, method, paid_on) VALUES (?, ?, ?, NULL, ?)',
+      [paymentId, plan, amount, paidOn],
+    );
+    await copy(1, 'monthly', 249, `${thisMonth}-01`);
+    await copy(2, 'annual', 1788, `${lastMonth}-28`);
+    await copy(3, 'annual', 1788, `${previousMonth(lastMonth)}-28`); // in neither
+    const data = await overview();
+    assert.deepEqual(data.proRevenue, { thisMonthPhp: 249, lastMonthPhp: 1788 });
+  });
+
+  await t.test('proRevenueByMonth answers every month asked for, cents kept', async () => {
+    await pool.query(
+      `INSERT INTO revenue_payments (payment_id, plan, amount_php, method, paid_on)
+       VALUES (10, 'monthly', 10.25, NULL, '2025-03-01'), (11, 'monthly', 0.5, 'card', '2025-03-31')`,
+    );
+    const got = await proRevenueByMonth(pool, ['2025-02', '2025-03']);
+    assert.deepEqual([...got], [['2025-02', 0], ['2025-03', 10.75]]);
   });
 
   await t.test('adRevenueByMonth answers every month asked for, cents kept', async () => {

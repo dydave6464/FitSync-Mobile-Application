@@ -2,7 +2,7 @@
 const { isProSql, proStatus } = require('./pro');
 const { manilaDay } = require('../lib/manila-day');
 const { likePattern } = require('../lib/query-params');
-const { proRevenueByMonth, adRevenueByMonth } = require('./revenue');
+const { proRevenueByMonth, adRevenueByMonth, previousMonth } = require('./revenue');
 
 /// Every dated row a trainee leaves by using the app, one (user_id, d) per
 /// row: a trainee is "active" on a day when any of these falls on it. Rows
@@ -15,12 +15,6 @@ const ACTIVITY_DAYS_SQL = `
   UNION ALL SELECT user_id, checkin_date FROM morning_checkins`;
 
 const SIGNUP_DAYS = 30;
-
-/// 'YYYY-MM' of the month before [ym].
-function previousMonth(ym) {
-  const [y, m] = ym.split('-').map(Number);
-  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
-}
 
 /// The numbers on the admin Overview (Appendix A, GET /admin/overview).
 /// [today] is the Manila day the windows end on; the pool's sessions run at
