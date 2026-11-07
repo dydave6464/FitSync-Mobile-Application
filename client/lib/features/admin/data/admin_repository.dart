@@ -10,6 +10,12 @@ class AdminRepository {
 
   final ApiClient _api;
 
+  /// How long an ad save with an image waits, as Snap a meal's photo does:
+  /// the body is up to about 2 MB, which a slow uplink takes well over the
+  /// usual 10 seconds to send. Giving up early would leave the ad created
+  /// while the form says it failed.
+  static const imageTimeout = Duration(seconds: 45);
+
   /// The signed-in admin. The launch check: an expired or revoked admin token
   /// answers `UNAUTHENTICATED`.
   Future<AdminUser> me() async {
@@ -116,12 +122,26 @@ class AdminRepository {
   }
 
   /// `400` per field (`details: [{ field }]`); `400 INVALID_IMAGE`.
-  Future<AdminAd> createAd(AdInput input) async =>
-      _ad(await _api.postJson('/api/v1/admin/ads', input.toJson()));
+  Future<AdminAd> createAd(AdInput input) async => _ad(
+    await _api.postJson(
+      '/api/v1/admin/ads',
+      input.toJson(),
+      timeout: _timeoutFor(input),
+    ),
+  );
 
   /// `404 AD_NOT_FOUND`. The image is replaced only when [input] has one.
-  Future<AdminAd> updateAd(int id, AdInput input) async =>
-      _ad(await _api.patchJson('/api/v1/admin/ads/$id', input.toJson()));
+  Future<AdminAd> updateAd(int id, AdInput input) async => _ad(
+    await _api.patchJson(
+      '/api/v1/admin/ads/$id',
+      input.toJson(),
+      timeout: _timeoutFor(input),
+    ),
+  );
+
+  /// [imageTimeout] with an image; otherwise the usual.
+  static Duration? _timeoutFor(AdInput input) =>
+      input.image == null ? null : imageTimeout;
 
   /// Pauses the ad ([active] false) or resumes it, nothing else changed.
   Future<AdminAd> setAdActive(int id, {required bool active}) async =>

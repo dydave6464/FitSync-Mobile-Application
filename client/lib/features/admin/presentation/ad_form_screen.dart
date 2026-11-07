@@ -272,6 +272,11 @@ class _AdFormScreenState extends ConsumerState<AdFormScreen> {
         await repo.updateAd(ad.id, _input());
       }
     } catch (error) {
+      // No answer is not "not saved": the ad may be in even so. The list
+      // shows it before the admin presses Save again and makes a second.
+      if (error is ApiException && error.code == 'NETWORK_ERROR') {
+        container.invalidate(adminAdsProvider);
+      }
       if (!mounted) return;
       setState(() {
         _saving = false;

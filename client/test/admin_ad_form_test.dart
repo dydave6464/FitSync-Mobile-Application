@@ -398,6 +398,29 @@ void main() {
     expect(find.byType(AdFormScreen), findsOneWidget);
   });
 
+  // The ad may have been created even so: the list shows it before the
+  // admin presses Save again and makes a second one.
+  testWidgets('no answer from the server fetches the ads list again', (
+    tester,
+  ) async {
+    final repo = FakeAdminRepository(
+      createAd: (_) async =>
+          throw const ApiException('NETWORK_ERROR', "Can't reach the server."),
+    );
+    await _pump(tester, repo);
+    await _fillNew(tester);
+    final listLoads = repo.adsCalls;
+
+    await _pressSave(tester);
+
+    expect(
+      find.text("Couldn't reach FitSync. Check your connection and try again."),
+      findsOneWidget,
+    );
+    expect(find.byType(AdFormScreen), findsOneWidget);
+    expect(repo.adsCalls, listLoads + 1);
+  });
+
   testWidgets('the edit form opens with the ad, its image optional', (
     tester,
   ) async {

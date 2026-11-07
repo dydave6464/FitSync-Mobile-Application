@@ -765,6 +765,49 @@ void main() {
       expect(ad.status, 'paused');
     });
 
+    // An image makes the body up to about 2 MB: on a slow uplink the usual
+    // 10 seconds would give up while the ad is still being sent.
+    test('an ad with an image waits as long as Snap a meal does', () async {
+      expect(AdminRepository.imageTimeout, const Duration(seconds: 45));
+      final api = _RecordingApi();
+      final repo = AdminRepository(api);
+
+      await repo.createAd(input(image: jpeg));
+      await repo.updateAd(5, input(image: jpeg));
+      await repo.createAd(input());
+      await repo.updateAd(5, input());
+      await repo.setAdActive(5, active: false);
+
+      expect(api.timeouts, [
+        ('POST', AdminRepository.imageTimeout),
+        ('PATCH', AdminRepository.imageTimeout),
+        ('POST', null),
+        ('PATCH', null),
+        ('PATCH', null),
+      ]);
+    });
+
+    test('patchJson honours a per-call timeout', () async {
+      final api = ApiClient(
+        tokens: TokenStore(backing: InMemorySecureStore()),
+        client: MockClient((_) async {
+          await Future<void>.delayed(const Duration(milliseconds: 200));
+          return _ok({'ad': adJson()});
+        }),
+      );
+      await expectLater(
+        api.patchJson(
+          '/x',
+          const {},
+          timeout: const Duration(milliseconds: 20),
+        ),
+        throwsA(
+          isA<ApiException>().having((e) => e.code, 'code', 'NETWORK_ERROR'),
+        ),
+      );
+      expect(await api.patchJson('/x', const {}), contains('ad'));
+    });
+
     test('a refused image keeps INVALID_IMAGE and its message', () async {
       final repo = _repo(
         [],
@@ -892,4 +935,49 @@ void main() {
       expect(r.firstMonth, isNull);
     });
   });
+}
+
+/// Records each POST's and PATCH's timeout, and answers an ad.
+class _RecordingApi extends ApiClient {
+  _RecordingApi() : super(tokens: TokenStore(backing: InMemorySecureStore()));
+
+  final timeouts = <(String, Duration?)>[];
+
+  static const _ad = {
+    'ad': {
+      'id': 5,
+      'title': 'Protein bars, 20% off',
+      'imageUrl': '/storage/ads/5.jpg',
+      'linkUrl': null,
+      'advertiser': 'GymShark PH',
+      'amountPhp': 1200,
+      'startsOn': '2026-11-01',
+      'endsOn': '2026-11-30',
+      'active': true,
+      'status': 'running',
+      'views': 0,
+      'taps': 0,
+    },
+  };
+
+  @override
+  Future<Map<String, dynamic>> postJson(
+    String path,
+    Map<String, dynamic> body, {
+    Duration? timeout,
+    Future<void>? abortTrigger,
+  }) async {
+    timeouts.add(('POST', timeout));
+    return _ad;
+  }
+
+  @override
+  Future<Map<String, dynamic>> patchJson(
+    String path,
+    Map<String, dynamic> body, {
+    Duration? timeout,
+  }) async {
+    timeouts.add(('PATCH', timeout));
+    return _ad;
+  }
 }
