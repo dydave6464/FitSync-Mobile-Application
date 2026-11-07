@@ -9,6 +9,8 @@ const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { createTestAdmin } = require('./helpers/admin');
 const { signToken } = require('../src/lib/tokens');
 const { manilaDay } = require('../src/lib/manila-day');
+const { previousMonth } = require('../src/db/admin-stats');
+const { adRevenueByMonth } = require('../src/db/revenue');
 
 test('GET /admin/overview', async (t) => {
   const pool = createPool(testDbConfig());
@@ -122,5 +124,33 @@ test('GET /admin/overview', async (t) => {
     assert.equal(data.today, manilaDay());
     assert.deepEqual(data.proRevenue, { thisMonthPhp: 0, lastMonthPhp: 0 });
     assert.deepEqual(data.adRevenue, { thisMonthPhp: 0, lastMonthPhp: 0 });
+  });
+
+  await t.test('ad revenue: each ad\'s amount in the Manila month it starts', async () => {
+    const thisMonth = manilaDay().slice(0, 7);
+    const lastMonth = previousMonth(thisMonth);
+    const ad = (startsOn, endsOn, amount, active = 1) => pool.query(
+      `INSERT INTO advertisements (title, image_url, advertiser, amount_php, starts_on, ends_on, is_active)
+       VALUES ('Ad', 'ads/a.jpg', 'Co', ?, ?, ?, ?)`, [amount, startsOn, endsOn, active],
+    );
+    await ad(`${thisMonth}-01`, `${thisMonth}-28`, 700);
+    // Paused or not, an ad's amount was paid: it still counts.
+    await ad(`${thisMonth}-02`, `${thisMonth}-03`, 500, 0);
+    // Starts last month, runs into this one: last month's.
+    await ad(`${lastMonth}-28`, `${thisMonth}-05`, 500);
+    // Two months back: in neither.
+    await ad(`${previousMonth(lastMonth)}-15`, `${previousMonth(lastMonth)}-20`, 999);
+    const data = await overview();
+    assert.deepEqual(data.adRevenue, { thisMonthPhp: 1200, lastMonthPhp: 500 });
+  });
+
+  await t.test('adRevenueByMonth answers every month asked for, cents kept', async () => {
+    await pool.query(
+      `INSERT INTO advertisements (title, image_url, advertiser, amount_php, starts_on, ends_on)
+       VALUES ('Ad', 'ads/b.jpg', 'Co', 10.25, '2025-03-04', '2025-03-05'),
+              ('Ad', 'ads/c.jpg', 'Co', 0.5, '2025-03-31', '2025-04-05')`,
+    );
+    const got = await adRevenueByMonth(pool, ['2025-02', '2025-03']);
+    assert.deepEqual([...got], [['2025-02', 0], ['2025-03', 10.75]]);
   });
 });
