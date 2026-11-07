@@ -44,8 +44,9 @@ function searchParam(raw) {
   return raw;
 }
 
-/// The admin Content area: exercise demos (Animations). Mounted inside
-/// buildAdminRouter, so every route here is already behind requireAdmin.
+/// The admin Content area: exercise demos (Animations) and FitSync's own
+/// foods (Meals). Mounted inside buildAdminRouter, so every route here is
+/// already behind requireAdmin.
 function buildAdminContentRouter({ pool, storage = null }) {
   const router = express.Router();
   // The database stores keys; callers get URLs (as routes/exercises.js).
