@@ -4,6 +4,9 @@
 /// or health answers is sent to the admin app, so none of it is modelled.
 library;
 
+import 'dart:convert';
+import 'dart:typed_data';
+
 double _php(Object? value) => (value as num).toDouble();
 
 /// One Manila day of the sign-ups chart.
@@ -441,5 +444,107 @@ class FoodInput {
     'fiberG': fiberG,
     'sugarG': sugarG,
     'sodiumMg': sodiumMg,
+  };
+}
+
+/// One of FitSync's own ads, as the Ads list and form show it.
+class AdminAd {
+  const AdminAd({
+    required this.id,
+    required this.title,
+    required this.imageUrl,
+    required this.linkUrl,
+    required this.advertiser,
+    required this.amountPhp,
+    required this.startsOn,
+    required this.endsOn,
+    required this.active,
+    required this.status,
+    required this.views,
+    required this.taps,
+  });
+
+  final int id;
+  final String title;
+
+  /// A server media path (`/storage/ads/...`); see `mediaUrl`.
+  final String imageUrl;
+
+  /// The https link the card opens, or null for an ad with none.
+  final String? linkUrl;
+  final String advertiser;
+
+  /// What the advertiser paid, counted as revenue in the month it starts.
+  final double amountPhp;
+
+  /// The run, Manila `YYYY-MM-DD`, both days included.
+  final String startsOn;
+  final String endsOn;
+
+  /// False is paused.
+  final bool active;
+
+  /// `running`, `scheduled`, `ended` or `paused`, worked out by the server
+  /// for its own today.
+  final String status;
+  final int views;
+  final int taps;
+
+  factory AdminAd.fromJson(Map<String, dynamic> json) => AdminAd(
+    id: (json['id'] as num).toInt(),
+    title: json['title'] as String,
+    imageUrl: json['imageUrl'] as String,
+    linkUrl: json['linkUrl'] as String?,
+    advertiser: json['advertiser'] as String,
+    amountPhp: _php(json['amountPhp']),
+    startsOn: json['startsOn'] as String,
+    endsOn: json['endsOn'] as String,
+    active: json['active'] as bool,
+    status: json['status'] as String,
+    views: (json['views'] as num).toInt(),
+    taps: (json['taps'] as num).toInt(),
+  );
+}
+
+/// What the ad form sends, on add and on edit alike. Every field is sent,
+/// an empty link as null (on an edit, null takes the link away). The image
+/// goes only when one was picked: required to add, optional to edit.
+class AdInput {
+  const AdInput({
+    required this.title,
+    required this.advertiser,
+    required this.amountPhp,
+    required this.startsOn,
+    required this.endsOn,
+    this.linkUrl,
+    this.image,
+    this.mimeType,
+  });
+
+  final String title;
+  final String advertiser;
+  final double amountPhp;
+
+  /// `YYYY-MM-DD`.
+  final String startsOn;
+  final String endsOn;
+  final String? linkUrl;
+
+  /// A JPEG's or PNG's bytes, with its [mimeType].
+  final Uint8List? image;
+  final String? mimeType;
+
+  Map<String, dynamic> toJson() => {
+    'title': title,
+    'advertiser': advertiser,
+    'amountPhp': amountPhp,
+    'startsOn': startsOn,
+    'endsOn': endsOn,
+    'linkUrl': linkUrl,
+    // Plain base64, no `data:` prefix: the server's image rule.
+    if (image case final bytes?) ...{
+      'image': base64Encode(bytes),
+      'mimeType': mimeType,
+    },
   };
 }

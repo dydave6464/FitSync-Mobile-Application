@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -637,6 +638,152 @@ void main() {
       );
 
       expect(repo.baseUrl, 'http://10.0.2.2:3000');
+    });
+  });
+
+  group('ads', () {
+    Map<String, dynamic> adJson({
+      bool active = true,
+      String status = 'running',
+      String? linkUrl = 'https://shop.example.ph/',
+    }) => {
+      'id': 5,
+      'title': 'Protein bars, 20% off',
+      'imageUrl': '/storage/ads/5.jpg',
+      'linkUrl': linkUrl,
+      'advertiser': 'GymShark PH',
+      'amountPhp': 1200.5,
+      'startsOn': '2026-11-01',
+      'endsOn': '2026-11-30',
+      'active': active,
+      'status': status,
+      'views': 1204,
+      'taps': 37,
+    };
+
+    // A JPEG's first bytes, so the base64 is easy to check.
+    final jpeg = Uint8List.fromList(const [0xFF, 0xD8, 0xFF, 0xE0]);
+
+    AdInput input({Uint8List? image, String? linkUrl}) => AdInput(
+      title: 'Protein bars, 20% off',
+      advertiser: 'GymShark PH',
+      amountPhp: 1200.5,
+      startsOn: '2026-11-01',
+      endsOn: '2026-11-30',
+      linkUrl: linkUrl,
+      image: image,
+      mimeType: image == null ? null : 'image/jpeg',
+    );
+
+    test('ads reads every ad from /admin/ads', () async {
+      final sent = <http.Request>[];
+      final repo = _repo(
+        sent,
+        (_) => _ok({
+          'ads': [
+            adJson(),
+            adJson(active: false, status: 'paused', linkUrl: null),
+          ],
+        }),
+      );
+
+      final ads = await repo.ads();
+
+      expect(sent.single.method, 'GET');
+      expect(sent.single.url.path, '/api/v1/admin/ads');
+      expect(ads, hasLength(2));
+      final ad = ads.first;
+      expect(ad.id, 5);
+      expect(ad.title, 'Protein bars, 20% off');
+      expect(ad.imageUrl, '/storage/ads/5.jpg');
+      expect(ad.linkUrl, 'https://shop.example.ph/');
+      expect(ad.advertiser, 'GymShark PH');
+      expect(ad.amountPhp, 1200.5);
+      expect(ad.startsOn, '2026-11-01');
+      expect(ad.endsOn, '2026-11-30');
+      expect(ad.active, isTrue);
+      expect(ad.status, 'running');
+      expect(ad.views, 1204);
+      expect(ad.taps, 37);
+      expect(ads.last.linkUrl, isNull);
+      expect(ads.last.status, 'paused');
+    });
+
+    test('createAd posts every field and the image as plain base64', () async {
+      final sent = <http.Request>[];
+      final repo = _repo(sent, (_) => _ok({'ad': adJson()}));
+
+      final ad = await repo.createAd(
+        input(image: jpeg, linkUrl: 'https://shop.example.ph/'),
+      );
+
+      expect(sent.single.method, 'POST');
+      expect(sent.single.url.path, '/api/v1/admin/ads');
+      expect(jsonDecode(sent.single.body), {
+        'title': 'Protein bars, 20% off',
+        'advertiser': 'GymShark PH',
+        'amountPhp': 1200.5,
+        'startsOn': '2026-11-01',
+        'endsOn': '2026-11-30',
+        'linkUrl': 'https://shop.example.ph/',
+        'image': '/9j/4A==',
+        'mimeType': 'image/jpeg',
+      });
+      expect(ad.id, 5);
+    });
+
+    test('updateAd without a new image leaves the image out', () async {
+      final sent = <http.Request>[];
+      final repo = _repo(sent, (_) => _ok({'ad': adJson(linkUrl: null)}));
+
+      await repo.updateAd(5, input());
+
+      expect(sent.single.method, 'PATCH');
+      expect(sent.single.url.path, '/api/v1/admin/ads/5');
+      final body = jsonDecode(sent.single.body) as Map<String, dynamic>;
+      expect(body.containsKey('image'), isFalse);
+      expect(body.containsKey('mimeType'), isFalse);
+      // Sent as null, so an edit can take the link away.
+      expect(body.containsKey('linkUrl'), isTrue);
+      expect(body['linkUrl'], isNull);
+      expect(body['title'], 'Protein bars, 20% off');
+    });
+
+    test('setAdActive patches only the active flag', () async {
+      final sent = <http.Request>[];
+      final repo = _repo(
+        sent,
+        (_) => _ok({'ad': adJson(active: false, status: 'paused')}),
+      );
+
+      final ad = await repo.setAdActive(5, active: false);
+
+      expect(sent.single.method, 'PATCH');
+      expect(sent.single.url.path, '/api/v1/admin/ads/5');
+      expect(jsonDecode(sent.single.body), {'active': false});
+      expect(ad.active, isFalse);
+      expect(ad.status, 'paused');
+    });
+
+    test('a refused image keeps INVALID_IMAGE and its message', () async {
+      final repo = _repo(
+        [],
+        (_) =>
+            _error(400, 'INVALID_IMAGE', 'The image must be at most 1.5 MB.'),
+      );
+
+      await expectLater(
+        repo.createAd(input(image: jpeg)),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.code, 'code', 'INVALID_IMAGE')
+              .having(
+                (e) => e.message,
+                'message',
+                'The image must be at most 1.5 MB.',
+              ),
+        ),
+      );
     });
   });
 }

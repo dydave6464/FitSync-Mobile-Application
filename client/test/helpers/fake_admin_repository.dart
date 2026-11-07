@@ -22,7 +22,21 @@ class FakeAdminRepository implements AdminRepository {
     Future<AdminFood> Function(int id, FoodInput input)? updateFood,
     Future<AdminFood> Function(int id)? hideFood,
     Future<AdminFood> Function(int id)? showFood,
-  }) : onOverview = overview ?? (() async => sampleOverview()),
+    Future<List<AdminAd>> Function()? ads,
+    Future<AdminAd> Function(AdInput input)? createAd,
+    Future<AdminAd> Function(int id, AdInput input)? updateAd,
+    Future<AdminAd> Function(int id, bool active)? setAdActive,
+  }) : onAds = ads ?? (() async => const []),
+       onCreateAd = createAd ?? ((_) async => sampleAd()),
+       onUpdateAd = updateAd ?? ((id, _) async => sampleAd(id: id)),
+       onSetAdActive =
+           setAdActive ??
+           ((id, active) async => sampleAd(
+             id: id,
+             active: active,
+             status: active ? 'running' : 'paused',
+           )),
+       onOverview = overview ?? (() async => sampleOverview()),
        onUsers = users ?? ((_, _, _) async => usersPage(const [])),
        onUser = user ?? ((id) async => sampleDetail(id: id)),
        onSuspend = suspend ?? ((id) async => sampleDetail(id: id)),
@@ -67,6 +81,40 @@ class FakeAdminRepository implements AdminRepository {
   final updateFoodCalls = <({int id, FoodInput input})>[];
   final hideFoodCalls = <int>[];
   final showFoodCalls = <int>[];
+
+  Future<List<AdminAd>> Function() onAds;
+  Future<AdminAd> Function(AdInput input) onCreateAd;
+  Future<AdminAd> Function(int id, AdInput input) onUpdateAd;
+  Future<AdminAd> Function(int id, bool active) onSetAdActive;
+
+  int adsCalls = 0;
+  final createAdCalls = <AdInput>[];
+  final updateAdCalls = <({int id, AdInput input})>[];
+  final setAdActiveCalls = <({int id, bool active})>[];
+
+  @override
+  Future<List<AdminAd>> ads() {
+    adsCalls++;
+    return onAds();
+  }
+
+  @override
+  Future<AdminAd> createAd(AdInput input) {
+    createAdCalls.add(input);
+    return onCreateAd(input);
+  }
+
+  @override
+  Future<AdminAd> updateAd(int id, AdInput input) {
+    updateAdCalls.add((id: id, input: input));
+    return onUpdateAd(id, input);
+  }
+
+  @override
+  Future<AdminAd> setAdActive(int id, {required bool active}) {
+    setAdActiveCalls.add((id: id, active: active));
+    return onSetAdActive(id, active);
+  }
 
   @override
   String get baseUrl => 'http://fitsync.test';
@@ -340,4 +388,32 @@ AdminFoodsPage foodsPage(
   page: page,
   limit: limit,
   total: total ?? foods.length,
+);
+
+AdminAd sampleAd({
+  int id = 5,
+  String title = 'Protein bars, 20% off',
+  String imageUrl = '/storage/ads/5.jpg',
+  String? linkUrl = 'https://shop.example.ph/',
+  String advertiser = 'GymShark PH',
+  double amountPhp = 1200,
+  String startsOn = '2026-11-01',
+  String endsOn = '2026-11-30',
+  bool active = true,
+  String status = 'running',
+  int views = 1204,
+  int taps = 37,
+}) => AdminAd(
+  id: id,
+  title: title,
+  imageUrl: imageUrl,
+  linkUrl: linkUrl,
+  advertiser: advertiser,
+  amountPhp: amountPhp,
+  startsOn: startsOn,
+  endsOn: endsOn,
+  active: active,
+  status: status,
+  views: views,
+  taps: taps,
 );
