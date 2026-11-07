@@ -427,6 +427,43 @@ void main() {
     expect(find.text('Ad saved.'), findsOneWidget);
   });
 
+  // An ad's amount is ad revenue: Overview (always built, tab 0) and a
+  // Revenue month already opened must show the figure just typed.
+  for (final editing in [false, true]) {
+    testWidgets(
+      'saving ${editing ? 'an edited' : 'a new'} ad fetches Overview and '
+      'Revenue again',
+      (tester) async {
+        final repo = FakeAdminRepository();
+        final container = await _pump(
+          tester,
+          repo,
+          ad: editing ? sampleAd() : null,
+        );
+        container.listen(adminOverviewProvider, (_, _) {});
+        container.listen(adminRevenueProvider(null), (_, _) {});
+        container.listen(adminRevenueProvider('2026-10'), (_, _) {});
+        await tester.pumpAndSettle();
+        final overviews = repo.overviewCalls;
+        final months = repo.revenueCalls.length;
+
+        if (editing) {
+          await _type(tester, 'amount', '1500');
+        } else {
+          await _fillNew(tester);
+        }
+        await _pressSave(tester);
+
+        expect(find.text('Ad saved.'), findsOneWidget);
+        expect(repo.overviewCalls, overviews + 1);
+        expect(
+          repo.revenueCalls.sublist(months),
+          unorderedEquals([null, '2026-10']),
+        );
+      },
+    );
+  }
+
   testWidgets('Pause ad and Resume ad change it at once, and say so', (
     tester,
   ) async {

@@ -280,6 +280,10 @@ class _AdFormScreenState extends ConsumerState<AdFormScreen> {
       return;
     }
     container.invalidate(adminAdsProvider);
+    // The amount is ad revenue: Overview's month and every Revenue month
+    // already opened show it, so they are fetched again too.
+    container.invalidate(adminOverviewProvider);
+    container.invalidate(adminRevenueProvider);
     // As the food form: only while this form is still the page on top, and
     // still "saving" as it pops, so the discard guard lets it go.
     if (route != null && route.isCurrent) navigator.pop();
