@@ -122,6 +122,12 @@ class AdminUsersNotifier extends AsyncNotifier<AdminUsersState> {
   @override
   Future<AdminUsersState> build() async {
     _generation++;
+    // Overview's cards hand over with a filter: the list is fetched again
+    // even when the chip is already on, so its count is no older than the
+    // figure just tapped. A tap on the bar (no filter) keeps it as it is.
+    ref.listen(adminTabProvider, (_, next) {
+      if (next.usersFilter != null) ref.invalidateSelf();
+    });
     final query = ref.watch(adminUsersQueryProvider);
     final result = await ref
         .watch(adminRepositoryProvider)

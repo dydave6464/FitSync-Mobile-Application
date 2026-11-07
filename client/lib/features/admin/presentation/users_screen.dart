@@ -85,6 +85,15 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
     }
   }
 
+  /// Pull to refresh. A failure is the provider's state, drawn as the
+  /// error.
+  Future<void> _refresh() async {
+    try {
+      ref.invalidate(adminUsersProvider);
+      await ref.read(adminUsersProvider.future);
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
     final query = ref.watch(adminUsersQueryProvider);
@@ -159,13 +168,30 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
           Expanded(
             child: users.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => FsRetry(
-                fullScreen: true,
-                message: userMessage(error),
-                buttonKey: const Key('admin.users.retry'),
-                onRetry: () => ref.invalidate(adminUsersProvider),
+              error: (error, _) => RefreshIndicator(
+                onRefresh: _refresh,
+                // Pull to refresh works on the error too.
+                child: LayoutBuilder(
+                  builder: (context, constraints) => ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    children: [
+                      SizedBox(
+                        height: constraints.maxHeight,
+                        child: FsRetry(
+                          fullScreen: true,
+                          message: userMessage(error),
+                          buttonKey: const Key('admin.users.retry'),
+                          onRetry: () => ref.invalidate(adminUsersProvider),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              data: (state) => _list(state, query),
+              data: (state) => RefreshIndicator(
+                onRefresh: _refresh,
+                child: _list(state, query),
+              ),
             ),
           ),
         ],
@@ -193,6 +219,8 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
 
     if (state.items.isEmpty) {
       return ListView(
+        // Pull to refresh works on a short page too.
+        physics: const AlwaysScrollableScrollPhysics(),
         children: [
           count,
           if (query.q.isNotEmpty)
@@ -217,6 +245,7 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
     final today = ref.watch(adminTodayProvider);
     return ListView.builder(
       controller: _scroll,
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.only(bottom: 16),
       itemCount: 1 + state.items.length + (state.loadingMore ? 1 : 0),
       itemBuilder: (context, index) {

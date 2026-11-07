@@ -228,6 +228,89 @@ void main() {
     handle.dispose();
   });
 
+  // The list is kept while the admin is on another tab: Overview's card
+  // must not lead to a count older than the figure just tapped.
+  testWidgets("Overview's card fetches the list again on the same chip", (
+    tester,
+  ) async {
+    var total = 28;
+    final repo = FakeAdminRepository(
+      users: (_, _, _) async => usersPage(_rows(2), total: total),
+    );
+    final container = await _pump(tester, repo);
+    expect(find.text('28 trainees'), findsOneWidget);
+
+    total = 29;
+    container.read(adminTabProvider.notifier).select(0);
+    container.read(adminTabProvider.notifier).select(1, usersFilter: 'all');
+    await tester.pumpAndSettle();
+
+    expect(repo.usersCalls, hasLength(2));
+    expect(repo.usersCalls.last, (q: '', filter: 'all', page: 1));
+    expect(find.text('29 trainees'), findsOneWidget);
+  });
+
+  testWidgets('a tap on the bar keeps the list as it is', (tester) async {
+    final repo = FakeAdminRepository(
+      users: (_, _, _) async => usersPage(_rows(2), total: 28),
+    );
+    final container = await _pump(tester, repo);
+
+    container.read(adminTabProvider.notifier).select(0);
+    container.read(adminTabProvider.notifier).select(1);
+    await tester.pumpAndSettle();
+
+    expect(repo.usersCalls, hasLength(1));
+  });
+
+  for (final empty in [false, true]) {
+    testWidgets(
+      'pulling down fetches ${empty ? 'an empty' : 'the'} list again',
+      (tester) async {
+        var total = empty ? 0 : 28;
+        final repo = FakeAdminRepository(
+          users: (_, _, _) async =>
+              usersPage(_rows(total.clamp(0, 2)), total: total),
+        );
+        await _pump(tester, repo);
+
+        total = 29;
+        await tester.fling(
+          find.text(empty ? 'No trainees yet.' : '28 trainees'),
+          const Offset(0, 400),
+          1000,
+        );
+        await tester.pumpAndSettle();
+
+        expect(repo.usersCalls, hasLength(2));
+        expect(find.text('29 trainees'), findsOneWidget);
+      },
+    );
+  }
+
+  testWidgets('pulling down works after a failed load too', (tester) async {
+    var fail = true;
+    final repo = FakeAdminRepository(
+      users: (_, _, _) async {
+        if (fail) throw refused;
+        return usersPage(_rows(2), total: 2);
+      },
+    );
+    await _pump(tester, repo);
+    final calls = repo.usersCalls.length;
+
+    fail = false;
+    await tester.fling(
+      find.text('The server said no.'),
+      const Offset(0, 400),
+      1000,
+    );
+    await tester.pumpAndSettle();
+
+    expect(repo.usersCalls.length, greaterThan(calls));
+    expect(find.text('Trainee 0'), findsOneWidget);
+  });
+
   testWidgets('a filter sent before the tab opens is the first one asked', (
     tester,
   ) async {
