@@ -2,7 +2,7 @@
 const express = require('express');
 const AppError = require('../lib/app-error');
 const {
-  invalidAdminField, idParam, searchParam, pagingParams,
+  invalidAdminField, idParam, searchParam, pagingParams, bodyOf,
 } = require('../lib/admin-params');
 const {
   STATUSES, asAdminExercise, listAdminExercises, publishExercise, unpublishExercise,
@@ -17,12 +17,6 @@ function noSuchExercise() {
 
 function noSuchFood() {
   return AppError.notFound('FOOD_NOT_FOUND', 'No such food.');
-}
-
-/// The JSON body as an object; anything else reads as no fields at all.
-function bodyOf(req) {
-  const b = req.body;
-  return b && typeof b === 'object' && !Array.isArray(b) ? b : {};
 }
 
 /// The admin Content area: exercise demos (Animations) and FitSync's own

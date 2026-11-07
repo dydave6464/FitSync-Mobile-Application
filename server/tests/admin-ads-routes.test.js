@@ -172,6 +172,32 @@ test('admin ads endpoints', async (t) => {
     assert.equal(after, n);
   });
 
+  await t.test('a link is stored as the address the app will open (normalised by URL)', async () => {
+    const cases = [
+      ['https:example.com', 'https://example.com/'],
+      ['https:/example.com', 'https://example.com/'],
+      ['https://exa\tmple.com/x', 'https://example.com/x'],
+      ['https://example.com/a\nb', 'https://example.com/ab'],
+      ['  HTTPS://Example.COM/Bar  ', 'https://example.com/Bar'],
+    ];
+    for (const [typed, stored] of cases) {
+      const { ad } = (await post('/ads', valid({ linkUrl: typed })).expect(201)).body.data;
+      assert.equal(ad.linkUrl, stored, JSON.stringify(typed));
+      assert.equal((await adRow(ad.id)).link_url, stored, JSON.stringify(typed));
+    }
+    // The 500 limit is on the stored address: a space becomes %20.
+    const typed500 = `https://example.com/${'a'.repeat(478)} b`;
+    assert.equal(typed500.length, 500);
+    assert.equal(fieldOf(await post('/ads', valid({ linkUrl: typed500 }))), 'linkUrl');
+    // PATCH stores the same normalised address.
+    const { ad } = (await post('/ads', valid()).expect(201)).body.data;
+    assert.equal(
+      (await patch(`/ads/${ad.id}`, { linkUrl: 'https:example.com' }).expect(200)).body.data.ad.linkUrl,
+      'https://example.com/',
+    );
+    assert.equal((await adRow(ad.id)).link_url, 'https://example.com/');
+  });
+
   await t.test('the edges pass: 80/120 characters, ₱0 and ₱1,000,000, one day, a 500-character link', async () => {
     await post('/ads', valid({
       title: 'x'.repeat(80), advertiser: 'y'.repeat(120), amountPhp: 0, startsOn: '2026-12-01', endsOn: '2026-12-01',

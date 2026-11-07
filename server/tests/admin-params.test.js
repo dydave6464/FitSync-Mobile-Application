@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  invalidAdminField, idParam, searchParam, pagingParams, DEFAULT_LIMIT, MAX_LIMIT,
+  invalidAdminField, idParam, searchParam, pagingParams, bodyOf, DEFAULT_LIMIT, MAX_LIMIT,
 } = require('../src/lib/admin-params');
 
 const refusal = (fn) => {
@@ -49,4 +49,10 @@ test('pagingParams: reads page and limit, and refuses a limit over the max', () 
   assert.deepEqual(refusal(() => pagingParams({ limit: '51' })), {
     status: 400, code: 'INVALID_QUERY_PARAM', message: 'limit must not exceed 50.', details: [{ field: 'limit', value: '51' }],
   });
+});
+
+test('bodyOf: a JSON object body is that object; anything else is no fields', () => {
+  const b = { title: 'x' };
+  assert.equal(bodyOf({ body: b }), b);
+  for (const body of [undefined, null, [], ['a'], 'text', 5, true]) assert.deepEqual(bodyOf({ body }), {}, JSON.stringify(body));
 });

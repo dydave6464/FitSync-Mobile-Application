@@ -2,7 +2,8 @@
 const crypto = require('node:crypto');
 const express = require('express');
 const AppError = require('../lib/app-error');
-const { invalidAdminField, idParam } = require('../lib/admin-params');
+const { invalidAdminField, idParam, bodyOf } = require('../lib/admin-params');
+const { isRealDay } = require('../lib/days');
 const { checkImage } = require('../lib/image-check');
 const { manilaDay } = require('../lib/manila-day');
 const {
@@ -16,12 +17,6 @@ const MAX_LINK = 500;
 
 function noSuchAd() {
   return AppError.notFound('AD_NOT_FOUND', 'No such ad.');
-}
-
-/// The JSON body as an object; anything else reads as no fields at all.
-function bodyOf(req) {
-  const b = req.body;
-  return b && typeof b === 'object' && !Array.isArray(b) ? b : {};
 }
 
 /// A trimmed name of 1 to [max] characters.
@@ -41,30 +36,28 @@ function checkAmount(value) {
   return Math.round(value * 100) / 100;
 }
 
-/// A real day as YYYY-MM-DD (checkDate's round trip; future days allowed).
+/// A real day as YYYY-MM-DD (future days allowed).
 function checkDay(field, value) {
-  const d = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00Z`) : null;
-  const ok = d !== null && !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
-  if (!ok) throw invalidAdminField(field, `${field} must be a real date as YYYY-MM-DD.`);
+  if (!isRealDay(value)) throw invalidAdminField(field, `${field} must be a real date as YYYY-MM-DD.`);
   return value;
 }
 
-/// An https link of at most MAX_LINK characters; null, absent or blank is no
-/// link.
+/// An https link, answered as the address URL reads it (url.href), which is
+/// what is stored and what the app opens: `https:example.com` becomes
+/// `https://example.com/`, and a tab or newline inside is dropped. The
+/// MAX_LINK limit is on that stored address. Null, absent or blank is no link.
 function checkLink(value) {
   if (value == null || (typeof value === 'string' && value.trim() === '')) return null;
   const bad = () => invalidAdminField('linkUrl', `linkUrl must be an https:// link of at most ${MAX_LINK} characters.`);
   if (typeof value !== 'string') throw bad();
-  const link = value.trim();
-  if (link.length > MAX_LINK) throw bad();
   let url;
   try {
-    url = new URL(link);
+    url = new URL(value.trim());
   } catch {
     throw bad();
   }
-  if (url.protocol !== 'https:') throw bad();
-  return link;
+  if (url.protocol !== 'https:' || url.hostname === '' || url.href.length > MAX_LINK) throw bad();
+  return url.href;
 }
 
 /// The checked fields [body] sends (all of them when [required]), as

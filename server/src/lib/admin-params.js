@@ -34,6 +34,13 @@ function pagingParams(query) {
   };
 }
 
+/// The JSON body of an admin request as an object; anything else (absent,
+/// an array, a bare value) reads as no fields at all.
+function bodyOf(req) {
+  const b = req.body;
+  return b && typeof b === 'object' && !Array.isArray(b) ? b : {};
+}
+
 module.exports = {
-  DEFAULT_LIMIT, MAX_LIMIT, invalidAdminField, idParam, searchParam, pagingParams,
+  DEFAULT_LIMIT, MAX_LIMIT, invalidAdminField, idParam, searchParam, pagingParams, bodyOf,
 };
