@@ -1,6 +1,7 @@
 'use strict';
-const { isProSql } = require('./pro');
+const { isProSql, proStatus } = require('./pro');
 const { manilaDay } = require('../lib/manila-day');
+const { likePattern } = require('../lib/query-params');
 const { proRevenueByMonth, adRevenueByMonth } = require('./revenue');
 
 /// Every dated row a trainee leaves by using the app, one (user_id, d) per
@@ -71,4 +72,101 @@ async function overview(pool, today = manilaDay()) {
   };
 }
 
-module.exports = { ACTIVITY_DAYS_SQL, overview, previousMonth };
+/// Each of [userIds]' latest activity day up to [today] ('YYYY-MM-DD'), as
+/// a Map; a trainee with none is absent. A row dated ahead (a planned
+/// workout) is not activity yet.
+async function lastActiveDays(pool, userIds, today) {
+  if (userIds.length === 0) return new Map();
+  const [rows] = await pool.query(
+    `SELECT a.user_id, DATE_FORMAT(MAX(a.d), '%Y-%m-%d') AS day
+       FROM (${ACTIVITY_DAYS_SQL}) a
+      WHERE a.user_id IN (?) AND a.d <= ?
+      GROUP BY a.user_id`,
+    [userIds, today],
+  );
+  return new Map(rows.map((r) => [r.user_id, r.day]));
+}
+
+const USER_FILTERS = {
+  all: null,
+  pro: isProSql('u'),
+  suspended: 'u.suspended_at IS NOT NULL',
+};
+
+/// One page of trainees for the admin Users tab, newest sign-ups first.
+/// [q] matches name or email anywhere, ignoring case (blank or null: everyone);
+/// [filter] is a USER_FILTERS key. Account summary only -- nothing a trainee
+/// logged about their health.
+async function listUsers(pool, { q = null, filter = 'all', page = 1, limit = 30 }, today = manilaDay()) {
+  const where = [];
+  const params = [];
+  if (q !== null && q.trim() !== '') {
+    const pattern = likePattern(q);
+    where.push('(u.full_name LIKE ? OR u.email LIKE ?)');
+    params.push(pattern, pattern);
+  }
+  if (USER_FILTERS[filter]) where.push(USER_FILTERS[filter]);
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+  const [[{ total }]] = await pool.query(`SELECT COUNT(*) AS total FROM users u ${whereSql}`, params);
+  const [rows] = await pool.query(
+    `SELECT u.user_id, u.full_name, u.email, ${isProSql('u')} AS is_pro,
+            u.suspended_at IS NOT NULL AS suspended,
+            DATE_FORMAT(u.created_at, '%Y-%m-%d') AS joined_on
+       FROM users u ${whereSql}
+      ORDER BY u.created_at DESC, u.user_id DESC
+      LIMIT ? OFFSET ?`,
+    [...params, limit, (page - 1) * limit],
+  );
+  const lastActive = await lastActiveDays(pool, rows.map((r) => r.user_id), today);
+  return {
+    users: rows.map((r) => ({
+      id: r.user_id,
+      fullName: r.full_name,
+      email: r.email,
+      isPro: Boolean(r.is_pro),
+      suspended: Boolean(r.suspended),
+      lastActiveOn: lastActive.get(r.user_id) ?? null,
+      joinedOn: r.joined_on,
+    })),
+    total: Number(total),
+  };
+}
+
+/// One trainee's account info for the admin (Appendix A's user detail), or
+/// null when there is no such trainee. Account info only, by design.
+async function userDetail(pool, userId, today = manilaDay()) {
+  const [[row]] = await pool.query(
+    `SELECT u.user_id, u.full_name, u.email, u.email_verified,
+            u.password_hash IS NOT NULL AS has_password,
+            EXISTS (SELECT 1 FROM user_identities gi
+                     WHERE gi.user_id = u.user_id AND gi.provider = 'google') AS has_google,
+            DATE_FORMAT(u.created_at, '%Y-%m-%d') AS joined_on,
+            UNIX_TIMESTAMP(u.suspended_at) AS suspended_epoch
+       FROM users u WHERE u.user_id = ?`,
+    [userId],
+  );
+  if (!row) return null;
+  const [lastActive, pro] = await Promise.all([
+    lastActiveDays(pool, [row.user_id], today),
+    proStatus(pool, row.user_id),
+  ]);
+  const signInMethods = [];
+  if (row.has_password) signInMethods.push('password');
+  if (row.has_google) signInMethods.push('google');
+  return {
+    id: row.user_id,
+    fullName: row.full_name,
+    email: row.email,
+    joinedOn: row.joined_on,
+    emailVerified: Boolean(row.email_verified),
+    signInMethods,
+    lastActiveOn: lastActive.get(row.user_id) ?? null,
+    pro: { isPro: pro.pro, source: pro.source, until: pro.until },
+    suspendedAt: row.suspended_epoch == null ? null : new Date(Number(row.suspended_epoch) * 1000).toISOString(),
+  };
+}
+
+module.exports = {
+  ACTIVITY_DAYS_SQL, USER_FILTERS, overview, previousMonth, listUsers, userDetail,
+};
