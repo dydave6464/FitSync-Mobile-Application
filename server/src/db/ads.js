@@ -8,6 +8,10 @@ const SELECT_AD = `
          DATE_FORMAT(starts_on, '%Y-%m-%d') AS starts_on, DATE_FORMAT(ends_on, '%Y-%m-%d') AS ends_on
     FROM advertisements`;
 
+// Running on [today]: active, and today within its run dates (both run days).
+// A NULL date (only rows from before 046) leaves that side open, as adStatus.
+const RUNNING = `is_active = 1 AND (starts_on IS NULL OR starts_on <= ?) AND (ends_on IS NULL OR ends_on >= ?)`;
+
 /// An ad's status on [today], first match wins: paused (inactive), scheduled
 /// (before its start), ended (after its end), else running.
 function adStatus(row, today) {
@@ -78,6 +82,23 @@ async function updateAd(pool, adId, changes) {
   );
 }
 
+/// One ad running on [today], picked at random, or null.
+async function randomRunningAd(pool, today) {
+  const [rows] = await pool.query(`${SELECT_AD} WHERE ${RUNNING} ORDER BY RAND() LIMIT 1`, [today, today]);
+  return rows[0] || null;
+}
+
+const COUNTERS = { view: 'views', tap: 'taps' };
+
+/// Adds one view or tap to an ad, only while it is running on [today]. An
+/// unknown or not-running ad is left alone.
+async function countAd(pool, adId, kind, today) {
+  const column = COUNTERS[kind];
+  await pool.query(
+    `UPDATE advertisements SET ${column} = ${column} + 1 WHERE ad_id = ? AND ${RUNNING}`, [adId, today, today],
+  );
+}
+
 /// The ads that start in Manila month [month] ('YYYY-MM') -- their amounts
 /// count as that month's ad revenue -- by start day, then id.
 async function listAdsForMonth(pool, month) {
@@ -95,5 +116,5 @@ async function listAdsForMonth(pool, month) {
 }
 
 module.exports = {
-  adStatus, asAdminAd, listAds, findAd, insertAd, updateAd, listAdsForMonth,
+  adStatus, asAdminAd, listAds, findAd, insertAd, updateAd, randomRunningAd, countAd, listAdsForMonth,
 };

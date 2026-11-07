@@ -75,12 +75,13 @@ test('admin ads endpoints', async (t) => {
   await t.test('a trainee token is refused', async () => {
     const [u] = await pool.query("INSERT INTO users (email, password_hash, full_name) VALUES ('t@example.com', 'x', 'T')");
     const token = signToken(u.insertId, TEST_JWT);
-    for (const req of [
-      request(app).get('/api/v1/admin/ads'),
-      request(app).post('/api/v1/admin/ads').send(valid()),
-      request(app).patch('/api/v1/admin/ads/1').send({ active: false }),
+    // Built one at a time: supertest starts a server per request object.
+    for (const send of [
+      () => request(app).get('/api/v1/admin/ads'),
+      () => request(app).post('/api/v1/admin/ads').send(valid()),
+      () => request(app).patch('/api/v1/admin/ads/1').send({ active: false }),
     ]) {
-      const res = await req.set('Authorization', `Bearer ${token}`).expect(401);
+      const res = await send().set('Authorization', `Bearer ${token}`).expect(401);
       assert.equal(res.body.error.code, 'UNAUTHENTICATED');
     }
   });
