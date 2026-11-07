@@ -1,7 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../exercises/presentation/providers.dart' show apiClientProvider;
+import '../../exercises/presentation/providers.dart'
+    show apiClientProvider, apiRetryPolicy;
 import '../data/admin_repository.dart';
+import '../domain/admin_models.dart';
 
 final adminRepositoryProvider = Provider<AdminRepository>(
   (ref) => AdminRepository(ref.watch(apiClientProvider)),
@@ -26,4 +28,11 @@ class AdminTab extends Notifier<AdminTabState> {
 /// on the tab the last one left.
 final adminTabProvider = NotifierProvider.autoDispose<AdminTab, AdminTabState>(
   AdminTab.new,
+);
+
+/// The Overview tab's figures. autoDispose, like every admin provider, so
+/// nothing one admin saw outlives their sign-out.
+final adminOverviewProvider = FutureProvider.autoDispose<AdminOverview>(
+  (ref) => ref.watch(adminRepositoryProvider).overview(),
+  retry: apiRetryPolicy,
 );

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/widgets/fs_kit.dart';
+import 'overview_screen.dart';
 import 'providers.dart';
 
 /// The admin's app: four tabs over an IndexedStack, as the trainee's
@@ -77,7 +78,7 @@ class _AdminShellState extends ConsumerState<AdminShell> {
         body: IndexedStack(
           index: index,
           children: [
-            _tab(0, () => const Center(child: Text('Overview'))),
+            _tab(0, () => const OverviewScreen()),
             _tab(1, () => const Center(child: Text('Users'))),
             _tab(2, () => const Center(child: Text('Content'))),
             _tab(3, () => const Center(child: Text('Revenue'))),

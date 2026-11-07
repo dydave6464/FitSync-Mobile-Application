@@ -137,6 +137,10 @@ class _FakeAdminRepository implements AdminRepository {
     meCalls++;
     return onMe();
   }
+
+  // The launch check reads only `me()`.
+  @override
+  dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
 }
 
 /// Hands out a different routine day on each call, so a cached one is

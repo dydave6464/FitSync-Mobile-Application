@@ -6,6 +6,8 @@ import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/admin/presentation/admin_shell.dart';
 import 'package:fitsync/features/admin/presentation/providers.dart';
 
+import 'helpers/fake_admin_repository.dart';
+
 const _tabs = ['Overview', 'Users', 'Content', 'Revenue'];
 
 Future<ProviderContainer> _pump(
@@ -13,7 +15,11 @@ Future<ProviderContainer> _pump(
   bool dark = false,
   double textScale = 1.0,
 }) async {
-  final container = ProviderContainer();
+  final container = ProviderContainer(
+    overrides: [
+      adminRepositoryProvider.overrideWithValue(FakeAdminRepository()),
+    ],
+  );
   addTearDown(container.dispose);
   await tester.pumpWidget(
     UncontrolledProviderScope(
