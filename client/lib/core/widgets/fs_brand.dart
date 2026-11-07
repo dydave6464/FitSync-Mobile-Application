@@ -10,8 +10,12 @@ import '../theme.dart';
 ///
 /// The colours come from the dark palette in both themes on purpose: the mark
 /// is the brand, and it must look the same on the sign-in screen as on the
-/// phone's home screen. The launcher icons in ios/ and android/ are rendered
-/// from this widget's painter, so the two cannot drift apart.
+/// phone's home screen. The launcher icon sources in assets/icon/ were
+/// rendered once from [FitBladesPainter] (the blades at 22/34 of a 1024
+/// square, on [FsTokens.dark]'s surface2 for the full icon and on transparent
+/// for Android's adaptive foreground). Nothing re-renders them: if the blades
+/// change, render both again the same way and run
+/// `dart run flutter_launcher_icons`.
 class FsBrandMark extends StatelessWidget {
   const FsBrandMark({super.key, this.size = 34});
 

@@ -125,9 +125,10 @@ flutter:
   # see https://flutter.dev/to/font-from-package
 
 # Launcher icons (a dev tool): `dart run flutter_launcher_icons` regenerates the
-# iPhone and Android icons from the two sources in assets/icon/. Both are
-# rendered from FsBrandMark's FitBladesPainter (logo concept 12, "Motion
+# iPhone and Android icons from the two sources in assets/icon/. Both were
+# rendered once from FsBrandMark's FitBladesPainter (logo concept 12, "Motion
 # blades"): green blades on the dark tile, the same mark as the sign-in screen.
+# Re-render them if the blades change (see the FsBrandMark doc comment).
 flutter_launcher_icons:
   image_path: "assets/icon/app_icon.png"
   ios: true
