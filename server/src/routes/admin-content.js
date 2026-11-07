@@ -1,20 +1,15 @@
 'use strict';
 const express = require('express');
 const AppError = require('../lib/app-error');
-const { parsePositiveInt } = require('../lib/query-params');
+const {
+  invalidAdminField, idParam, searchParam, pagingParams,
+} = require('../lib/admin-params');
 const {
   STATUSES, asAdminExercise, listAdminExercises, publishExercise, unpublishExercise,
 } = require('../db/admin-exercises');
 const {
   SHOW, listAdminFoods, createFood, updateFood, setFoodHidden,
 } = require('../db/admin-foods');
-
-const DEFAULT_LIMIT = 30;
-const MAX_LIMIT = 50;
-
-function invalid(field, message) {
-  return AppError.badRequest('INVALID_ADMIN_FIELD', message, [{ field }]);
-}
 
 function noSuchExercise() {
   return AppError.notFound('EXERCISE_NOT_FOUND', 'No such exercise.');
@@ -30,20 +25,6 @@ function bodyOf(req) {
   return b && typeof b === 'object' && !Array.isArray(b) ? b : {};
 }
 
-/// The :id of a route, or null when it can't name a row (then the answer is
-/// the same 404 as an unknown id).
-function idParam(raw) {
-  return /^[1-9]\d{0,9}$/.test(raw) ? Number(raw) : null;
-}
-
-/// A single search text, or a 400: a repeated key arrives as an array
-/// (Express 5's query parser).
-function searchParam(raw) {
-  if (raw === undefined) return '';
-  if (typeof raw !== 'string') throw invalid('q', 'q must be a single search text.');
-  return raw;
-}
-
 /// The admin Content area: exercise demos (Animations) and FitSync's own
 /// foods (Meals). Mounted inside buildAdminRouter, so every route here is
 /// already behind requireAdmin.
@@ -56,11 +37,10 @@ function buildAdminContentRouter({ pool, storage = null }) {
     try {
       const { status } = req.query;
       if (typeof status !== 'string' || !STATUSES.includes(status)) {
-        throw invalid('status', 'status must be pending or live.');
+        throw invalidAdminField('status', 'status must be pending or live.');
       }
       const q = searchParam(req.query.q);
-      const page = parsePositiveInt('page', req.query.page, 1);
-      const limit = parsePositiveInt('limit', req.query.limit, DEFAULT_LIMIT, MAX_LIMIT);
+      const { page, limit } = pagingParams(req.query);
       const { rows, counts, total } = await listAdminExercises(pool, { status, q, page, limit });
       res.json({
         data: { exercises: rows.map((r) => asAdminExercise(r, toUrl)), counts, page, limit, total },
@@ -92,11 +72,10 @@ function buildAdminContentRouter({ pool, storage = null }) {
     try {
       const { show } = req.query;
       if (typeof show !== 'string' || !Object.hasOwn(SHOW, show)) {
-        throw invalid('show', 'show must be shown or hidden.');
+        throw invalidAdminField('show', 'show must be shown or hidden.');
       }
       const q = searchParam(req.query.q);
-      const page = parsePositiveInt('page', req.query.page, 1);
-      const limit = parsePositiveInt('limit', req.query.limit, DEFAULT_LIMIT, MAX_LIMIT);
+      const { page, limit } = pagingParams(req.query);
       const { foods, counts, total } = await listAdminFoods(pool, { show, q, page, limit });
       res.json({ data: { foods, counts, page, limit, total } });
     } catch (err) {

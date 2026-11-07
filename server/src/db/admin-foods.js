@@ -1,13 +1,14 @@
 'use strict';
 const AppError = require('../lib/app-error');
 const { likePattern } = require('../lib/query-params');
-const { checkManual } = require('../lib/nutrition-input');
+const { invalidAdminField } = require('../lib/admin-params');
+const {
+  checkManual, round1, round2, MAX_NAME, MAX_SERVING_DESC,
+} = require('../lib/nutrition-input');
 const { FOOD_TYPES } = require('./foods');
 
 const SHOW = { shown: 'f.hidden_at IS NULL', hidden: 'f.hidden_at IS NOT NULL' };
 const CATEGORIES = ['filipino', 'international'];
-const MAX_NAME = 100;
-const MAX_SERVING_DESC = 60;
 // The numbers that decide a food's calories (nutrition-input.js's rule).
 const CALORIE_FIELDS = ['kcal', 'proteinG', 'carbsG', 'fatG'];
 const NUMBER_FIELDS = [...CALORIE_FIELDS, 'fiberG', 'sugarG', 'sodiumMg'];
@@ -20,9 +21,9 @@ const SELECT_FOOD = `
          f.fat_g, f.fiber_g, f.sugar_g, f.sodium_mg, f.hidden_at IS NOT NULL AS hidden
     FROM foods f`;
 
-const round2 = (n) => Math.round(Number(n) * 100) / 100;
-const nullable2 = (n) => (n == null ? null : round2(n));
-const nullable1 = (n) => (n == null ? null : Math.round(Number(n) * 10) / 10);
+// DECIMAL columns arrive as strings.
+const nullable2 = (n) => (n == null ? null : round2(Number(n)));
+const nullable1 = (n) => (n == null ? null : round1(Number(n)));
 
 /// A SELECT_FOOD row in Appendix A's admin food shape.
 function asAdminFood(r) {
@@ -33,18 +34,14 @@ function asAdminFood(r) {
     foodType: r.food_type,
     servingDesc: r.serving_desc,
     kcal: r.calories,
-    proteinG: round2(r.protein_g),
-    carbsG: round2(r.carbs_g),
-    fatG: round2(r.fat_g),
+    proteinG: round2(Number(r.protein_g)),
+    carbsG: round2(Number(r.carbs_g)),
+    fatG: round2(Number(r.fat_g)),
     fiberG: nullable2(r.fiber_g),
     sugarG: nullable2(r.sugar_g),
     sodiumMg: nullable1(r.sodium_mg),
     hidden: Boolean(r.hidden),
   };
-}
-
-function invalid(field, message) {
-  return AppError.badRequest('INVALID_ADMIN_FIELD', message, [{ field }]);
 }
 
 function nameTaken() {
@@ -58,14 +55,18 @@ function nameTaken() {
 /// from protein, carbs and fat, and a food with neither is refused.
 function checkFood(food) {
   const name = typeof food.name === 'string' ? food.name.trim() : '';
-  if (name.length < 1 || name.length > MAX_NAME) throw invalid('name', `name must be 1 to ${MAX_NAME} characters.`);
-  if (!CATEGORIES.includes(food.category)) throw invalid('category', 'category must be filipino or international.');
+  if (name.length < 1 || name.length > MAX_NAME) {
+    throw invalidAdminField('name', `name must be 1 to ${MAX_NAME} characters.`);
+  }
+  if (!CATEGORIES.includes(food.category)) {
+    throw invalidAdminField('category', 'category must be filipino or international.');
+  }
   if (!FOOD_TYPES.includes(food.foodType)) {
-    throw invalid('foodType', `foodType must be one of: ${FOOD_TYPES.join(', ')}.`);
+    throw invalidAdminField('foodType', `foodType must be one of: ${FOOD_TYPES.join(', ')}.`);
   }
   const servingDesc = typeof food.servingDesc === 'string' ? food.servingDesc.trim() : '';
   if (servingDesc.length < 1 || servingDesc.length > MAX_SERVING_DESC) {
-    throw invalid('servingDesc', `servingDesc must be 1 to ${MAX_SERVING_DESC} characters.`);
+    throw invalidAdminField('servingDesc', `servingDesc must be 1 to ${MAX_SERVING_DESC} characters.`);
   }
   const numbers = Object.fromEntries(NUMBER_FIELDS.map((k) => [k, food[k]]));
   const checked = checkManual({ name, servingDesc: null, ...numbers });

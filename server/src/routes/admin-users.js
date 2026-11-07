@@ -1,26 +1,15 @@
 'use strict';
 const express = require('express');
 const AppError = require('../lib/app-error');
-const { parsePositiveInt } = require('../lib/query-params');
+const {
+  invalidAdminField, idParam, searchParam, pagingParams,
+} = require('../lib/admin-params');
 const {
   overview, listUsers, userDetail, suspendUser, reinstateUser, USER_FILTERS,
 } = require('../db/admin-stats');
 
-const DEFAULT_LIMIT = 30;
-const MAX_LIMIT = 50;
-
-function invalid(field, message) {
-  return AppError.badRequest('INVALID_ADMIN_FIELD', message, [{ field }]);
-}
-
 function noSuchTrainee() {
   return AppError.notFound('USER_NOT_FOUND', 'No such trainee.');
-}
-
-/// The :id of a users route, or null when it can't name a trainee (then the
-/// answer is the same 404 as an unknown id).
-function userIdParam(raw) {
-  return /^[1-9]\d{0,9}$/.test(raw) ? Number(raw) : null;
 }
 
 /// The admin Overview and Users areas. Mounted inside buildAdminRouter, so
@@ -38,14 +27,13 @@ function buildAdminUsersRouter({ pool }) {
 
   router.get('/users', async (req, res, next) => {
     try {
-      const { q = '', filter = 'all' } = req.query;
+      const q = searchParam(req.query.q);
       // A repeated key arrives as an array (Express 5's query parser).
-      if (typeof q !== 'string') throw invalid('q', 'q must be a single search text.');
+      const { filter = 'all' } = req.query;
       if (typeof filter !== 'string' || !Object.hasOwn(USER_FILTERS, filter)) {
-        throw invalid('filter', 'filter must be all, pro or suspended.');
+        throw invalidAdminField('filter', 'filter must be all, pro or suspended.');
       }
-      const page = parsePositiveInt('page', req.query.page, 1);
-      const limit = parsePositiveInt('limit', req.query.limit, DEFAULT_LIMIT, MAX_LIMIT);
+      const { page, limit } = pagingParams(req.query);
       const { users, total } = await listUsers(pool, { q, filter, page, limit });
       res.json({ data: { users, page, limit, total } });
     } catch (err) {
@@ -55,7 +43,7 @@ function buildAdminUsersRouter({ pool }) {
 
   router.get('/users/:id', async (req, res, next) => {
     try {
-      const userId = userIdParam(req.params.id);
+      const userId = idParam(req.params.id);
       const user = userId === null ? null : await userDetail(pool, userId);
       if (!user) throw noSuchTrainee();
       res.json({ data: { user } });
@@ -68,7 +56,7 @@ function buildAdminUsersRouter({ pool }) {
   for (const [action, apply] of [['suspend', suspendUser], ['reinstate', reinstateUser]]) {
     router.post(`/users/:id/${action}`, async (req, res, next) => {
       try {
-        const userId = userIdParam(req.params.id);
+        const userId = idParam(req.params.id);
         if (userId === null || !(await apply(pool, userId))) throw noSuchTrainee();
         res.json({ data: { user: await userDetail(pool, userId) } });
       } catch (err) {

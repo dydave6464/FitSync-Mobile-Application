@@ -141,4 +141,7 @@ function scaled(base, servings) {
   };
 }
 
-module.exports = { invalid, checkDate, checkServings, checkClientId, checkManual, basisId, perServingOf, scaled, round1, round2 };
+module.exports = {
+  invalid, checkDate, checkServings, checkClientId, checkManual, basisId, perServingOf, scaled, round1, round2,
+  MAX_NAME, MAX_SERVING_DESC,
+};
