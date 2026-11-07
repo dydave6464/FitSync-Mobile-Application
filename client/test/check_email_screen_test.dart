@@ -10,6 +10,7 @@ import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/features/auth/data/auth_repository.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
+import 'package:fitsync/features/auth/domain/sign_in_outcome.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/auth/presentation/check_email_screen.dart';
 import 'package:fitsync/features/auth/presentation/code_entry.dart';
@@ -45,11 +46,11 @@ class FakeAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<AuthUser> login(String email, String password) {
+  Future<SignInOutcome> login(String email, String password) async {
     loginCalls++;
     lastEmail = email;
     lastPassword = password;
-    return onLogin?.call() ?? Future.value(_user);
+    return TraineeSignedIn(await (onLogin?.call() ?? Future.value(_user)));
   }
 
   @override

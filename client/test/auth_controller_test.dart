@@ -12,6 +12,7 @@ import 'package:fitsync/features/admin/domain/admin_user.dart';
 import 'package:fitsync/features/admin/presentation/providers.dart';
 import 'package:fitsync/features/auth/data/auth_repository.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
+import 'package:fitsync/features/auth/domain/sign_in_outcome.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/home/presentation/plan_ready.dart';
 import 'package:fitsync/features/reminders/data/reminder_scheduler.dart';
@@ -58,7 +59,7 @@ class FakeAuthRepository implements AuthRepository {
   Future<void> signOut() => tokens.clear();
 
   @override
-  Future<AuthUser> login(String email, String password) =>
+  Future<SignInOutcome> login(String email, String password) =>
       throw UnimplementedError();
 
   @override

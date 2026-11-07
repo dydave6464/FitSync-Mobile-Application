@@ -9,6 +9,7 @@ import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/auth/data/auth_repository.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
+import 'package:fitsync/features/auth/domain/sign_in_outcome.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/settings/presentation/change_password_screen.dart';
 
@@ -32,7 +33,7 @@ class _FakeAuthRepository implements AuthRepository {
   Future<void> deleteAccount({String? password, String? idToken}) =>
       throw UnimplementedError();
   @override
-  Future<AuthUser> login(String email, String password) =>
+  Future<SignInOutcome> login(String email, String password) =>
       throw UnimplementedError();
   @override
   Future<void> register({

@@ -24,6 +24,7 @@ import '../../streaks/presentation/providers.dart';
 import '../data/auth_repository.dart';
 import '../data/google_sign_in_gateway.dart';
 import '../domain/auth_user.dart';
+import '../domain/sign_in_outcome.dart';
 
 /// Where the app can be, as far as authentication is concerned.
 ///
@@ -139,6 +140,13 @@ class AuthController extends AsyncNotifier<AuthState> {
     _clearUserScopedCaches();
     state = AsyncData(_forUser(user));
   }
+
+  /// After a password sign-in: a trainee goes to [onAuthenticated], an admin
+  /// to [onAdminAuthenticated].
+  void onSignedIn(SignInOutcome outcome) => switch (outcome) {
+    TraineeSignedIn(:final user) => onAuthenticated(user),
+    AdminSignedIn(:final admin) => onAdminAuthenticated(admin),
+  };
 
   /// The admin's [onAuthenticated]: the token and the admin role are already
   /// stored, so the shell moves straight to the admin tabs.

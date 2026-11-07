@@ -231,11 +231,12 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         // user to hand the controller. Send the way forward instead.
         _pushCheckEmail(email, password, sendCodeOnOpen: false);
       } else {
-        final user = await repo.login(email, password);
+        final outcome = await repo.login(email, password);
         if (!mounted) return;
         // The token is already stored by the repository, so the shell can
-        // move on without a second round trip.
-        ref.read(authControllerProvider.notifier).onAuthenticated(user);
+        // move on without a second round trip: to the trainee app, or to
+        // the admin tabs when the email was an admin's.
+        ref.read(authControllerProvider.notifier).onSignedIn(outcome);
       }
     } on ApiException catch (error) {
       if (!mounted) return;
