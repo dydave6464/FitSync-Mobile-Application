@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart' show FaIcon;
 
+import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 
 import 'package:fitsync/core/api_exception.dart';
@@ -136,6 +137,13 @@ class _DeletedAuthController extends AuthController {
       const AuthState(AuthStatus.signedOut, null, SignOutReason.accountDeleted);
 }
 
+/// Signed out at launch because an admin suspended the account.
+class _SuspendedAuthController extends AuthController {
+  @override
+  Future<AuthState> build() async =>
+      const AuthState(AuthStatus.signedOut, null, SignOutReason.suspended);
+}
+
 Future<void> _pump(
   WidgetTester tester,
   FakeAuthRepository repo, {
@@ -246,12 +254,83 @@ void main() {
     handle.dispose();
   });
 
+  testWidgets('says the account is suspended when that is why it is here', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(FakeAuthRepository()),
+          authControllerProvider.overrideWith(_SuspendedAuthController.new),
+        ],
+        child: MaterialApp(theme: fsLightTheme(), home: const SignInScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final note = find.byKey(const Key('signIn.suspended'));
+    final message = find.descendant(
+      of: note,
+      matching: find.text('This account is suspended.'),
+    );
+    expect(message, findsOneWidget);
+    final icon = tester.widget<Icon>(
+      find.descendant(of: note, matching: find.byType(Icon)),
+    );
+    expect(icon.icon, Icons.block);
+    expect(icon.color, FsTokens.light.red);
+    expect(
+      _isLive(tester, message),
+      isTrue,
+      reason: 'a screen reader says it as the sign-in screen appears',
+    );
+    expect(find.text('Your account was deleted.'), findsNothing);
+    handle.dispose();
+  });
+
+  testWidgets('the suspended note fits 360x640 at 2x text, dark', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 2.0;
+    tester.view.physicalSize = const Size(360 * 2.0, 640 * 2.0);
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(FakeAuthRepository()),
+          authControllerProvider.overrideWith(_SuspendedAuthController.new),
+        ],
+        child: MaterialApp(
+          theme: fsDarkTheme(),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: const TextScaler.linear(2.0)),
+            child: child!,
+          ),
+          home: const SignInScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    final icon = tester.widget<Icon>(
+      find.descendant(
+        of: find.byKey(const Key('signIn.suspended')),
+        matching: find.byType(Icon),
+      ),
+    );
+    expect(icon.color, FsTokens.dark.red);
+  });
+
   testWidgets('says nothing about deletion after a plain sign-out', (
     tester,
   ) async {
     await _pump(tester, FakeAuthRepository());
     await tester.pumpAndSettle();
     expect(find.text('Your account was deleted.'), findsNothing);
+    expect(find.byKey(const Key('signIn.suspended')), findsNothing);
   });
 
   testWidgets('renders an email and a password field', (tester) async {
