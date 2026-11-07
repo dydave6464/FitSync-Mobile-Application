@@ -116,9 +116,31 @@ void main() {
     expect(find.text('Chest · Dumbbells'), findsOneWidget);
 
     final t = FsTokens.light;
+    // Amber as a dot beside the word: amber text is 2.5:1 on the light
+    // theme's tag, too faint to read, so the word keeps the tag's own grey.
     expect(
       _tagText(tester, 'admin.exercise.41', 'Pending').style?.color,
-      t.amber,
+      t.text2,
+    );
+    final pendingTag = tester.widget<StatusTag>(
+      find.descendant(
+        of: find.byKey(const ValueKey('admin.exercise.41')),
+        matching: find.byType(StatusTag),
+      ),
+    );
+    expect(pendingTag.dot, t.amber);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('admin.exercise.41')),
+        matching: find.byWidgetPredicate(
+          (w) =>
+              w is Container &&
+              w.decoration is BoxDecoration &&
+              (w.decoration! as BoxDecoration).shape == BoxShape.circle &&
+              (w.decoration! as BoxDecoration).color == t.amber,
+        ),
+      ),
+      findsOneWidget,
     );
     expect(
       _tagText(tester, 'admin.exercise.42', 'Live').style?.color,

@@ -44,7 +44,7 @@ class AnimationsTab extends ConsumerWidget {
       onChip: ref.read(adminExercisesQueryProvider.notifier).setChip,
       onLoadMore: ref.read(adminExercisesProvider.notifier).loadMore,
       onRetry: () => ref.invalidate(adminExercisesProvider),
-      itemBuilder: (context, exercise) => ExerciseRow(
+      itemBuilder: (context, exercise) => _ExerciseRow(
         key: ValueKey('admin.exercise.${exercise.id}'),
         exercise: exercise,
         baseUrl: baseUrl,
@@ -62,13 +62,14 @@ class AnimationsTab extends ConsumerWidget {
 
 /// "Hamstrings · Barbell", in the library's words; either part may be
 /// missing.
-String exerciseSubtitle(AdminExercise exercise) => [
+String _subtitle(AdminExercise exercise) => [
   if (exercise.muscleGroup case final muscle?) muscleLabel(muscle),
   if (exercise.equipment case final equipment?) equipmentLabel(equipment),
 ].join(' · ');
 
-/// "Live" in the accent, "Pending" in amber: the word is always there, so
-/// the colour is never the only clue.
+/// "Live" in the accent, "Pending" with an amber dot (amber text is too
+/// faint on the light theme's tag): the word is always there, so the colour
+/// is never the only clue.
 class ExerciseStatusTag extends StatelessWidget {
   const ExerciseStatusTag({super.key, required this.live});
 
@@ -79,12 +80,12 @@ class ExerciseStatusTag extends StatelessWidget {
     final t = context.fs;
     return live
         ? StatusTag('Live', color: t.accentText)
-        : StatusTag('Pending', color: t.amber);
+        : StatusTag('Pending', dot: t.amber);
   }
 }
 
-class ExerciseRow extends StatelessWidget {
-  const ExerciseRow({
+class _ExerciseRow extends StatelessWidget {
+  const _ExerciseRow({
     super.key,
     required this.exercise,
     required this.baseUrl,
@@ -99,7 +100,7 @@ class ExerciseRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fs;
     final name = exerciseDisplayName(exercise.name);
-    final subtitle = exerciseSubtitle(exercise);
+    final subtitle = _subtitle(exercise);
     final spoken = [
       name,
       if (subtitle.isNotEmpty) subtitle,

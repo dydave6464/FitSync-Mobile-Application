@@ -132,16 +132,30 @@ class InitialsAvatar extends StatelessWidget {
 /// [FsTag]'s pill with its word in [color]: "Pro", "Suspended" in red. The
 /// word is always there, so the colour is never the only clue.
 class StatusTag extends StatelessWidget {
-  const StatusTag(this.text, {super.key, this.color});
+  const StatusTag(this.text, {super.key, this.color, this.dot});
 
   final String text;
 
   /// Null is the tag's usual dim text.
   final Color? color;
 
+  /// A small dot of this colour before the word, for a colour too faint to
+  /// be read as text (the light theme's amber is 2.5:1 on the tag).
+  final Color? dot;
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
+    final word = Text(
+      text,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        fontSize: 10.5,
+        fontWeight: FontWeight.w600,
+        color: color ?? t.text2,
+      ),
+    );
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
@@ -149,16 +163,20 @@ class StatusTag extends StatelessWidget {
         borderRadius: BorderRadius.circular(FsRadius.pill),
         border: Border.all(color: t.line),
       ),
-      child: Text(
-        text,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontSize: 10.5,
-          fontWeight: FontWeight.w600,
-          color: color ?? t.text2,
-        ),
-      ),
+      child: dot == null
+          ? word
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
+                ),
+                const SizedBox(width: 5),
+                Flexible(child: word),
+              ],
+            ),
     );
   }
 }
