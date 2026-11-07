@@ -6,6 +6,7 @@ import '../../../core/client_id.dart';
 import '../../../core/manila_day.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
+import '../../ads/presentation/ad_slot.dart';
 import '../domain/nutrition.dart';
 import 'error_snack_bar.dart';
 import 'log_food_screen.dart';
@@ -215,6 +216,9 @@ class NutritionScreen extends ConsumerWidget {
             onChange: (e) => _change(context, ref, e, day.date),
           ),
         if (day.hasFatsecret) const FatsecretAttribution(),
+        // Last, below the meals; nothing for Pro, or with no ad running.
+        const SizedBox(height: 14),
+        const AdSlot(placement: 'nutrition'),
       ],
     );
   }
