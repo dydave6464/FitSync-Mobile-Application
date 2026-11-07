@@ -24,6 +24,4 @@ function buildAdminRouter(deps) {
   return router;
 }
 
-module.exports = buildAdminRouter;
-module.exports.buildAdminRouter = buildAdminRouter;
-module.exports.toPublicAdmin = toPublicAdmin;
+module.exports = { buildAdminRouter, toPublicAdmin };
