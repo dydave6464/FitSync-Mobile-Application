@@ -90,7 +90,7 @@ void main() {
     );
     expect(find.text('GymShark PH: 20% off'), findsOneWidget);
     final image = tester.widget<Image>(find.byKey(const Key('ad.image')));
-    expect(image.semanticLabel, 'GymShark PH: 20% off');
+    expect(image.excludeFromSemantics, isTrue, reason: 'the title says it');
     expect((image.image as NetworkImage).url, sampleHouseAd.imageUrl);
     expect(find.text('Remove ads with Pro'), findsOneWidget);
   });
@@ -132,6 +132,27 @@ void main() {
     );
     expect(find.text('GymShark PH: 20% off'), findsOneWidget);
     expect(tester.getSize(card).height, greaterThanOrEqualTo(48));
+  });
+
+  testWidgets('a screen reader hears the title, once, when the image fails', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    // The test HTTP client answers every request 400, so the image fails.
+    await _pump(tester, FakeAdSource(ad: sampleHouseAd));
+
+    expect(
+      find.bySemanticsLabel(RegExp('GymShark PH: 20% off')),
+      findsOneWidget,
+    );
+    expect(
+      find.bySemanticsLabel(
+        RegExp('GymShark PH: 20% off[\\s\\S]*GymShark PH: 20% off'),
+      ),
+      findsNothing,
+      reason: 'the title is said once, not by both image and text',
+    );
+    handle.dispose();
   });
 
   testWidgets('a card without a link cannot be tapped', (tester) async {

@@ -112,7 +112,9 @@ class _AdCardState extends ConsumerState<_AdCard> {
                 ad.imageUrl,
                 key: const Key('ad.image'),
                 fit: BoxFit.cover,
-                semanticLabel: ad.title,
+                // The title below says what the ad is, loaded image or not:
+                // an image's label is lost when it fails to load.
+                excludeFromSemantics: true,
                 // The frame, gap included, is drawn only round a loaded
                 // image: one that fails leaves the title on its own.
                 frameBuilder: (context, child, frame, sync) => Padding(
@@ -128,16 +130,13 @@ class _AdCardState extends ConsumerState<_AdCard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    // The image already says the title to a screen reader.
-                    child: ExcludeSemantics(
-                      child: Text(
-                        ad.title,
-                        style: TextStyle(
-                          fontSize: 13.5,
-                          height: 1.35,
-                          fontWeight: FontWeight.w600,
-                          color: t.text,
-                        ),
+                    child: Text(
+                      ad.title,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        height: 1.35,
+                        fontWeight: FontWeight.w600,
+                        color: t.text,
                       ),
                     ),
                   ),
