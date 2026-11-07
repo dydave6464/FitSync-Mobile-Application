@@ -2,13 +2,25 @@
 const express = require('express');
 const AppError = require('../lib/app-error');
 const { parsePositiveInt } = require('../lib/query-params');
-const { STATUSES, asAdminExercise, listAdminExercises } = require('../db/admin-exercises');
+const {
+  STATUSES, asAdminExercise, listAdminExercises, publishExercise,
+} = require('../db/admin-exercises');
 
 const DEFAULT_LIMIT = 30;
 const MAX_LIMIT = 50;
 
 function invalid(field, message) {
   return AppError.badRequest('INVALID_ADMIN_FIELD', message, [{ field }]);
+}
+
+function noSuchExercise() {
+  return AppError.notFound('EXERCISE_NOT_FOUND', 'No such exercise.');
+}
+
+/// The :id of a route, or null when it can't name a row (then the answer is
+/// the same 404 as an unknown id).
+function idParam(raw) {
+  return /^[1-9]\d{0,9}$/.test(raw) ? Number(raw) : null;
 }
 
 /// A single search text, or a 400: a repeated key arrives as an array
@@ -39,6 +51,17 @@ function buildAdminContentRouter({ pool, storage = null }) {
       res.json({
         data: { exercises: rows.map((r) => asAdminExercise(r, toUrl)), counts, page, limit, total },
       });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/exercises/:id/publish', async (req, res, next) => {
+    try {
+      const exerciseId = idParam(req.params.id);
+      const row = exerciseId === null ? null : await publishExercise(pool, exerciseId, req.admin.adminId);
+      if (!row) throw noSuchExercise();
+      res.json({ data: { exercise: asAdminExercise(row, toUrl) } });
     } catch (err) {
       next(err);
     }
