@@ -1,12 +1,8 @@
-import 'dart:io';
-
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../nutrition/data/meal_photo_picker.dart'
-    show PickedPhoto, UnsupportedPhoto;
-import '../../nutrition/domain/meal_photo.dart' show sniffImageType;
+    show PickedPhoto, UnsupportedPhoto, pickedPhotoFrom;
 
 /// Where the ad form gets its image: the phone's gallery. An interface so
 /// tests never reach the platform plugin.
@@ -31,25 +27,7 @@ class GalleryAdImagePicker implements AdImagePicker {
       imageQuality: 85,
       requestFullMetadata: false,
     );
-    if (file == null) return null;
-    final Uint8List bytes;
-    try {
-      bytes = await file.readAsBytes();
-    } finally {
-      _deleteCopy(file);
-    }
-    final type = sniffImageType(bytes);
-    if (type == null) throw const UnsupportedPhoto();
-    return PickedPhoto(bytes, type);
-  }
-
-  /// Deletes image_picker's own copy (resized, or copied out of the
-  /// gallery), never the original. Best effort, as Snap a meal's.
-  static void _deleteCopy(XFile file) {
-    if (kIsWeb) return;
-    try {
-      File(file.path).deleteSync();
-    } catch (_) {}
+    return pickedPhotoFrom(file);
   }
 }
 
