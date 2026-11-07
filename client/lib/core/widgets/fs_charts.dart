@@ -915,3 +915,237 @@ class FsBars extends StatelessWidget {
     );
   }
 }
+
+/// One bar of an [FsStackedBarChart]: its parts, bottom first.
+class FsStackedBar {
+  const FsStackedBar({
+    required this.values,
+    required this.label,
+    required this.total,
+    required this.tooltip,
+  });
+
+  /// One value per series, in the chart's [FsStackedBarChart.colors] order.
+  final List<double> values;
+
+  /// The word under the bar.
+  final String label;
+
+  /// The bar's whole, printed above it.
+  final String total;
+
+  /// What touching the bar reads out: its parts by name.
+  final String tooltip;
+
+  double get sum => values.fold(0, (a, b) => a + b);
+}
+
+/// Totals over a few stretches of time, each split into its parts, such as
+/// a month's revenue from Pro and from ads.
+///
+/// Every bar's whole is printed above it, so no one has to judge a stack's
+/// height to read it; the parts are told apart by colour and a 2 dp gap of
+/// the card between them, and named by a legend the caller draws.
+class FsStackedBarChart extends StatefulWidget {
+  const FsStackedBarChart({
+    super.key,
+    required this.label,
+    required this.bars,
+    required this.colors,
+    this.height = 150,
+  });
+
+  /// Everything a screen reader hears: the canvas is invisible to it.
+  final String label;
+  final List<FsStackedBar> bars;
+
+  /// One per series, bottom first. Each must hold 3:1 on the card.
+  final List<Color> colors;
+  final double height;
+
+  @override
+  State<FsStackedBarChart> createState() => _FsStackedBarChartState();
+}
+
+class _FsStackedBarChartState extends State<FsStackedBarChart>
+    with _KeepsTooltip<FsStackedBarChart> {
+  /// The card showing between two parts, in dp.
+  static const _gap = 2.0;
+
+  @override
+  void didUpdateWidget(FsStackedBarChart old) {
+    super.didUpdateWidget(old);
+    final touched = _touched;
+    if (touched != null &&
+        (touched >= widget.bars.length ||
+            widget.bars[touched].tooltip != old.bars[touched].tooltip)) {
+      _touched = null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => _dismissedOutside(
+    Semantics(
+      container: true,
+      excludeSemantics: true,
+      label: _spoken(widget.label),
+      child: SizedBox(
+        height: widget.height,
+        child: LayoutBuilder(
+          builder: (context, constraints) =>
+              _chart(context, constraints.maxWidth),
+        ),
+      ),
+    ),
+  );
+
+  Widget _chart(BuildContext context, double width) {
+    final t = context.fs;
+    final bars = widget.bars;
+    final slot = width / math.max(bars.length, 1);
+    final rod = math.min(28.0, slot * 0.6);
+    final room = math.max(0.0, slot - 4);
+    // Totals in the main ink: they are the figures; the axis is a caption.
+    final totalStyle = _axisStyle(t)
+        .copyWith(color: t.text, fontWeight: FontWeight.w600);
+    final topFont = _fontFor(bars.map((b) => b.total), room, totalStyle);
+    final bottomFont = _fontFor(bars.map((b) => b.label), room, _axisStyle(t));
+    final top = _titles([for (final b in bars) b.total], topFont, totalStyle);
+    final bottom = _titles(
+      [for (final b in bars) b.label],
+      bottomFont,
+      _axisStyle(t),
+    );
+
+    final highest = bars.fold<double>(0, (most, b) => math.max(most, b.sum));
+    final maxY = highest <= 0 ? 1.0 : highest; // all zeros: a valid scale
+    final plot =
+        widget.height -
+        top.sideTitles.reservedSize -
+        bottom.sideTitles.reservedSize;
+    final gapY = plot > 0 ? maxY * _gap / plot : 0.0;
+    final touched = _touched != null && _touched! < bars.length
+        ? _touched
+        : null;
+
+    return BarChart(
+      BarChartData(
+        minY: 0,
+        maxY: maxY,
+        alignment: BarChartAlignment.spaceAround,
+        gridData: const FlGridData(show: false),
+        borderData: FlBorderData(
+          show: true,
+          border: Border(bottom: BorderSide(color: t.line2)),
+        ),
+        titlesData: FlTitlesData(
+          leftTitles: const AxisTitles(),
+          rightTitles: const AxisTitles(),
+          topTitles: top,
+          bottomTitles: bottom,
+        ),
+        barTouchData: BarTouchData(
+          handleBuiltInTouches: false,
+          touchCallback: (event, response) =>
+              _onTouch(event, response?.spot?.touchedBarGroupIndex),
+          allowTouchBarBackDraw: true,
+          touchExtraThreshold: EdgeInsets.symmetric(
+            horizontal: math.max(0, (slot - rod) / 2),
+          ),
+          touchTooltipData: BarTouchTooltipData(
+            getTooltipColor: (_) => t.text,
+            tooltipBorderRadius: BorderRadius.circular(8),
+            fitInsideHorizontally: true,
+            fitInsideVertically: true,
+            getTooltipItem: (group, groupIndex, rod, rodIndex) =>
+                BarTooltipItem(bars[groupIndex].tooltip, _tooltipStyle(t)),
+          ),
+        ),
+        barGroups: [
+          for (var i = 0; i < bars.length; i++)
+            BarChartGroupData(
+              x: i,
+              showingTooltipIndicators: [if (i == touched) 0],
+              barRods: [
+                BarChartRodData(
+                  toY: bars[i].sum,
+                  width: rod,
+                  // Only the parts are painted, so the gap between them
+                  // shows the card.
+                  color: Colors.transparent,
+                  rodStackItems: _stack(bars[i], gapY),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(4),
+                  ),
+                  backDrawRodData: BackgroundBarChartRodData(toY: maxY),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// One size for every word in a row, the largest that lets the widest
+  /// fit [room]; null when even that is too small to read.
+  double? _fontFor(Iterable<String> words, double room, TextStyle style) {
+    final natural = MediaQuery.textScalerOf(context).scale(style.fontSize!);
+    final widest = _widest(context, words, style);
+    final size = widest > room && widest > 0
+        ? natural * room / widest
+        : natural;
+    return room > 0 && size >= 1 ? size : null;
+  }
+
+  /// A row of words over or under the bars, one per bar, already sized.
+  AxisTitles _titles(List<String> words, double? font, TextStyle style) =>
+      AxisTitles(
+        sideTitles: SideTitles(
+          showTitles: font != null,
+          reservedSize: (font ?? 0) * 1.4 + 6,
+          getTitlesWidget: (value, meta) {
+            final i = value.toInt();
+            if (font == null || i < 0 || i >= words.length) {
+              return const SizedBox.shrink();
+            }
+            return SideTitleWidget(
+              meta: meta,
+              space: 4,
+              child: Text(
+                words[i],
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                softWrap: false,
+                // Already sized for the user's text setting.
+                textScaler: TextScaler.noScaling,
+                style: style.copyWith(fontSize: font),
+              ),
+            );
+          },
+        ),
+      );
+
+  /// The parts of [bar] stacked from zero, each but the top one stopped
+  /// [gapY] short so a sliver of the card shows between them.
+  List<BarChartRodStackItem> _stack(FsStackedBar bar, double gapY) {
+    final items = <BarChartRodStackItem>[];
+    var from = 0.0;
+    for (var j = 0; j < bar.values.length; j++) {
+      final value = bar.values[j];
+      final to = from + value;
+      final coveredAbove = bar.values.skip(j + 1).any((v) => v > 0);
+      final drawnTo = value > 0 && coveredAbove
+          ? math.max(from, to - gapY)
+          : to;
+      items.add(
+        BarChartRodStackItem(
+          from,
+          drawnTo,
+          widget.colors[j % widget.colors.length],
+        ),
+      );
+      from = to;
+    }
+    return items;
+  }
+}
