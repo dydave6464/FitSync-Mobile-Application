@@ -7,6 +7,7 @@ import 'package:fitsync/core/api_client.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/features/admin/data/admin_repository.dart';
+import 'package:fitsync/features/admin/domain/admin_models.dart';
 
 /// A repository whose every request is answered by [respond], with the
 /// requests it sent collected in [sent].
@@ -306,5 +307,336 @@ void main() {
     expect(user.signInMethods, ['google']);
     expect(user.emailVerified, isFalse);
     expect(user.lastActiveOn, isNull);
+  });
+
+  group('content', () {
+    Map<String, dynamic> exerciseJson({
+      int id = 41,
+      String status = 'pending',
+      String? pendingReason = 'cardio',
+      String? thumbnailUrl = '/storage/exercises/41/thumb.jpg',
+    }) => {
+      'id': id,
+      'name': 'jumping jack',
+      'muscleGroup': 'cardiovascular system',
+      'equipment': 'body weight',
+      'thumbnailUrl': thumbnailUrl,
+      'animationUrl': '/storage/exercises/41/demo.gif',
+      'status': status,
+      'pendingReason': pendingReason,
+    };
+
+    Map<String, dynamic> foodJson({bool hidden = false}) => {
+      'id': 12,
+      'name': 'Chicken adobo',
+      'category': 'filipino',
+      'foodType': 'home',
+      'servingDesc': '1 cup (240 g)',
+      'kcal': 320,
+      'proteinG': 28.5,
+      'carbsG': 4,
+      'fatG': 21.25,
+      'fiberG': null,
+      'sugarG': 1.5,
+      'sodiumMg': 870.5,
+      'hidden': hidden,
+    };
+
+    test('exercises sends status, search and page as strings', () async {
+      final sent = <http.Request>[];
+      final repo = _repo(
+        sent,
+        (_) => _ok({
+          'exercises': [
+            exerciseJson(),
+            exerciseJson(
+              id: 42,
+              status: 'live',
+              pendingReason: null,
+              thumbnailUrl: null,
+            ),
+          ],
+          'counts': {'pending': 121, 'live': 1203},
+          'page': 2,
+          'limit': 30,
+          'total': 61,
+        }),
+      );
+
+      final result = await repo.exercises(status: 'live', q: 'jack', page: 2);
+
+      expect(sent.single.method, 'GET');
+      expect(sent.single.url.path, '/api/v1/admin/exercises');
+      expect(sent.single.url.queryParameters, {
+        'status': 'live',
+        'q': 'jack',
+        'page': '2',
+      });
+      expect(result.pendingCount, 121);
+      expect(result.liveCount, 1203);
+      expect(result.page, 2);
+      expect(result.total, 61);
+      expect(result.hasMore, isTrue);
+      final first = result.exercises.first;
+      expect(first.id, 41);
+      expect(first.name, 'jumping jack');
+      expect(first.muscleGroup, 'cardiovascular system');
+      expect(first.equipment, 'body weight');
+      expect(first.thumbnailUrl, '/storage/exercises/41/thumb.jpg');
+      expect(first.animationUrl, '/storage/exercises/41/demo.gif');
+      expect(first.live, isFalse);
+      expect(first.pendingReason, 'cardio');
+      expect(result.exercises.last.live, isTrue);
+      expect(result.exercises.last.pendingReason, isNull);
+      expect(result.exercises.last.thumbnailUrl, isNull);
+    });
+
+    test('exercises with the defaults asks for pending, page 1', () async {
+      final sent = <http.Request>[];
+      final repo = _repo(
+        sent,
+        (_) => _ok({
+          'exercises': [],
+          'counts': {'pending': 0, 'live': 3},
+          'page': 1,
+          'limit': 30,
+          'total': 0,
+        }),
+      );
+
+      final result = await repo.exercises();
+
+      expect(sent.single.url.queryParameters, {
+        'status': 'pending',
+        'page': '1',
+      });
+      expect(result.hasMore, isFalse);
+    });
+
+    test('publish and unpublish post and read the exercise back', () async {
+      final sent = <http.Request>[];
+      final repo = _repo(sent, (request) {
+        final live = request.url.path.endsWith('/publish');
+        return _ok({
+          'exercise': exerciseJson(
+            status: live ? 'live' : 'pending',
+            pendingReason: live ? null : 'rare_equipment',
+          ),
+        });
+      });
+
+      final published = await repo.publish(41);
+      final unpublished = await repo.unpublish(41);
+
+      expect(sent.map((r) => (r.method, r.url.path)), [
+        ('POST', '/api/v1/admin/exercises/41/publish'),
+        ('POST', '/api/v1/admin/exercises/41/unpublish'),
+      ]);
+      expect(published.live, isTrue);
+      expect(unpublished.live, isFalse);
+      expect(unpublished.pendingReason, 'rare_equipment');
+    });
+
+    test('a refused unpublish surfaces EXERCISE_IN_USE', () async {
+      final repo = _repo(
+        [],
+        (_) => _error(
+          409,
+          'EXERCISE_IN_USE',
+          "Trainees have this exercise in their plans or workouts, so it "
+              "can't be unpublished.",
+        ),
+      );
+
+      await expectLater(
+        repo.unpublish(41),
+        throwsA(
+          isA<ApiException>().having((e) => e.code, 'code', 'EXERCISE_IN_USE'),
+        ),
+      );
+    });
+
+    test('foods sends show, search and page and reads each food', () async {
+      final sent = <http.Request>[];
+      final repo = _repo(
+        sent,
+        (_) => _ok({
+          'foods': [foodJson(), foodJson(hidden: true)],
+          'counts': {'shown': 412, 'hidden': 3},
+          'page': 1,
+          'limit': 30,
+          'total': 2,
+        }),
+      );
+
+      final result = await repo.foods(show: 'hidden', q: 'adobo');
+
+      expect(sent.single.method, 'GET');
+      expect(sent.single.url.path, '/api/v1/admin/foods');
+      expect(sent.single.url.queryParameters, {
+        'show': 'hidden',
+        'q': 'adobo',
+        'page': '1',
+      });
+      expect(result.shownCount, 412);
+      expect(result.hiddenCount, 3);
+      expect(result.total, 2);
+      expect(result.hasMore, isFalse);
+      final food = result.foods.first;
+      expect(food.id, 12);
+      expect(food.name, 'Chicken adobo');
+      expect(food.category, 'filipino');
+      expect(food.foodType, 'home');
+      expect(food.servingDesc, '1 cup (240 g)');
+      expect(food.kcal, 320);
+      expect(food.proteinG, 28.5);
+      expect(food.carbsG, 4.0);
+      expect(food.fatG, 21.25);
+      expect(food.fiberG, isNull);
+      expect(food.sugarG, 1.5);
+      expect(food.sodiumMg, 870.5);
+      expect(food.hidden, isFalse);
+      expect(result.foods.last.hidden, isTrue);
+    });
+
+    test('foods with the defaults asks for shown, page 1', () async {
+      final sent = <http.Request>[];
+      final repo = _repo(
+        sent,
+        (_) => _ok({
+          'foods': [],
+          'counts': {'shown': 0, 'hidden': 0},
+          'page': 1,
+          'limit': 30,
+          'total': 0,
+        }),
+      );
+
+      await repo.foods();
+
+      expect(sent.single.url.queryParameters, {'show': 'shown', 'page': '1'});
+    });
+
+    const input = FoodInput(
+      name: 'Chicken adobo',
+      category: 'filipino',
+      foodType: 'home',
+      servingDesc: '1 cup (240 g)',
+      proteinG: 28.5,
+      carbsG: 4,
+      fatG: 21.25,
+      sugarG: 1.5,
+    );
+
+    test('createFood posts every field, empty ones as null', () async {
+      final sent = <http.Request>[];
+      final repo = _repo(sent, (_) => _ok({'food': foodJson()}));
+
+      final food = await repo.createFood(input);
+
+      expect(sent.single.method, 'POST');
+      expect(sent.single.url.path, '/api/v1/admin/foods');
+      expect(jsonDecode(sent.single.body), {
+        'name': 'Chicken adobo',
+        'category': 'filipino',
+        'foodType': 'home',
+        'servingDesc': '1 cup (240 g)',
+        'kcal': null,
+        'proteinG': 28.5,
+        'carbsG': 4,
+        'fatG': 21.25,
+        'fiberG': null,
+        'sugarG': 1.5,
+        'sodiumMg': null,
+      });
+      expect(food.id, 12);
+    });
+
+    test('updateFood patches the food with the label calories', () async {
+      final sent = <http.Request>[];
+      final repo = _repo(sent, (_) => _ok({'food': foodJson()}));
+
+      await repo.updateFood(
+        12,
+        const FoodInput(
+          name: 'Chicken adobo',
+          category: 'international',
+          foodType: 'fast_food',
+          servingDesc: '1 pc',
+          kcal: 300,
+          proteinG: 20,
+          carbsG: 10,
+          fatG: 15,
+          fiberG: 0.5,
+          sodiumMg: 900,
+        ),
+      );
+
+      expect(sent.single.method, 'PATCH');
+      expect(sent.single.url.path, '/api/v1/admin/foods/12');
+      final body = jsonDecode(sent.single.body) as Map<String, dynamic>;
+      expect(body['category'], 'international');
+      expect(body['foodType'], 'fast_food');
+      expect(body['kcal'], 300);
+      expect(body['fiberG'], 0.5);
+      expect(body.containsKey('sugarG'), isTrue);
+      expect(body['sugarG'], isNull);
+      expect(body['sodiumMg'], 900);
+    });
+
+    test('a taken name keeps the server code and message', () async {
+      final repo = _repo(
+        [],
+        (_) => _error(
+          409,
+          'FOOD_NAME_TAKEN',
+          'A food with that name already exists.',
+        ),
+      );
+
+      await expectLater(
+        repo.createFood(input),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.code, 'code', 'FOOD_NAME_TAKEN')
+              .having(
+                (e) => e.message,
+                'message',
+                'A food with that name already exists.',
+              ),
+        ),
+      );
+    });
+
+    test('hideFood and showFood post and read the food back', () async {
+      final sent = <http.Request>[];
+      final repo = _repo(
+        sent,
+        (request) =>
+            _ok({'food': foodJson(hidden: request.url.path.endsWith('/hide'))}),
+      );
+
+      final hidden = await repo.hideFood(12);
+      final shown = await repo.showFood(12);
+
+      expect(sent.map((r) => (r.method, r.url.path)), [
+        ('POST', '/api/v1/admin/foods/12/hide'),
+        ('POST', '/api/v1/admin/foods/12/show'),
+      ]);
+      expect(hidden.hidden, isTrue);
+      expect(shown.hidden, isFalse);
+    });
+
+    test("baseUrl is the client's, for joining media paths", () {
+      final repo = AdminRepository(
+        ApiClient(
+          baseUrl: 'http://10.0.2.2:3000',
+          tokens: TokenStore(backing: InMemorySecureStore()),
+          client: MockClient((_) async => http.Response('{}', 200)),
+        ),
+      );
+
+      expect(repo.baseUrl, 'http://10.0.2.2:3000');
+    });
   });
 }

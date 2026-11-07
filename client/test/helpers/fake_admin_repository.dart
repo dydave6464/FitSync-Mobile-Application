@@ -13,23 +13,119 @@ class FakeAdminRepository implements AdminRepository {
     Future<AdminUserDetail> Function(int id)? user,
     Future<AdminUserDetail> Function(int id)? suspend,
     Future<AdminUserDetail> Function(int id)? reinstate,
+    Future<AdminExercisesPage> Function(String status, String q, int page)?
+    exercises,
+    Future<AdminExercise> Function(int id)? publish,
+    Future<AdminExercise> Function(int id)? unpublish,
+    Future<AdminFoodsPage> Function(String show, String q, int page)? foods,
+    Future<AdminFood> Function(FoodInput input)? createFood,
+    Future<AdminFood> Function(int id, FoodInput input)? updateFood,
+    Future<AdminFood> Function(int id)? hideFood,
+    Future<AdminFood> Function(int id)? showFood,
   }) : onOverview = overview ?? (() async => sampleOverview()),
        onUsers = users ?? ((_, _, _) async => usersPage(const [])),
        onUser = user ?? ((id) async => sampleDetail(id: id)),
        onSuspend = suspend ?? ((id) async => sampleDetail(id: id)),
-       onReinstate = reinstate ?? ((id) async => sampleDetail(id: id));
+       onReinstate = reinstate ?? ((id) async => sampleDetail(id: id)),
+       onExercises = exercises ?? ((_, _, _) async => exercisesPage(const [])),
+       onPublish = publish ?? ((id) async => sampleExercise(id: id)),
+       onUnpublish =
+           unpublish ??
+           ((id) async => sampleExercise(id: id, status: 'pending')),
+       onFoods = foods ?? ((_, _, _) async => foodsPage(const [])),
+       onCreateFood = createFood ?? ((_) async => sampleFood()),
+       onUpdateFood = updateFood ?? ((id, _) async => sampleFood(id: id)),
+       onHideFood =
+           hideFood ?? ((id) async => sampleFood(id: id, hidden: true)),
+       onShowFood = showFood ?? ((id) async => sampleFood(id: id));
 
   Future<AdminOverview> Function() onOverview;
   Future<AdminUsersPage> Function(String q, String filter, int page) onUsers;
   Future<AdminUserDetail> Function(int id) onUser;
   Future<AdminUserDetail> Function(int id) onSuspend;
   Future<AdminUserDetail> Function(int id) onReinstate;
+  Future<AdminExercisesPage> Function(String status, String q, int page)
+  onExercises;
+  Future<AdminExercise> Function(int id) onPublish;
+  Future<AdminExercise> Function(int id) onUnpublish;
+  Future<AdminFoodsPage> Function(String show, String q, int page) onFoods;
+  Future<AdminFood> Function(FoodInput input) onCreateFood;
+  Future<AdminFood> Function(int id, FoodInput input) onUpdateFood;
+  Future<AdminFood> Function(int id) onHideFood;
+  Future<AdminFood> Function(int id) onShowFood;
 
   int overviewCalls = 0;
   final usersCalls = <({String q, String filter, int page})>[];
   final userCalls = <int>[];
   final suspendCalls = <int>[];
   final reinstateCalls = <int>[];
+  final exercisesCalls = <({String status, String q, int page})>[];
+  final publishCalls = <int>[];
+  final unpublishCalls = <int>[];
+  final foodsCalls = <({String show, String q, int page})>[];
+  final createFoodCalls = <FoodInput>[];
+  final updateFoodCalls = <({int id, FoodInput input})>[];
+  final hideFoodCalls = <int>[];
+  final showFoodCalls = <int>[];
+
+  @override
+  String get baseUrl => 'http://fitsync.test';
+
+  @override
+  Future<AdminExercisesPage> exercises({
+    String status = 'pending',
+    String q = '',
+    int page = 1,
+  }) {
+    exercisesCalls.add((status: status, q: q, page: page));
+    return onExercises(status, q, page);
+  }
+
+  @override
+  Future<AdminExercise> publish(int id) {
+    publishCalls.add(id);
+    return onPublish(id);
+  }
+
+  @override
+  Future<AdminExercise> unpublish(int id) {
+    unpublishCalls.add(id);
+    return onUnpublish(id);
+  }
+
+  @override
+  Future<AdminFoodsPage> foods({
+    String show = 'shown',
+    String q = '',
+    int page = 1,
+  }) {
+    foodsCalls.add((show: show, q: q, page: page));
+    return onFoods(show, q, page);
+  }
+
+  @override
+  Future<AdminFood> createFood(FoodInput input) {
+    createFoodCalls.add(input);
+    return onCreateFood(input);
+  }
+
+  @override
+  Future<AdminFood> updateFood(int id, FoodInput input) {
+    updateFoodCalls.add((id: id, input: input));
+    return onUpdateFood(id, input);
+  }
+
+  @override
+  Future<AdminFood> hideFood(int id) {
+    hideFoodCalls.add(id);
+    return onHideFood(id);
+  }
+
+  @override
+  Future<AdminFood> showFood(int id) {
+    showFoodCalls.add(id);
+    return onShowFood(id);
+  }
 
   @override
   Future<AdminUser> me() async =>
@@ -162,4 +258,86 @@ AdminUserDetail sampleDetail({
   proSource: proSource,
   proUntil: proUntil,
   suspendedAt: suspendedAt,
+);
+
+AdminExercise sampleExercise({
+  int id = 41,
+  String name = 'romanian deadlift',
+  String? muscleGroup = 'hamstrings',
+  String? equipment = 'barbell',
+  String? thumbnailUrl = '/storage/exercises/41/thumb.jpg',
+  String? animationUrl = '/storage/exercises/41/demo.gif',
+  String status = 'live',
+  String? pendingReason,
+}) => AdminExercise(
+  id: id,
+  name: name,
+  muscleGroup: muscleGroup,
+  equipment: equipment,
+  thumbnailUrl: thumbnailUrl,
+  animationUrl: animationUrl,
+  status: status,
+  pendingReason: pendingReason,
+);
+
+AdminExercisesPage exercisesPage(
+  List<AdminExercise> exercises, {
+  int pending = 121,
+  int live = 1203,
+  int page = 1,
+  int limit = 30,
+  int? total,
+}) => AdminExercisesPage(
+  exercises: exercises,
+  pendingCount: pending,
+  liveCount: live,
+  page: page,
+  limit: limit,
+  total: total ?? exercises.length,
+);
+
+AdminFood sampleFood({
+  int id = 12,
+  String name = 'Chicken adobo',
+  String category = 'filipino',
+  String? foodType = 'home',
+  String? servingDesc = '1 cup',
+  int kcal = 320,
+  double proteinG = 28,
+  double carbsG = 4,
+  double fatG = 21,
+  double? fiberG,
+  double? sugarG,
+  double? sodiumMg,
+  bool hidden = false,
+}) => AdminFood(
+  id: id,
+  name: name,
+  category: category,
+  foodType: foodType,
+  servingDesc: servingDesc,
+  kcal: kcal,
+  proteinG: proteinG,
+  carbsG: carbsG,
+  fatG: fatG,
+  fiberG: fiberG,
+  sugarG: sugarG,
+  sodiumMg: sodiumMg,
+  hidden: hidden,
+);
+
+AdminFoodsPage foodsPage(
+  List<AdminFood> foods, {
+  int shown = 412,
+  int hidden = 3,
+  int page = 1,
+  int limit = 30,
+  int? total,
+}) => AdminFoodsPage(
+  foods: foods,
+  shownCount: shown,
+  hiddenCount: hidden,
+  page: page,
+  limit: limit,
+  total: total ?? foods.length,
 );

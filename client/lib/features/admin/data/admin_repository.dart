@@ -50,4 +50,65 @@ class AdminRepository {
 
   AdminUserDetail _detail(Map<String, dynamic> data) =>
       AdminUserDetail.fromJson(data['user'] as Map<String, dynamic>);
+
+  /// The server's address, which the media paths in exercises
+  /// (`/storage/...`) are joined to.
+  String get baseUrl => _api.baseUrl;
+
+  /// One page of exercise demos. [status] is `pending` or `live`.
+  Future<AdminExercisesPage> exercises({
+    String status = 'pending',
+    String q = '',
+    int page = 1,
+  }) async => AdminExercisesPage.fromJson(
+    await _api.getJson(
+      '/api/v1/admin/exercises',
+      query: {'status': status, 'q': q, 'page': '$page'},
+    ),
+  );
+
+  /// Puts the exercise in the library, with its safety rows. `409
+  /// EXERCISE_UNCLASSIFIABLE` when they can't be worked out.
+  Future<AdminExercise> publish(int id) async => _exercise(
+    await _api.postJson('/api/v1/admin/exercises/$id/publish', const {}),
+  );
+
+  /// Takes the exercise out of the library. `409 EXERCISE_IN_USE` once any
+  /// trainee has it in a plan or a workout.
+  Future<AdminExercise> unpublish(int id) async => _exercise(
+    await _api.postJson('/api/v1/admin/exercises/$id/unpublish', const {}),
+  );
+
+  /// One page of FitSync's own foods. [show] is `shown` or `hidden`.
+  Future<AdminFoodsPage> foods({
+    String show = 'shown',
+    String q = '',
+    int page = 1,
+  }) async => AdminFoodsPage.fromJson(
+    await _api.getJson(
+      '/api/v1/admin/foods',
+      query: {'show': show, 'q': q, 'page': '$page'},
+    ),
+  );
+
+  /// `400` per field (`details: [{ field }]`); `409 FOOD_NAME_TAKEN`.
+  Future<AdminFood> createFood(FoodInput input) async =>
+      _food(await _api.postJson('/api/v1/admin/foods', input.toJson()));
+
+  Future<AdminFood> updateFood(int id, FoodInput input) async =>
+      _food(await _api.patchJson('/api/v1/admin/foods/$id', input.toJson()));
+
+  /// Leaves the food out of search, Recents and Snap a meal. Meals already
+  /// logged keep it.
+  Future<AdminFood> hideFood(int id) async =>
+      _food(await _api.postJson('/api/v1/admin/foods/$id/hide', const {}));
+
+  Future<AdminFood> showFood(int id) async =>
+      _food(await _api.postJson('/api/v1/admin/foods/$id/show', const {}));
+
+  AdminExercise _exercise(Map<String, dynamic> data) =>
+      AdminExercise.fromJson(data['exercise'] as Map<String, dynamic>);
+
+  AdminFood _food(Map<String, dynamic> data) =>
+      AdminFood.fromJson(data['food'] as Map<String, dynamic>);
 }
