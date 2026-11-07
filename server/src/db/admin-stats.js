@@ -167,6 +167,38 @@ async function userDetail(pool, userId, today = manilaDay()) {
   };
 }
 
+/// Suspends the trainee: stamps suspended_at and moves token_version on, so
+/// every token on every phone stops at once. Already suspended: nothing
+/// changes (the first time and the token generation stay). False when there
+/// is no such trainee.
+async function suspendUser(pool, userId) {
+  const [r] = await pool.query(
+    `UPDATE users SET suspended_at = NOW(), token_version = token_version + 1
+      WHERE user_id = ? AND suspended_at IS NULL`, [userId]);
+  if (r.affectedRows === 1) return true;
+  return userExists(pool, userId);
+}
+
+/// Lifts a suspension; the trainee signs in again as normal. Nothing else
+/// changes, and every row they logged was kept throughout. False when there
+/// is no such trainee.
+async function reinstateUser(pool, userId) {
+  await pool.query('UPDATE users SET suspended_at = NULL WHERE user_id = ?', [userId]);
+  return userExists(pool, userId);
+}
+
+async function userExists(pool, userId) {
+  const [[row]] = await pool.query('SELECT 1 AS ok FROM users WHERE user_id = ?', [userId]);
+  return Boolean(row);
+}
+
 module.exports = {
-  ACTIVITY_DAYS_SQL, USER_FILTERS, overview, previousMonth, listUsers, userDetail,
+  ACTIVITY_DAYS_SQL,
+  USER_FILTERS,
+  overview,
+  previousMonth,
+  listUsers,
+  userDetail,
+  suspendUser,
+  reinstateUser,
 };

@@ -9,6 +9,7 @@ const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { createTestAdmin, TEST_JWT } = require('./helpers/admin');
 const { signToken } = require('../src/lib/tokens');
 const { manilaDay } = require('../src/lib/manila-day');
+const { markEmailVerified } = require('../src/db/users');
 
 const ROW_KEYS = ['email', 'fullName', 'id', 'isPro', 'joinedOn', 'lastActiveOn', 'suspended'];
 const DETAIL_KEYS = [
@@ -204,5 +205,91 @@ test('admin users endpoints', async (t) => {
       assert.equal(res.body.error.code, 'USER_NOT_FOUND', String(id));
       assert.equal(res.body.error.message, 'No such trainee.');
     }
+  });
+
+  // A trainee who signs up and in the normal way, holding a live token.
+  const signedIn = async (email) => {
+    const reg = await request(app).post('/api/v1/auth/register')
+      .send({ email, password: 's3cret-pass', fullName: 'Rita Real' }).expect(201);
+    const { userId } = reg.body.data.user;
+    await markEmailVerified(pool, userId);
+    const { token } = (await request(app).post('/api/v1/auth/login')
+      .send({ email, password: 's3cret-pass' }).expect(200)).body.data;
+    return { userId, email, auth: { Authorization: `Bearer ${token}` } };
+  };
+  const post = (path) => request(app).post(`/api/v1/admin${path}`).set(auth);
+  const tokenVersion = async (userId) => {
+    const [[r]] = await pool.query('SELECT token_version FROM users WHERE user_id = ?', [userId]);
+    return r.token_version;
+  };
+  const isSuspended = (res) => {
+    assert.equal(res.body.error.code, 'ACCOUNT_SUSPENDED');
+    assert.equal(res.body.error.message, 'This account is suspended.');
+  };
+
+  // Unit test 18 (manuscript): suspend sets the account suspended and signs it out.
+  await t.test('suspend sets the account suspended and signs it out', async () => {
+    const rita = await signedIn('rita@example.com');
+    await request(app).get('/api/v1/auth/me').set(rita.auth).expect(200);
+
+    const res = await post(`/users/${rita.userId}/suspend`).expect(200);
+    assert.deepEqual(Object.keys(res.body.data), ['user']);
+    assert.deepEqual(Object.keys(res.body.data.user).sort(), DETAIL_KEYS);
+    assert.equal(res.body.data.user.id, rita.userId);
+    assert.match(res.body.data.user.suspendedAt, /^\d{4}-\d{2}-\d{2}T/);
+
+    isSuspended(await request(app).get('/api/v1/auth/me').set(rita.auth).expect(403));
+    isSuspended(await request(app).post('/api/v1/auth/login')
+      .send({ email: rita.email, password: 's3cret-pass' }).expect(403));
+  });
+
+  await t.test('suspending twice is harmless and moves the token generation once', async () => {
+    const rosa = await signedIn('rosa@example.com');
+    const before = await tokenVersion(rosa.userId);
+    const first = (await post(`/users/${rosa.userId}/suspend`).expect(200)).body.data.user;
+    assert.equal(await tokenVersion(rosa.userId), before + 1);
+    const second = (await post(`/users/${rosa.userId}/suspend`).expect(200)).body.data.user;
+    assert.equal(await tokenVersion(rosa.userId), before + 1);
+    assert.equal(second.suspendedAt, first.suspendedAt);
+  });
+
+  await t.test('reinstate clears the suspension, sign-in works again, and the data is all there', async () => {
+    const rico = await signedIn('rico@example.com');
+    await pool.query(
+      `INSERT INTO meal_logs (user_id, custom_name, meal_type, calories, logged_via, log_date)
+       VALUES (?, 'Adobo', 'dinner', 400, 'manual', ?)`, [rico.userId, manilaDay(1)],
+    );
+    await post(`/users/${rico.userId}/suspend`).expect(200);
+
+    const res = await post(`/users/${rico.userId}/reinstate`).expect(200);
+    assert.deepEqual(Object.keys(res.body.data.user).sort(), DETAIL_KEYS);
+    assert.equal(res.body.data.user.suspendedAt, null);
+    assert.equal(res.body.data.user.lastActiveOn, manilaDay(1));
+
+    const login = await request(app).post('/api/v1/auth/login')
+      .send({ email: rico.email, password: 's3cret-pass' }).expect(200);
+    await request(app).get('/api/v1/auth/me')
+      .set('Authorization', `Bearer ${login.body.data.token}`).expect(200);
+    const [meals] = await pool.query('SELECT custom_name FROM meal_logs WHERE user_id = ?', [rico.userId]);
+    assert.deepEqual(meals.map((m) => m.custom_name), ['Adobo']);
+
+    // Reinstating an account that isn't suspended is harmless too.
+    const again = await post(`/users/${rico.userId}/reinstate`).expect(200);
+    assert.equal(again.body.data.user.suspendedAt, null);
+  });
+
+  await t.test('suspend and reinstate: unknown ids are 404, trainee tokens 401', async () => {
+    for (const action of ['suspend', 'reinstate']) {
+      for (const id of [999999, 'abc']) {
+        const res = await post(`/users/${id}/${action}`).expect(404);
+        assert.equal(res.body.error.code, 'USER_NOT_FOUND');
+        assert.equal(res.body.error.message, 'No such trainee.');
+      }
+      const res = await request(app).post(`/api/v1/admin/users/${juan}/${action}`)
+        .set('Authorization', `Bearer ${signToken(juan, TEST_JWT)}`).expect(401);
+      assert.equal(res.body.error.code, 'UNAUTHENTICATED');
+    }
+    const [[j]] = await pool.query('SELECT suspended_at FROM users WHERE user_id = ?', [juan]);
+    assert.equal(j.suspended_at, null);
   });
 });

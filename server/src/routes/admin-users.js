@@ -2,7 +2,9 @@
 const express = require('express');
 const AppError = require('../lib/app-error');
 const { parsePositiveInt } = require('../lib/query-params');
-const { overview, listUsers, userDetail, USER_FILTERS } = require('../db/admin-stats');
+const {
+  overview, listUsers, userDetail, suspendUser, reinstateUser, USER_FILTERS,
+} = require('../db/admin-stats');
 
 const DEFAULT_LIMIT = 30;
 const MAX_LIMIT = 50;
@@ -61,6 +63,19 @@ function buildAdminUsersRouter({ pool }) {
       next(err);
     }
   });
+
+  // Repeat calls are harmless: each answers the trainee as they now are.
+  for (const [action, apply] of [['suspend', suspendUser], ['reinstate', reinstateUser]]) {
+    router.post(`/users/:id/${action}`, async (req, res, next) => {
+      try {
+        const userId = userIdParam(req.params.id);
+        if (userId === null || !(await apply(pool, userId))) throw noSuchTrainee();
+        res.json({ data: { user: await userDetail(pool, userId) } });
+      } catch (err) {
+        next(err);
+      }
+    });
+  }
 
   return router;
 }
