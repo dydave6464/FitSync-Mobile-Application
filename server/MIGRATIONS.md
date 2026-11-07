@@ -66,7 +66,7 @@ migrations (or an equivalent forward-only mechanism) with a real rollback
 and data-migration story. That transition is an **open item for a later
 sub-project** — it has not been designed yet.
 
-## Exceptions: `007`, `008`, `011`, `012`, `013`, `014`, `017`, `028`, `032`, `033`, `034`, `035`, `036`, `037`, `038`, `042` and `044`
+## Exceptions: `007`, `008`, `011`, `012`, `013`, `014`, `017`, `028`, `032`, `033`, `034`, `035`, `036`, `037`, `038`, `042`, `044` and `045`
 
 `007_auth_identities.sql`, `008_equipment_curation.sql`,
 `011_email_verification.sql`, `012_weight_unit.sql`, `013_plan_days.sql`,
@@ -74,10 +74,10 @@ sub-project** — it has not been designed yet.
 `028_new_to_training_level.sql`, `032_nutrition_tracking.sql`,
 `033_food_fiber.sql`, `034_meal_log_fiber.sql`, `035_food_sugar_sodium.sql`,
 `036_meal_log_sugar_sodium.sql`, `037_injury_risk_drivers.sql` and
-`038_food_types.sql`, `042_account_deletion.sql` and
-`044_user_suspension.sql`.
+`038_food_types.sql`, `042_account_deletion.sql`,
+`044_user_suspension.sql` and `045_food_hiding.sql`.
 
-All seventeen files break the rule above on purpose, for the same reason: each
+All eighteen files break the rule above on purpose, for the same reason: each
 needs to change tables that migrations `001`–`006` already defined and that
 may already be applied on someone's database. The runner has no checksum
 (see the gap recorded below): it decides whether to apply a file solely by
@@ -86,17 +86,17 @@ these columns would not be replayed on a database where `001` was already
 recorded as applied — the edit would be silently invisible there, exactly
 the failure mode the pre-release policy above depends on nobody hitting. A
 new, forward-only file sidesteps that. The tradeoff is the one below: unlike
-a `CREATE TABLE IF NOT EXISTS`-only file, six of the seventeen are not safe to
+a `CREATE TABLE IF NOT EXISTS`-only file, six of the eighteen are not safe to
 replay after a partial failure. `014`, `028`, `032`, `033`, `034`, `035`,
-`036`, `037`, `038`, `042` and `044` are the exceptions to the exception, and they
+`036`, `037`, `038`, `042`, `044` and `045` are the exceptions to the exception, and they
 replay cleanly for different reasons: `014` and `028` restate a column
 definition rather than adding to one, while `032`, `033`, `034`, `035`, `036`,
 `037` and `038` rely on MySQL 8's atomic DDL — `032` also on statement
 ordering, `033`, `034`, `035`, `036`, `037` and `038` on the DDL alone, since
 each of those six files is nothing but the one `ALTER`. `042` combines the
 two: it restates the `purpose` column like `014`, then ends on one atomic
-`ADD COLUMN` like `032`; `044` is one atomic `ADD COLUMN` like `033`, for the
-same reason (see their entries below). Which of the seventeen you
+`ADD COLUMN` like `032`; `044` and `045` are each one atomic `ADD COLUMN` like
+`033`, for the same reason (see their entries below). Which of the eighteen you
 are holding is the thing to know before retrying one.
 
 **`007_auth_identities.sql`** — alongside its
@@ -156,7 +156,7 @@ followed by ONE `ALTER TABLE meal_logs` (adds `serving_desc`, widens
 single atomic statement, so a failure anywhere replays cleanly: before it,
 nothing non-idempotent has run; inside it, nothing was applied.
 
-**Consequence: six of the seventeen are not replay-safe.** Unlike every other
+**Consequence: six of the eighteen are not replay-safe.** Unlike every other
 migration file, if 007, 008, 011, 012, 013 or 017 fails partway through,
 `IF NOT EXISTS` does not protect the `ALTER TABLE` (or, for 008, the
 trailing `CREATE INDEX`) statements — a second run will hit
@@ -165,7 +165,7 @@ error) on whichever statement had already committed. Because `ALTER TABLE`
 and `CREATE INDEX` both implicitly commit, a partial failure is not rolled
 back by the runner failing to record the version.
 
-**014, 028, 032, 033, 034, 035, 036, 037, 038, 042 and 044 are the ones that can simply be re-run.** 014 and 028
+**014, 028, 032, 033, 034, 035, 036, 037, 038, 042, 044 and 045 are the ones that can simply be re-run.** 014 and 028
 both use `MODIFY COLUMN`, which restates the column's whole definition rather
 than adding to it, so re-running the file is what is safe: it sets the same
 values both times — `014` on the split_style enum, `028` on fitness_level —
@@ -232,6 +232,15 @@ authenticated request answer `ACCOUNT_SUSPENDED`. The file is nothing but
 that one atomic `ADD COLUMN` (042's reasoning for its last statement), so a
 failure inside it applied nothing and a failed run replays cleanly; a run that
 applied it and was not recorded would hit `ER_DUP_FIELDNAME` on re-run. Add a
+statement after it and that stops being true.
+
+**`045_food_hiding.sql`** — one `ALTER TABLE foods ADD COLUMN hidden_at
+TIMESTAMP NULL DEFAULT NULL`, the moment an admin hid one of FitSync's own
+foods (`NULL` = shown). A hidden food leaves food search, Recents and Snap a
+meal's menu; logging it by id, and meals already logged, are unaffected. Like
+`044`, the file is nothing but that one atomic `ADD COLUMN`, so a failure
+inside it applied nothing and a failed run replays cleanly; a run that applied
+it and was not recorded would hit `ER_DUP_FIELDNAME` on re-run. Add a
 statement after it and that stops being true.
 
 **If 007, 008, 011, 012, 013 or 017 fails partway through**, recovery is
