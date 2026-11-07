@@ -78,6 +78,55 @@ double _widest(BuildContext context, Iterable<String> labels, TextStyle style) {
   return widest;
 }
 
+/// One size for a whole row of [words], the largest that lets the widest
+/// fit [room] at the user's text size; null when the room is gone or the
+/// size would be too small to read.
+///
+/// Each word used to shrink alone to its own slot, so at large text "Wed"
+/// came out smaller than "Thu" and the words ran together.
+double? _fitFont(
+  BuildContext context,
+  Iterable<String> words,
+  double room,
+  TextStyle style,
+) {
+  final natural = MediaQuery.textScalerOf(context).scale(style.fontSize!);
+  final widest = _widest(context, words, style);
+  final size = widest > room && widest > 0 ? natural * room / widest : natural;
+  return room > 0 && size >= 1 ? size : null;
+}
+
+/// A bar chart's touch: tooltips held by [_KeepsTooltip] rather than
+/// fl_chart, the dark chip reading [tooltips], and the whole column
+/// answering a touch, not just the bar.
+BarTouchData _barTouch(
+  FsTokens t, {
+  required double slot,
+  required double rod,
+  required List<String> tooltips,
+  required void Function(FlTouchEvent, int?) onTouch,
+  bool enabled = true,
+}) => BarTouchData(
+  enabled: enabled,
+  handleBuiltInTouches: false,
+  touchCallback: (event, response) =>
+      onTouch(event, response?.spot?.touchedBarGroupIndex),
+  // A light week's bar is the one people check, and it was a sliver to aim
+  // at; each rod's invisible full-height back is measured instead.
+  allowTouchBarBackDraw: true,
+  touchExtraThreshold: EdgeInsets.symmetric(
+    horizontal: math.max(0, (slot - rod) / 2),
+  ),
+  touchTooltipData: BarTouchTooltipData(
+    getTooltipColor: (_) => t.text,
+    tooltipBorderRadius: BorderRadius.circular(8),
+    fitInsideHorizontally: true,
+    fitInsideVertically: true,
+    getTooltipItem: (group, groupIndex, rod, rodIndex) =>
+        BarTooltipItem(tooltips[groupIndex], _tooltipStyle(t)),
+  ),
+);
+
 /// Which bar or point a chart's tooltip is showing for, kept between taps.
 ///
 /// fl_chart's own handling shows a tooltip only while the finger is down, so
@@ -111,6 +160,23 @@ mixin _KeepsTooltip<T extends StatefulWidget> on State<T> {
   void _clear() {
     if (_touched != null) setState(() => _touched = null);
   }
+
+  /// Puts the tooltip away when new data arrives that it would misreport:
+  /// its bar or point is gone, or reads differently now. Called from
+  /// didUpdateWidget with each item's tooltip, before and after.
+  void _resetIfChanged(List<String?> before, List<String?> after) {
+    final touched = _touched;
+    if (touched != null &&
+        (touched >= after.length ||
+            touched >= before.length ||
+            after[touched] != before[touched])) {
+      _touched = null;
+    }
+  }
+
+  /// The tooltip to show among [count] items, or null when none is up.
+  int? _touchedOf(int count) =>
+      _touched != null && _touched! < count ? _touched : null;
 
   /// Puts the tooltip away on a tap anywhere outside [chart].
   Widget _dismissedOutside(Widget chart) =>
@@ -438,21 +504,17 @@ class _FsLineChartState extends State<FsLineChart>
   void didUpdateWidget(FsLineChart old) {
     super.didUpdateWidget(old);
     // Gone, or a different reading in its place: the tooltip would misreport.
-    final touched = _touched;
-    if (touched != null &&
-        (touched >= widget.points.length ||
-            widget._tooltipFor(touched) != old._tooltipFor(touched))) {
-      _touched = null;
-    }
+    _resetIfChanged(
+      [for (var i = 0; i < old.points.length; i++) old._tooltipFor(i)],
+      [for (var i = 0; i < widget.points.length; i++) widget._tooltipFor(i)],
+    );
   }
 
   @override
   Widget build(BuildContext context) => _dismissedOutside(
     widget._build(
       context,
-      touched: _touched != null && _touched! < widget.points.length
-          ? _touched
-          : null,
+      touched: _touchedOf(widget.points.length),
       onTouch: _onTouch,
     ),
   );
@@ -543,28 +605,22 @@ class FsBarChart extends StatefulWidget {
             final slot = constraints.maxWidth / math.max(bars.length, 1);
             final rod = math.min(24.0, slot * 0.6);
 
-            // One size for every label, the largest that lets the widest fit
-            // its room. Each used to shrink alone to its own slot, so at
-            // large text "Wed" came out smaller than "Thu" and the words ran
-            // together. Room spans the empty slots between labelled bars,
-            // which a year's every-other month name has.
+            // One size for every label (see _fitFont). Room spans the empty
+            // slots between labelled bars, which a year's every-other month
+            // name has.
             final labelled = bars.where((b) => b.label.isNotEmpty).length;
             final stride = labelled == 0
                 ? 1
                 : math.max(1, (bars.length / labelled).round());
             final room = math.max(0.0, slot * stride - 6);
-            final natural = MediaQuery.textScalerOf(context).scale(11);
-            final widest = _widest(
+            // Null when too narrow for any word at all: no labels rather
+            // than a negative width.
+            final fontSize = _fitFont(
               context,
               bars.map((b) => b.label),
+              room,
               _axisStyle(t),
             );
-            final fontSize = widest > room && widest > 0
-                ? natural * room / widest
-                : natural;
-            // Too narrow for any word at all: no labels rather than a
-            // negative width.
-            final labelsFit = room > 0 && fontSize >= 1;
 
             return BarChart(
               BarChartData(
@@ -588,7 +644,7 @@ class FsBarChart extends StatefulWidget {
                       reservedSize: _axisSpace(context),
                       getTitlesWidget: (value, meta) {
                         final i = value.toInt();
-                        if (!labelsFit ||
+                        if (fontSize == null ||
                             i < 0 ||
                             i >= bars.length ||
                             bars[i].label.isEmpty) {
@@ -614,29 +670,13 @@ class FsBarChart extends StatefulWidget {
                     ),
                   ),
                 ),
-                barTouchData: BarTouchData(
+                barTouchData: _barTouch(
+                  t,
                   enabled: interactive,
-                  handleBuiltInTouches: false,
-                  touchCallback: (event, response) =>
-                      onTouch(event, response?.spot?.touchedBarGroupIndex),
-                  // The whole column answers a touch, not just the bar: a
-                  // light week's bar is the one people check, and it was a
-                  // sliver to aim at.
-                  allowTouchBarBackDraw: true,
-                  touchExtraThreshold: EdgeInsets.symmetric(
-                    horizontal: math.max(0, (slot - rod) / 2),
-                  ),
-                  touchTooltipData: BarTouchTooltipData(
-                    getTooltipColor: (_) => t.text,
-                    tooltipBorderRadius: BorderRadius.circular(8),
-                    fitInsideHorizontally: true,
-                    fitInsideVertically: true,
-                    getTooltipItem: (group, groupIndex, rod, rodIndex) =>
-                        BarTooltipItem(
-                          bars[groupIndex].tooltip,
-                          _tooltipStyle(t),
-                        ),
-                  ),
+                  slot: slot,
+                  rod: rod,
+                  tooltips: [for (final b in bars) b.tooltip],
+                  onTouch: onTouch,
                 ),
                 barGroups: [
                   for (var i = 0; i < bars.length; i++)
@@ -678,21 +718,17 @@ class _FsBarChartState extends State<FsBarChart>
     super.didUpdateWidget(old);
     // Gone, or another stretch of time in its place: the tooltip would
     // misreport it.
-    final touched = _touched;
-    if (touched != null &&
-        (touched >= widget.bars.length ||
-            widget.bars[touched].tooltip != old.bars[touched].tooltip)) {
-      _touched = null;
-    }
+    _resetIfChanged(
+      [for (final b in old.bars) b.tooltip],
+      [for (final b in widget.bars) b.tooltip],
+    );
   }
 
   @override
   Widget build(BuildContext context) => _dismissedOutside(
     widget._build(
       context,
-      touched: _touched != null && _touched! < widget.bars.length
-          ? _touched
-          : null,
+      touched: _touchedOf(widget.bars.length),
       onTouch: _onTouch,
     ),
   );
@@ -975,12 +1011,10 @@ class _FsStackedBarChartState extends State<FsStackedBarChart>
   @override
   void didUpdateWidget(FsStackedBarChart old) {
     super.didUpdateWidget(old);
-    final touched = _touched;
-    if (touched != null &&
-        (touched >= widget.bars.length ||
-            widget.bars[touched].tooltip != old.bars[touched].tooltip)) {
-      _touched = null;
-    }
+    _resetIfChanged(
+      [for (final b in old.bars) b.tooltip],
+      [for (final b in widget.bars) b.tooltip],
+    );
   }
 
   @override
@@ -1008,8 +1042,18 @@ class _FsStackedBarChartState extends State<FsStackedBarChart>
     // Totals in the main ink: they are the figures; the axis is a caption.
     final totalStyle = _axisStyle(t)
         .copyWith(color: t.text, fontWeight: FontWeight.w600);
-    final topFont = _fontFor(bars.map((b) => b.total), room, totalStyle);
-    final bottomFont = _fontFor(bars.map((b) => b.label), room, _axisStyle(t));
+    final topFont = _fitFont(
+      context,
+      bars.map((b) => b.total),
+      room,
+      totalStyle,
+    );
+    final bottomFont = _fitFont(
+      context,
+      bars.map((b) => b.label),
+      room,
+      _axisStyle(t),
+    );
     final top = _titles([for (final b in bars) b.total], topFont, totalStyle);
     final bottom = _titles(
       [for (final b in bars) b.label],
@@ -1024,9 +1068,7 @@ class _FsStackedBarChartState extends State<FsStackedBarChart>
         top.sideTitles.reservedSize -
         bottom.sideTitles.reservedSize;
     final gapY = plot > 0 ? maxY * _gap / plot : 0.0;
-    final touched = _touched != null && _touched! < bars.length
-        ? _touched
-        : null;
+    final touched = _touchedOf(bars.length);
 
     return BarChart(
       BarChartData(
@@ -1044,22 +1086,12 @@ class _FsStackedBarChartState extends State<FsStackedBarChart>
           topTitles: top,
           bottomTitles: bottom,
         ),
-        barTouchData: BarTouchData(
-          handleBuiltInTouches: false,
-          touchCallback: (event, response) =>
-              _onTouch(event, response?.spot?.touchedBarGroupIndex),
-          allowTouchBarBackDraw: true,
-          touchExtraThreshold: EdgeInsets.symmetric(
-            horizontal: math.max(0, (slot - rod) / 2),
-          ),
-          touchTooltipData: BarTouchTooltipData(
-            getTooltipColor: (_) => t.text,
-            tooltipBorderRadius: BorderRadius.circular(8),
-            fitInsideHorizontally: true,
-            fitInsideVertically: true,
-            getTooltipItem: (group, groupIndex, rod, rodIndex) =>
-                BarTooltipItem(bars[groupIndex].tooltip, _tooltipStyle(t)),
-          ),
+        barTouchData: _barTouch(
+          t,
+          slot: slot,
+          rod: rod,
+          tooltips: [for (final b in bars) b.tooltip],
+          onTouch: _onTouch,
         ),
         barGroups: [
           for (var i = 0; i < bars.length; i++)
@@ -1084,17 +1116,6 @@ class _FsStackedBarChartState extends State<FsStackedBarChart>
         ],
       ),
     );
-  }
-
-  /// One size for every word in a row, the largest that lets the widest
-  /// fit [room]; null when even that is too small to read.
-  double? _fontFor(Iterable<String> words, double room, TextStyle style) {
-    final natural = MediaQuery.textScalerOf(context).scale(style.fontSize!);
-    final widest = _widest(context, words, style);
-    final size = widest > room && widest > 0
-        ? natural * room / widest
-        : natural;
-    return room > 0 && size >= 1 ? size : null;
   }
 
   /// A row of words over or under the bars, one per bar, already sized.
