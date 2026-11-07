@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
-import '../domain/auth_user.dart';
+import '../domain/sign_in_outcome.dart';
 import 'auth_controller.dart';
 import 'code_entry.dart';
 
@@ -97,13 +97,13 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
     });
 
     // No `mounted` check here, unlike sign_in_screen.dart: repo.login has
-    // already stored the session token, so finishing onAuthenticated keeps
+    // already stored the session token, so finishing onSignedIn keeps
     // the app's state consistent with that stored session even if this
     // screen was closed mid-flight. Skipping it would leave the UI signed
     // out while holding a valid token.
-    void signedIn(AuthUser user) {
+    void signedIn(SignInOutcome outcome) {
       navigator.popUntil((route) => route.isFirst);
-      controller.onAuthenticated(user);
+      controller.onSignedIn(outcome);
       showSignedInBanner(messenger, verifiedSignInMessage);
     }
 
@@ -120,23 +120,26 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
     } on ApiException catch (error) {
       if (!_verified && error.code == 'CODE_INVALID') {
         // Perhaps the code was right and only the reply was lost.
-        final user = await signInAfterRejectedCode(repo, email, password);
-        if (user != null) {
-          signedIn(user);
+        final outcome = await signInAfterRejectedCode(repo, email, password);
+        if (outcome != null) {
+          signedIn(outcome);
           return;
         }
       }
       if (!mounted) return;
+      // A suspended account can't sign in however often it retries (spec
+      // §3), so that refusal is the error shown instead of the good news.
+      final goodNews = _verified && error.code != 'ACCOUNT_SUSPENDED';
       setState(() {
         _status = (
-          text: _verified
+          text: goodNews
               ? 'Your email is verified. Tap to sign in.'
               : (error.code == 'CODE_INVALID'
                     ? wrongCodeMessage
                     : userMessage(error)),
           // Verified is good news, drawn in neutral text rather than as an
           // error even though the sign-in after it failed.
-          isError: !_verified,
+          isError: !goodNews,
         );
       });
     } finally {

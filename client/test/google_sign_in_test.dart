@@ -10,6 +10,7 @@ import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/auth/data/auth_repository.dart';
 import 'package:fitsync/features/auth/data/google_sign_in_gateway.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
+import 'package:fitsync/features/auth/domain/sign_in_outcome.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/auth/presentation/sign_in_screen.dart';
 
@@ -52,7 +53,7 @@ class FakeAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<AuthUser> login(String email, String password) =>
+  Future<SignInOutcome> login(String email, String password) =>
       throw UnimplementedError();
 
   @override
@@ -210,6 +211,32 @@ void main() {
       find.text('That Google sign-in could not be verified.'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('a suspended account is told so after Google', (tester) async {
+    final seen = <AuthUser>[];
+    final gateway = FakeGoogleGateway(
+      () async => const GoogleSignInToken('google-id-token'),
+    );
+    final repo = FakeAuthRepository(
+      onGoogle: (_) async => throw const ApiException(
+        'ACCOUNT_SUSPENDED',
+        'This account is suspended.',
+      ),
+    );
+
+    await _pump(tester, gateway: gateway, repo: repo, seen: seen);
+    await tester.tap(find.byKey(const Key('google')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('error')),
+        matching: find.text('This account is suspended.'),
+      ),
+      findsOneWidget,
+    );
+    expect(seen, isEmpty);
   });
 
   testWidgets('a Google sign-in that cannot reach the server says so plainly', (

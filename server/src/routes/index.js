@@ -21,6 +21,8 @@ const buildNutritionRouter = require('./nutrition');
 const buildNutritionPhotosRouter = require('./nutrition-photos');
 const buildFoodsRouter = require('./foods');
 const buildProRouter = require('./pro');
+const { buildAdminRouter } = require('./admin');
+const buildAdsRouter = require('./ads');
 const requireAuth = require('../middleware/require-auth');
 
 module.exports = function buildRoutes(deps = {}) {
@@ -45,6 +47,10 @@ module.exports = function buildRoutes(deps = {}) {
   router.use('/nutrition', buildNutritionPhotosRouter(deps));
   router.use('/foods', buildFoodsRouter(deps));
   router.use('/pro', buildProRouter(deps));
+  // The admin dashboard: admin tokens only (middleware/require-admin.js).
+  router.use('/admin', buildAdminRouter(deps));
+  // The trainee's ad card (free trainees only; Pro gets none).
+  router.use('/ads', requireAuth(deps), buildAdsRouter(deps));
   // The catalogue is reference data, but the app requires sign-in to reach any
   // of it, so an open endpoint would just be an inconsistency.
   router.use('/exercises', requireAuth(deps), buildExercisesRouter(deps));

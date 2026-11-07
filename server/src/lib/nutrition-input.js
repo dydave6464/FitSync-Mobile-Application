@@ -1,6 +1,7 @@
 'use strict';
 const AppError = require('./app-error');
 const { manilaDay } = require('./manila-day');
+const { isRealDay } = require('./days');
 
 /// What a food log request may contain, checked the one way every log route
 /// checks it (POST /nutrition/entries, PATCH /nutrition/entries/:id, and
@@ -23,11 +24,7 @@ function invalid(field, message) {
 function checkDate(value) {
   const today = manilaDay();
   if (value === undefined) return today;
-  // A month or day out of range (2026-13-01) parses to an Invalid Date, whose
-  // toISOString() throws; February 30th parses, rolls over, and fails the compare.
-  const d = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00Z`) : null;
-  const ok = d !== null && !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
-  if (!ok) throw AppError.badRequest('INVALID_DATE', 'date must be a real date as YYYY-MM-DD.');
+  if (!isRealDay(value)) throw AppError.badRequest('INVALID_DATE', 'date must be a real date as YYYY-MM-DD.');
   if (value > today) throw AppError.badRequest('INVALID_DATE', 'date cannot be in the future.');
   return value;
 }
@@ -141,4 +138,7 @@ function scaled(base, servings) {
   };
 }
 
-module.exports = { invalid, checkDate, checkServings, checkClientId, checkManual, basisId, perServingOf, scaled, round1, round2 };
+module.exports = {
+  invalid, checkDate, checkServings, checkClientId, checkManual, basisId, perServingOf, scaled, round1, round2,
+  MAX_NAME, MAX_SERVING_DESC,
+};

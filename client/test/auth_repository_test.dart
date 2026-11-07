@@ -8,6 +8,7 @@ import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/features/auth/data/auth_repository.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
+import 'package:fitsync/features/auth/domain/sign_in_outcome.dart';
 
 const _userJson = {
   'userId': 7,
@@ -36,13 +37,110 @@ void main() {
       ),
       tokens,
     );
-    final user = await repo.login('juan@example.com', 's3cret-pass');
+    final outcome = await repo.login('juan@example.com', 's3cret-pass');
+    final user = (outcome as TraineeSignedIn).user;
     expect(user.email, 'juan@example.com');
     expect(user.onboardingCompleted, isFalse);
     expect(
       await tokens.read(),
       'tok',
       reason: 'the token must be persisted, not just returned',
+    );
+    expect(
+      await tokens.readRole(),
+      'trainee',
+      reason: 'a server from before roles sends none: it only has trainees',
+    );
+  });
+
+  test('a trainee login with its role is a trainee sign-in', () async {
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    // The phone was last used by an admin: the role must not stick.
+    await tokens.writeRole('admin');
+    final repo = AuthRepository(
+      _clientReturning(
+        jsonEncode({
+          'data': {'role': 'trainee', 'user': _userJson, 'token': 'tok'},
+        }),
+        200,
+        tokens: tokens,
+      ),
+      tokens,
+    );
+
+    final outcome = await repo.login('juan@example.com', 's3cret-pass');
+
+    expect(outcome, isA<TraineeSignedIn>());
+    expect((outcome as TraineeSignedIn).user.userId, 7);
+    expect(await tokens.read(), 'tok');
+    expect(await tokens.readRole(), 'trainee');
+  });
+
+  test('an admin login stores the admin role and returns the admin', () async {
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    late http.Request sent;
+    final repo = AuthRepository(
+      ApiClient(
+        tokens: tokens,
+        client: MockClient((request) async {
+          sent = request;
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'role': 'admin',
+                'admin': {
+                  'id': 1,
+                  'email': 'admin@fitsync.ph',
+                  'fullName': 'Ana Reyes',
+                },
+                'token': 'admin-tok',
+              },
+            }),
+            200,
+          );
+        }),
+      ),
+      tokens,
+    );
+
+    final outcome = await repo.login('admin@fitsync.ph', 'admin-pass');
+
+    expect(sent.url.path, '/api/v1/auth/login');
+    expect(outcome, isA<AdminSignedIn>());
+    final admin = (outcome as AdminSignedIn).admin;
+    expect(admin.id, 1);
+    expect(admin.email, 'admin@fitsync.ph');
+    expect(admin.fullName, 'Ana Reyes');
+    expect(await tokens.read(), 'admin-tok');
+    expect(
+      await tokens.readRole(),
+      'admin',
+      reason: 'the next launch checks this token with /admin/me',
+    );
+  });
+
+  test('a Google sign-in stores the trainee role', () async {
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.writeRole('admin');
+    final repo = AuthRepository(
+      _clientReturning(
+        jsonEncode({
+          'data': {'user': _userJson, 'token': 'google-tok'},
+        }),
+        200,
+        tokens: tokens,
+      ),
+      tokens,
+    );
+
+    final user = await repo.signInWithGoogle('id-token');
+
+    expect(user.email, 'juan@example.com');
+    expect(await tokens.read(), 'google-tok');
+    expect(
+      await tokens.readRole(),
+      'trainee',
+      reason: 'Google sign-in is trainee-only',
     );
   });
 
@@ -273,6 +371,7 @@ void main() {
         'new-token',
         reason: 'the old token stops working once the password changes',
       );
+      expect(await tokens.readRole(), 'trainee');
     },
   );
 

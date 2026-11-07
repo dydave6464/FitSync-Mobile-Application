@@ -11,6 +11,8 @@ import 'package:fitsync/core/api_client.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
+import 'package:fitsync/features/admin/domain/admin_user.dart';
+import 'package:fitsync/features/admin/presentation/admin_shell.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/auth/presentation/sign_in_screen.dart';
@@ -131,6 +133,41 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(NavShell), findsOneWidget);
+  });
+
+  testWidgets('an admin sees the admin tabs, not the trainee app', (
+    tester,
+  ) async {
+    await _pumpShell(
+      tester,
+      (_) async => const AuthState(
+        AuthStatus.admin,
+        null,
+        null,
+        AdminUser(id: 1, email: 'admin@fitsync.ph', fullName: 'Ana Reyes'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AdminShell), findsOneWidget);
+    expect(find.byType(NavShell), findsNothing);
+    for (final label in ['Overview', 'Users', 'Content', 'Revenue']) {
+      expect(
+        find.descendant(of: find.byType(FsNav), matching: find.text(label)),
+        findsOneWidget,
+      );
+    }
+
+    await tester.tap(find.byKey(const Key('nav.2')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byType(IndexedStack),
+        matching: find.text('Content'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('an error shows the message and recovers on retry', (

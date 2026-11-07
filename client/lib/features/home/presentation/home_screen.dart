@@ -26,6 +26,7 @@ import '../../plans/domain/workout_plan.dart';
 import '../../streaks/presentation/providers.dart' show streakProvider;
 import '../../streaks/presentation/streaks_screen.dart';
 import '../../activity/presentation/widgets/activity_stats_row.dart';
+import '../../ads/presentation/ad_slot.dart';
 import 'plan_ready.dart';
 import 'widgets/active_workout_card.dart';
 import 'widgets/greeting.dart';
@@ -39,11 +40,11 @@ import 'widgets/routine_card.dart';
 
 /// The signed-in landing screen.
 ///
-/// Only sections with a live API are here. The routine checklist now has one
-/// -- see [_Routine] -- but the design's ad still needs a server slice that
-/// does not exist yet (the quick stats are now [ActivityStatsRow]), and a
-/// placeholder showing invented figures cannot be told apart from a real one
-/// by anyone looking at the screen.
+/// Only sections with a live API are here: a placeholder showing invented
+/// figures cannot be told apart from a real one by anyone looking at the
+/// screen. The routine checklist is [_Routine], the quick stats are
+/// [ActivityStatsRow], and the design's ad is the free trainee's [AdSlot]
+/// at the very end.
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({
     super.key,
@@ -161,6 +162,10 @@ class HomeScreen extends ConsumerWidget {
               _Progress(onTap: () => onGoToProgress?.call()),
               const SizedBox(height: 14),
               _Routine(onGoToTrain: onGoToTrain),
+              // Last, below everything the trainee came for; it draws
+              // nothing for Pro, or with no ad running.
+              const SizedBox(height: 14),
+              const AdSlot(placement: 'home'),
             ],
           ),
         ),

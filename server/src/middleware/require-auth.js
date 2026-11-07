@@ -2,6 +2,7 @@
 const AppError = require('../lib/app-error');
 const { verifyToken } = require('../lib/tokens');
 const { findUserById } = require('../db/users');
+const { SUSPENDED } = require('../lib/suspension');
 
 module.exports = function requireAuth({ pool, jwt }) {
   return async function (req, _res, next) {
@@ -19,6 +20,11 @@ module.exports = function requireAuth({ pool, jwt }) {
       if (!user) {
         throw AppError.unauthorized('UNAUTHENTICATED', 'Sign in again to continue.');
       }
+
+      // Before the generation check: suspending also moves the generation on
+      // (signing out every phone), and the app should hear why, not just
+      // "sign in again".
+      if (user.suspended_at) throw SUSPENDED();
 
       // A password change or reset moves the account to a new token
       // generation (db/users.js replacePasswordAndSignOut), signing out every

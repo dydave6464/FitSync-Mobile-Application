@@ -6,6 +6,7 @@ const { matchItems } = require('../lib/photo-match');
 const { createMenuCache } = require('../db/vision-menu');
 const { invalid, checkDate, checkServings, scaled } = require('../lib/nutrition-input');
 const { resolveFood } = require('../lib/resolve-food');
+const { checkImage } = require('../lib/image-check');
 const { MEALS, insertEntry, getEntry } = require('../db/nutrition');
 const { findFoods } = require('../db/foods');
 const {
@@ -23,36 +24,11 @@ const DAILY_PHOTO_LIMIT = 15;
 /// DAILY_PHOTO_LIMIT, so Try again or a run of empty photos could otherwise
 /// spend the app-wide AI budget.
 const FAILED_PHOTO_LIMIT = 30;
-const MAX_IMAGE_BYTES = 1_500_000;
-const MAGIC = {
-  'image/jpeg': [0xff, 0xd8, 0xff],
-  'image/png': [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
-};
-const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 const VISION_DOWN = "Couldn't look at your photo right now.";
 
 const MAX_LOG_ITEMS = 20;
 const notFound = () => AppError.notFound('RECOGNITION_NOT_FOUND', 'No such meal photo.');
 const alreadyLogged = () => AppError.conflict('ALREADY_LOGGED', "This photo's meal is already logged.");
-
-const badImage = (message) => AppError.badRequest('INVALID_IMAGE', message);
-
-/// Throws INVALID_IMAGE unless the body holds a JPEG or PNG -- by its first
-/// bytes, not only its label -- of at most 1.5 MB. Decoded into memory only;
-/// nothing here writes it anywhere.
-function checkImage(body) {
-  const { image, mimeType } = body || {};
-  const magic = MAGIC[mimeType];
-  if (!magic) throw badImage('mimeType must be image/jpeg or image/png.');
-  if (typeof image !== 'string' || image.length === 0 || image.length % 4 !== 0 || !BASE64.test(image)) {
-    throw badImage('image must be base64, with no data: prefix.');
-  }
-  // The encoded length first, so an oversized photo is refused undecoded.
-  if (image.length > Math.ceil(MAX_IMAGE_BYTES / 3) * 4) throw badImage('The photo must be at most 1.5 MB.');
-  const bytes = Buffer.from(image, 'base64');
-  if (bytes.length > MAX_IMAGE_BYTES) throw badImage('The photo must be at most 1.5 MB.');
-  if (!magic.every((b, i) => bytes[i] === b)) throw badImage('The photo is not the image type it says it is.');
-}
 
 /// A menu food as the app gets it. fromFatsecret: a saved FatSecret copy --
 /// logged by its id like any FitSync food, but the numbers are FatSecret's,

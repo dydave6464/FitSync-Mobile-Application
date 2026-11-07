@@ -2,8 +2,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/token_store.dart';
+import 'package:fitsync/features/ads/data/ad_source.dart';
+import 'package:fitsync/features/ads/presentation/ad_slot.dart';
 import 'package:fitsync/features/auth/data/auth_repository.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
+import 'package:fitsync/features/auth/domain/sign_in_outcome.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
@@ -22,6 +25,8 @@ import 'package:fitsync/features/sessions/domain/shared_report.dart';
 import 'package:fitsync/features/sessions/domain/training_analytics.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/workout_draft.dart';
+
+import 'helpers/fake_ad_source.dart';
 
 /// Signing out must not leave one account's data readable by the next.
 ///
@@ -185,7 +190,7 @@ class FakeAuthRepository implements AuthRepository {
   @override
   Future<void> signOut() => tokens.clear();
   @override
-  Future<AuthUser> login(String email, String password) =>
+  Future<SignInOutcome> login(String email, String password) =>
       throw UnimplementedError();
   @override
   Future<void> register({
@@ -435,6 +440,36 @@ void main() {
 
     expect(container.read(proPendingCheckoutProvider), isNull);
   });
+
+  test(
+    "signing out forgets the session's ad and the views it reported",
+    () async {
+      // The ad is kept for the session, and a view counted once per
+      // placement in it; the next account starts both afresh.
+      final tokens = TokenStore(backing: InMemorySecureStore());
+      await tokens.write('token-for-juan');
+      final source = FakeAdSource(ad: sampleHouseAd);
+      final container = ProviderContainer(
+        overrides: [
+          tokenStoreProvider.overrideWithValue(tokens),
+          authRepositoryProvider.overrideWithValue(FakeAuthRepository(tokens)),
+          profileRepositoryProvider.overrideWithValue(
+            SequenceProfileRepository([_profile(userId: 1, email: 'a@b.c')]),
+          ),
+          adSourceProvider.overrideWithValue(source),
+        ],
+      );
+      addTearDown(container.dispose);
+      expect((await container.read(currentAdProvider.future))?.id, 7);
+      container.read(adViewsReportedProvider).add(('home', 7));
+
+      await container.read(authControllerProvider.notifier).signOut();
+      source.ad = null;
+
+      expect(await container.read(currentAdProvider.future), isNull);
+      expect(container.read(adViewsReportedProvider), isEmpty);
+    },
+  );
 
   test('signing out clears the stored token', () async {
     final tokens = TokenStore(backing: InMemorySecureStore());

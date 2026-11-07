@@ -213,10 +213,12 @@ class ApiClient {
     Duration? timeout,
     Future<void>? abortTrigger,
   }) => _send('POST', path, body, timeout: timeout, abortTrigger: abortTrigger);
+  /// [timeout] as for [postJson]: an admin ad's image is a large body.
   Future<Map<String, dynamic>> patchJson(
     String path,
-    Map<String, dynamic> body,
-  ) => _send('PATCH', path, body);
+    Map<String, dynamic> body, {
+    Duration? timeout,
+  }) => _send('PATCH', path, body, timeout: timeout);
   Future<Map<String, dynamic>> putJson(
     String path,
     Map<String, dynamic> body,

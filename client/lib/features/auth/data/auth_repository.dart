@@ -1,6 +1,8 @@
 import '../../../core/api_client.dart';
 import '../../../core/token_store.dart';
+import '../../admin/domain/admin_user.dart';
 import '../domain/auth_user.dart';
+import '../domain/sign_in_outcome.dart';
 
 class AuthRepository {
   AuthRepository(this._api, this._tokens);
@@ -13,16 +15,32 @@ class AuthRepository {
   // authenticate. Registration does not use this path: there is no token to
   // write until the address is verified, and `data['token'] as String` would
   // throw trying to cast the missing value.
-  Future<AuthUser> _authenticate(String path, Map<String, dynamic> body) async {
-    final data = await _api.postJson(path, body);
+  //
+  // The role is stored with the token, so a phone last used by an admin does
+  // not open the admin tabs on a trainee's token.
+  Future<AuthUser> _storeTrainee(Map<String, dynamic> data) async {
     await _tokens.write(data['token'] as String);
+    await _tokens.writeRole('trainee');
     return AuthUser.fromJson(data['user'] as Map<String, dynamic>);
   }
 
-  Future<AuthUser> login(String email, String password) => _authenticate(
-    '/api/v1/auth/login',
-    {'email': email, 'password': password},
-  );
+  /// The one sign-in that can let in an admin: the server looks in `admins`
+  /// first and says which it found in `role`. Anything but `'admin'` is a
+  /// trainee, including a server from before roles, which sends none.
+  Future<SignInOutcome> login(String email, String password) async {
+    final data = await _api.postJson('/api/v1/auth/login', {
+      'email': email,
+      'password': password,
+    });
+    if (data['role'] == 'admin') {
+      await _tokens.write(data['token'] as String);
+      await _tokens.writeRole('admin');
+      return AdminSignedIn(
+        AdminUser.fromJson(data['admin'] as Map<String, dynamic>),
+      );
+    }
+    return TraineeSignedIn(await _storeTrainee(data));
+  }
 
   /// The account is created, but cannot sign in until the address is
   /// verified — so there is no session to hand back, only confirmation that
@@ -39,8 +57,10 @@ class AuthRepository {
     });
   }
 
-  Future<AuthUser> signInWithGoogle(String idToken) =>
-      _authenticate('/api/v1/auth/google', {'idToken': idToken});
+  /// Trainee-only: the server refuses an admin's email here.
+  Future<AuthUser> signInWithGoogle(String idToken) async => _storeTrainee(
+    await _api.postJson('/api/v1/auth/google', {'idToken': idToken}),
+  );
 
   Future<AuthUser> me() async {
     final data = await _api.getJson('/api/v1/auth/me');
@@ -111,6 +131,7 @@ class AuthRepository {
       'newPassword': newPassword,
     });
     await _tokens.write(data['token'] as String);
+    await _tokens.writeRole('trainee');
   }
 
   /// Deletes the signed-in account and everything in it, confirmed with the

@@ -125,6 +125,12 @@ async function completePayment(pool, { userId, paymentId, months, method }) {
       "UPDATE pro_payments SET status = 'paid', method = ?, paid_at = NOW(), subscription_id = ? WHERE payment_id = ?",
       [method, sub.insertId, paymentId],
     );
+    // Anonymous copy for revenue (spec 2026-11-07 §6): survives account deletion.
+    await conn.query(
+      `INSERT IGNORE INTO revenue_payments (payment_id, plan, amount_php, method, paid_on)
+       VALUES (?, ?, ?, ?, CURDATE())`,
+      [paymentId, p.plan, p.amount_php, method ?? null],
+    );
     await conn.commit();
     return { subscriptionId: sub.insertId, added: true };
   } catch (err) {

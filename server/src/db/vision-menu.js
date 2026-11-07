@@ -10,12 +10,13 @@ const COLUMNS = `f.food_id, f.name, f.serving_desc, f.calories, f.protein_g, f.c
 /// The foods the AI may name: every FitSync food in the list's own order,
 /// then the [fatsecretLimit] FatSecret copies logged most often (by anyone).
 /// A copy whose name matches an earlier food, ignoring case, is left out --
-/// FitSync's own numbers win. About 3,000 tokens of names at 244 foods.
+/// FitSync's own numbers win. About 3,000 tokens of names at 244 foods. A
+/// hidden food (an admin's Hide) is never on the menu.
 async function loadMenuFoods(pool, { fatsecretLimit = FATSECRET_MENU_LIMIT } = {}) {
   const [own] = await pool.query(
     `SELECT ${COLUMNS}, NULL AS external_id
        FROM foods f LEFT JOIN food_sources s ON s.food_id = f.food_id
-      WHERE s.food_id IS NULL
+      WHERE s.food_id IS NULL AND f.hidden_at IS NULL
       ORDER BY f.list_order IS NULL, f.list_order, f.food_id`,
   );
   const [theirs] = await pool.query(
@@ -23,6 +24,7 @@ async function loadMenuFoods(pool, { fatsecretLimit = FATSECRET_MENU_LIMIT } = {
        FROM (SELECT food_id, COUNT(*) AS uses FROM meal_logs WHERE food_id IS NOT NULL GROUP BY food_id) u
        JOIN foods f ON f.food_id = u.food_id
        JOIN food_sources s ON s.food_id = f.food_id
+      WHERE f.hidden_at IS NULL
       ORDER BY u.uses DESC, f.food_id
       LIMIT ?`,
     [fatsecretLimit],

@@ -8,6 +8,7 @@ import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/auth/data/auth_repository.dart';
 import 'package:fitsync/features/auth/data/google_sign_in_gateway.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
+import 'package:fitsync/features/auth/domain/sign_in_outcome.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/auth/presentation/sign_in_screen.dart';
 import 'package:fitsync/features/settings/presentation/delete_account_screen.dart';
@@ -33,7 +34,7 @@ class _FakeAuthRepository implements AuthRepository {
     required String newPassword,
   }) => throw UnimplementedError();
   @override
-  Future<AuthUser> login(String email, String password) =>
+  Future<SignInOutcome> login(String email, String password) =>
       throw UnimplementedError();
   @override
   Future<void> register({
