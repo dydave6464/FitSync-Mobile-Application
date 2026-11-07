@@ -292,4 +292,37 @@ test('admin users endpoints', async (t) => {
     const [[j]] = await pool.query('SELECT suspended_at FROM users WHERE user_id = ?', [juan]);
     assert.equal(j.suspended_at, null);
   });
+
+  // A trainee can delete their account while an admin has the detail open:
+  // the users row is read, then the account goes before the Pro line is.
+  // The admin gets the usual 404, never a 500.
+  await t.test('a trainee deleted between the detail reads is 404 USER_NOT_FOUND', async () => {
+    const racing = (victim) => new Proxy(pool, {
+      get(target, prop) {
+        if (prop !== 'query') {
+          const v = Reflect.get(target, prop);
+          return typeof v === 'function' ? v.bind(target) : v;
+        }
+        return async (sql, params) => {
+          const result = await target.query(sql, params);
+          if (typeof sql === 'string' && sql.includes('AS has_google')) {
+            await target.query('DELETE FROM users WHERE user_id = ?', [victim]);
+          }
+          return result;
+        };
+      },
+    });
+    const calls = [
+      (racingApp, id) => request(racingApp).get(`/api/v1/admin/users/${id}`).set(auth),
+      (racingApp, id) => request(racingApp).post(`/api/v1/admin/users/${id}/suspend`).set(auth),
+      (racingApp, id) => request(racingApp).post(`/api/v1/admin/users/${id}/reinstate`).set(auth),
+    ];
+    for (const [i, call] of calls.entries()) {
+      const victim = await trainee({ email: `gone${i}@example.com`, fullName: 'Gone Soon' });
+      const res = await call(buildTestApp({ pool: racing(victim) }), victim);
+      assert.equal(res.status, 404, `call ${i}`);
+      assert.equal(res.body.error.code, 'USER_NOT_FOUND');
+      assert.equal(res.body.error.message, 'No such trainee.');
+    }
+  });
 });

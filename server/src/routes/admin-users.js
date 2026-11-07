@@ -58,7 +58,10 @@ function buildAdminUsersRouter({ pool }) {
       try {
         const userId = idParam(req.params.id);
         if (userId === null || !(await apply(pool, userId))) throw noSuchTrainee();
-        res.json({ data: { user: await userDetail(pool, userId) } });
+        // Null when the account was deleted just after the change.
+        const user = await userDetail(pool, userId);
+        if (!user) throw noSuchTrainee();
+        res.json({ data: { user } });
       } catch (err) {
         next(err);
       }

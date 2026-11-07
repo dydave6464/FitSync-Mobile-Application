@@ -128,7 +128,8 @@ async function listUsers(pool, { q = null, filter = 'all', page = 1, limit = 30 
 }
 
 /// One trainee's account info for the admin (Appendix A's user detail), or
-/// null when there is no such trainee. Account info only, by design.
+/// null when there is no such trainee (also when the account is deleted
+/// while it is being read). Account info only, by design.
 async function userDetail(pool, userId, today = manilaDay()) {
   const [[row]] = await pool.query(
     `SELECT u.user_id, u.full_name, u.email, u.email_verified,
@@ -145,6 +146,8 @@ async function userDetail(pool, userId, today = manilaDay()) {
     lastActiveDays(pool, [row.user_id], today),
     proStatus(pool, row.user_id),
   ]);
+  // The trainee deleted their account between the two reads: no such trainee.
+  if (!pro) return null;
   const signInMethods = [];
   if (row.has_password) signInMethods.push('password');
   if (row.has_google) signInMethods.push('google');
