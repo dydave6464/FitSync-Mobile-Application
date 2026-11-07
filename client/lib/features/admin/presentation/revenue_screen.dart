@@ -41,6 +41,9 @@ class _RevenueScreenState extends ConsumerState<RevenueScreen> {
   /// another month loads, so the switcher does not flicker off.
   String? _firstMonth;
 
+  /// The server's own this month, as last heard.
+  String? _serverMonth;
+
   Future<void> _refresh() async {
     try {
       ref.invalidate(adminRevenueProvider(_month));
@@ -52,10 +55,20 @@ class _RevenueScreenState extends ConsumerState<RevenueScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final current = ref.watch(adminTodayProvider).substring(0, 7);
     final revenue = ref.watch(adminRevenueProvider(_month));
     final loaded = revenue.value;
-    if (loaded != null) _firstMonth = loaded.firstMonth;
+    if (loaded != null) {
+      _firstMonth = loaded.firstMonth;
+      if (_month == null) _serverMonth = loaded.month;
+    }
+    // The later of the phone's month and the server's: around midnight on
+    // a month's last day the two can differ, and the server's decides what
+    // it will answer.
+    final phone = ref.watch(adminTodayProvider).substring(0, 7);
+    final server = _serverMonth;
+    final current = server != null && server.compareTo(phone) > 0
+        ? server
+        : phone;
     final shown = _month ?? loaded?.month ?? current;
 
     final floor = _shift(current, -_monthsBack);

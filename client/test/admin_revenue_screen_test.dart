@@ -174,6 +174,38 @@ void main() {
       expect(_enabled(tester, _prev()), isFalse);
     });
 
+    testWidgets("the server's month wins over the phone's at a month's edge", (
+      tester,
+    ) async {
+      // The phone still says 31 October; the server is already in November.
+      final repo = _repo();
+      final container = ProviderContainer(
+        overrides: [
+          adminRepositoryProvider.overrideWithValue(repo),
+          adminTodayProvider.overrideWithValue('2026-10-31'),
+        ],
+      );
+      addTearDown(container.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: fsLightTheme(),
+            home: const Scaffold(body: RevenueScreen()),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('November 2026'), findsOneWidget);
+      expect(_enabled(tester, _next()), isFalse);
+      await tester.tap(_prev());
+      await tester.pumpAndSettle();
+
+      expect(repo.revenueCalls.last, '2026-10');
+      expect(find.text('October 2026'), findsOneWidget);
+    });
+
     testWidgets('previous is off when nothing was ever paid', (tester) async {
       await _pump(tester, _repo(firstMonth: null));
 
