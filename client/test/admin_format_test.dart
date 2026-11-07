@@ -79,4 +79,28 @@ void main() {
       'http://10.0.2.2:3000/storage/exercises/1/demo.gif',
     );
   });
+
+  group('runLabel', () {
+    test('a run inside one month names the month once', () {
+      expect(runLabel('2026-11-01', '2026-11-30'), '1–30 Nov');
+    });
+
+    test('a run across months names both', () {
+      expect(runLabel('2026-10-28', '2026-11-03'), '28 Oct – 3 Nov');
+    });
+
+    test('a one-day run is that day', () {
+      expect(runLabel('2026-11-07', '2026-11-07'), '7 Nov');
+    });
+
+    test('a run across a new year names both years', () {
+      expect(runLabel('2026-12-28', '2027-01-03'), '28 Dec 2026 – 3 Jan 2027');
+    });
+  });
+
+  test('adCountsLabel groups thousands and says one in the singular', () {
+    expect(adCountsLabel(1204, 37), '1,204 views · 37 taps');
+    expect(adCountsLabel(1, 1), '1 view · 1 tap');
+    expect(adCountsLabel(0, 0), '0 views · 0 taps');
+  });
 }

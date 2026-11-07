@@ -73,6 +73,29 @@ String joinedLabel(String day) {
   return 'Joined ${d.day} ${monthShort[d.month - 1]} ${d.year}';
 }
 
+/// An ad's run, both days included (Manila `YYYY-MM-DD`): "1–30 Nov"
+/// inside one month, "28 Oct – 3 Nov" across two, "7 Nov" for one day, and
+/// with the years when the run crosses into a new one.
+String runLabel(String startsOn, String endsOn) {
+  final start = _day(startsOn);
+  final end = _day(endsOn);
+  String day(DateTime d, {bool year = false}) =>
+      '${d.day} ${monthShort[d.month - 1]}${year ? ' ${d.year}' : ''}';
+  if (start == end) return day(start);
+  if (start.year != end.year) {
+    return '${day(start, year: true)} – ${day(end, year: true)}';
+  }
+  if (start.month == end.month) return '${start.day}–${day(end)}';
+  return '${day(start)} – ${day(end)}';
+}
+
+/// "1,204 views · 37 taps", "1 view · 1 tap".
+String adCountsLabel(int views, int taps) {
+  String counted(int n, String word) =>
+      '${groupThousands(n.toDouble())} $word${n == 1 ? '' : 's'}';
+  return '${counted(views, 'view')} · ${counted(taps, 'tap')}';
+}
+
 /// The nine `foods.food_type` values in the server's order
 /// (`FOOD_TYPES` in server/src/db/foods.js), each in plain words.
 const foodTypeLabels = {

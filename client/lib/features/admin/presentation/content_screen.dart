@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/widgets/fs_kit.dart';
+import 'ads_tab.dart';
 import 'animations_tab.dart';
 import 'food_form_screen.dart';
 import 'meals_tab.dart';
@@ -31,7 +32,7 @@ class _ContentScreenState extends State<ContentScreen> {
   Widget _body(String segment) => switch (segment) {
     'animations' => const AnimationsTab(),
     'meals' => const MealsTab(),
-    _ => const Center(child: Text('Ads')),
+    _ => const AdsTab(),
   };
 
   void _addFood() => Navigator.of(context)
@@ -71,8 +72,9 @@ class _ContentScreenState extends State<ContentScreen> {
                       key: const Key('admin.content.add'),
                       icon: const Icon(Icons.add),
                       tooltip: addTooltip,
-                      // The ad form comes with the Ads segment itself.
-                      onPressed: _segment == 'meals' ? _addFood : null,
+                      onPressed: _segment == 'meals'
+                          ? _addFood
+                          : () => openAdForm(context),
                     ),
                 ],
               ),

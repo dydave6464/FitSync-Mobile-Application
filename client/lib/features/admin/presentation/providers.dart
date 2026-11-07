@@ -321,3 +321,9 @@ final adminFoodsProvider =
       AdminFoodsNotifier,
       AdminListState<AdminFood, AdminFoodsPage>
     >(AdminFoodsNotifier.new, retry: apiRetryPolicy);
+
+/// The Ads list: every ad, newest first. Not paged: there are few.
+final adminAdsProvider = FutureProvider.autoDispose<List<AdminAd>>(
+  (ref) => ref.watch(adminRepositoryProvider).ads(),
+  retry: apiRetryPolicy,
+);

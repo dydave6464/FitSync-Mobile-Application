@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
+import 'package:fitsync/features/admin/presentation/ad_form_screen.dart';
+import 'package:fitsync/features/admin/presentation/ads_tab.dart';
 import 'package:fitsync/features/admin/presentation/animations_tab.dart';
 import 'package:fitsync/features/admin/presentation/content_screen.dart';
 import 'package:fitsync/features/admin/presentation/meals_tab.dart';
@@ -82,16 +84,22 @@ void main() {
     expect(find.byTooltip('Add food'), findsOneWidget);
   });
 
-  testWidgets('Ads holds its place and an Add ad button', (tester) async {
-    await _pump(tester, FakeAdminRepository());
+  testWidgets('Ads shows the ads, and its + opens a new ad', (tester) async {
+    await _pump(
+      tester,
+      FakeAdminRepository(ads: () async => [sampleAd(title: 'Gym promo')]),
+    );
 
     await _segment(tester, 'Ads');
 
-    expect(
-      find.descendant(of: find.byType(Center), matching: find.text('Ads')),
-      findsWidgets,
-    );
+    expect(find.byType(AdsTab), findsOneWidget);
+    expect(find.text('Gym promo'), findsOneWidget);
     expect(find.byTooltip('Add ad'), findsOneWidget);
+
+    await tester.tap(_add);
+    await tester.pumpAndSettle();
+    expect(tester.widget<AdFormScreen>(find.byType(AdFormScreen)).ad, isNull);
+    expect(find.text('New ad'), findsOneWidget);
   });
 
   testWidgets('a segment keeps its search when another is opened', (
