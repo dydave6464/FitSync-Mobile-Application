@@ -296,3 +296,28 @@ final adminExercisesProvider =
       AdminExercisesNotifier,
       AdminListState<AdminExercise, AdminExercisesPage>
     >(AdminExercisesNotifier.new, retry: apiRetryPolicy);
+
+final adminFoodsQueryProvider =
+    NotifierProvider.autoDispose<AdminContentQueryNotifier, AdminContentQuery>(
+      () => AdminContentQueryNotifier('shown'),
+    );
+
+class AdminFoodsNotifier extends AdminListNotifier<AdminFood, AdminFoodsPage> {
+  @override
+  ProviderListenable<AdminContentQuery> get queryProvider =>
+      adminFoodsQueryProvider;
+
+  @override
+  Future<AdminFoodsPage> fetch(
+    AdminRepository repo,
+    AdminContentQuery query,
+    int page,
+  ) => repo.foods(show: query.chip, q: query.q, page: page);
+}
+
+/// The Meals list: FitSync's own foods, shown or hidden.
+final adminFoodsProvider =
+    AsyncNotifierProvider.autoDispose<
+      AdminFoodsNotifier,
+      AdminListState<AdminFood, AdminFoodsPage>
+    >(AdminFoodsNotifier.new, retry: apiRetryPolicy);

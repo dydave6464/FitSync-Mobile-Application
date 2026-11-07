@@ -53,6 +53,22 @@ void main() {
     expect(joinedLabel('2026-01-20'), 'Joined 20 Jan 2026');
   });
 
+  test('the nine food types read as plain words, in order', () {
+    expect(foodTypeLabels, {
+      'home': 'Home-cooked',
+      'fruit_veg': 'Fruit & veg',
+      'bread_kakanin': 'Bread & kakanin',
+      'canned_instant': 'Canned & instant',
+      'drink': 'Drink',
+      'street': 'Street food',
+      'snack_sweet': 'Snack & sweet',
+      'fast_food': 'Fast food',
+      'condiment': 'Condiment',
+    });
+    expect(foodTypeLabels.keys.first, 'home');
+    expect(foodTypeLabels.keys.last, 'condiment');
+  });
+
   test('mediaUrl joins with exactly one slash', () {
     expect(
       mediaUrl('http://10.0.2.2:3000', '/storage/exercises/1/demo.gif'),

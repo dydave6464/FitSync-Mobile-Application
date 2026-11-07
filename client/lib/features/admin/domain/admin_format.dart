@@ -73,6 +73,20 @@ String joinedLabel(String day) {
   return 'Joined ${d.day} ${monthShort[d.month - 1]} ${d.year}';
 }
 
+/// The nine `foods.food_type` values in the server's order
+/// (`FOOD_TYPES` in server/src/db/foods.js), each in plain words.
+const foodTypeLabels = {
+  'home': 'Home-cooked',
+  'fruit_veg': 'Fruit & veg',
+  'bread_kakanin': 'Bread & kakanin',
+  'canned_instant': 'Canned & instant',
+  'drink': 'Drink',
+  'street': 'Street food',
+  'snack_sweet': 'Snack & sweet',
+  'fast_food': 'Fast food',
+  'condiment': 'Condiment',
+};
+
 /// A server media path (`/storage/...`) joined to the server's address with
 /// exactly one slash between them, as `ExerciseThumb` joins its artwork.
 String mediaUrl(String baseUrl, String path) =>

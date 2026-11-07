@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/admin/presentation/admin_shell.dart';
+import 'package:fitsync/features/admin/presentation/content_screen.dart';
 import 'package:fitsync/features/admin/presentation/providers.dart';
 
 import 'helpers/fake_admin_repository.dart';
@@ -74,6 +75,15 @@ void main() {
         expect(_body(other), findsNothing, reason: '$other behind $label');
       }
     }
+  });
+
+  testWidgets('the Content tab is the Content screen', (tester) async {
+    await _pump(tester);
+
+    await tester.tap(find.byKey(const Key('nav.2')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ContentScreen), findsOneWidget);
   });
 
   testWidgets('selectTab switches the tab and carries the Users filter', (
