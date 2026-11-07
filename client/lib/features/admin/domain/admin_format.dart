@@ -72,3 +72,8 @@ String joinedLabel(String day) {
   final d = _day(day);
   return 'Joined ${d.day} ${monthShort[d.month - 1]} ${d.year}';
 }
+
+/// A server media path (`/storage/...`) joined to the server's address with
+/// exactly one slash between them, as `ExerciseThumb` joins its artwork.
+String mediaUrl(String baseUrl, String path) =>
+    '$baseUrl${path.startsWith('/') ? '' : '/'}$path';

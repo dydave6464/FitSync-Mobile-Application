@@ -52,4 +52,15 @@ void main() {
     expect(joinedLabel('2026-11-05'), 'Joined 5 Nov 2026');
     expect(joinedLabel('2026-01-20'), 'Joined 20 Jan 2026');
   });
+
+  test('mediaUrl joins with exactly one slash', () {
+    expect(
+      mediaUrl('http://10.0.2.2:3000', '/storage/exercises/1/demo.gif'),
+      'http://10.0.2.2:3000/storage/exercises/1/demo.gif',
+    );
+    expect(
+      mediaUrl('http://10.0.2.2:3000', 'storage/exercises/1/demo.gif'),
+      'http://10.0.2.2:3000/storage/exercises/1/demo.gif',
+    );
+  });
 }

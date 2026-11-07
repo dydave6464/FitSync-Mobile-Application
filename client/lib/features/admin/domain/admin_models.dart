@@ -240,9 +240,17 @@ class AdminExercise {
   );
 }
 
+/// One page of a Content list, whatever it lists: what the lists' shared
+/// paging reads.
+abstract interface class AdminPaged<T> {
+  List<T> get items;
+  int get page;
+  bool get hasMore;
+}
+
 /// One page of the Animations list, with the whole catalogue's counts for
 /// the Pending and Live chips (they don't follow the search).
-class AdminExercisesPage {
+class AdminExercisesPage implements AdminPaged<AdminExercise> {
   const AdminExercisesPage({
     required this.exercises,
     required this.pendingCount,
@@ -255,12 +263,17 @@ class AdminExercisesPage {
   final List<AdminExercise> exercises;
   final int pendingCount;
   final int liveCount;
+  @override
   final int page;
   final int limit;
 
   /// Every exercise the chip and search match, not only this page's.
   final int total;
 
+  @override
+  List<AdminExercise> get items => exercises;
+
+  @override
   bool get hasMore => page * limit < total;
 
   factory AdminExercisesPage.fromJson(Map<String, dynamic> json) {
@@ -341,7 +354,7 @@ class AdminFood {
 
 /// One page of the Meals list, with the counts of all FitSync's own foods
 /// for the Shown and Hidden chips (they don't follow the search).
-class AdminFoodsPage {
+class AdminFoodsPage implements AdminPaged<AdminFood> {
   const AdminFoodsPage({
     required this.foods,
     required this.shownCount,
@@ -354,10 +367,15 @@ class AdminFoodsPage {
   final List<AdminFood> foods;
   final int shownCount;
   final int hiddenCount;
+  @override
   final int page;
   final int limit;
   final int total;
 
+  @override
+  List<AdminFood> get items => foods;
+
+  @override
   bool get hasMore => page * limit < total;
 
   factory AdminFoodsPage.fromJson(Map<String, dynamic> json) {

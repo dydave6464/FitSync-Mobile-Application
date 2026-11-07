@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show ProviderListenable;
 
 import '../../../core/manila_day.dart';
 import '../../exercises/presentation/providers.dart'
@@ -180,3 +181,118 @@ final adminUsersProvider =
       AdminUsersNotifier.new,
       retry: apiRetryPolicy,
     );
+
+/// What a Content list asks for: the search box's term and the chip that
+/// is on (`pending`/`live` for Animations, `shown`/`hidden` for Meals).
+typedef AdminContentQuery = ({String q, String chip});
+
+class AdminContentQueryNotifier extends Notifier<AdminContentQuery> {
+  AdminContentQueryNotifier(this._firstChip);
+
+  final String _firstChip;
+
+  @override
+  AdminContentQuery build() => (q: '', chip: _firstChip);
+
+  void setSearch(String q) {
+    if (q != state.q) state = (q: q, chip: state.chip);
+  }
+
+  void setChip(String chip) {
+    if (chip != state.chip) state = (q: state.q, chip: chip);
+  }
+}
+
+/// The items of a Content list loaded so far, and the last page's answer,
+/// which carries the chips' counts.
+class AdminListState<T, P extends AdminPaged<T>> {
+  const AdminListState({
+    required this.items,
+    required this.last,
+    this.loadingMore = false,
+  });
+
+  final List<T> items;
+  final P last;
+  final bool loadingMore;
+
+  bool get hasMore => last.hasMore;
+}
+
+/// A Content list, a page of 30 at a time, paged as [AdminUsersNotifier]
+/// pages the trainees (see there for why the generation is kept). A new
+/// query rebuilds it from page 1.
+abstract class AdminListNotifier<T, P extends AdminPaged<T>>
+    extends AsyncNotifier<AdminListState<T, P>> {
+  int _generation = 0;
+  late AdminContentQuery _query;
+
+  ProviderListenable<AdminContentQuery> get queryProvider;
+
+  Future<P> fetch(AdminRepository repo, AdminContentQuery query, int page);
+
+  @override
+  Future<AdminListState<T, P>> build() async {
+    _generation++;
+    final query = _query = ref.watch(queryProvider);
+    final first = await fetch(ref.watch(adminRepositoryProvider), query, 1);
+    return AdminListState(items: first.items, last: first);
+  }
+
+  /// Loads the next page onto the list. A failure keeps the pages already
+  /// shown and is rethrown for the screen to report.
+  Future<void> loadMore() async {
+    if (state.isLoading) return;
+    final current = state.value;
+    if (current == null || !current.hasMore || current.loadingMore) return;
+    final generation = _generation;
+    state = AsyncData(
+      AdminListState(
+        items: current.items,
+        last: current.last,
+        loadingMore: true,
+      ),
+    );
+    try {
+      final next = await fetch(
+        ref.read(adminRepositoryProvider),
+        _query,
+        current.last.page + 1,
+      );
+      if (!ref.mounted || generation != _generation) return;
+      state = AsyncData(
+        AdminListState(items: [...current.items, ...next.items], last: next),
+      );
+    } catch (_) {
+      if (!ref.mounted || generation != _generation) return;
+      state = AsyncData(current);
+      rethrow;
+    }
+  }
+}
+
+final adminExercisesQueryProvider =
+    NotifierProvider.autoDispose<AdminContentQueryNotifier, AdminContentQuery>(
+      () => AdminContentQueryNotifier('pending'),
+    );
+
+class AdminExercisesNotifier
+    extends AdminListNotifier<AdminExercise, AdminExercisesPage> {
+  @override
+  ProviderListenable<AdminContentQuery> get queryProvider =>
+      adminExercisesQueryProvider;
+
+  @override
+  Future<AdminExercisesPage> fetch(
+    AdminRepository repo,
+    AdminContentQuery query,
+    int page,
+  ) => repo.exercises(status: query.chip, q: query.q, page: page);
+}
+
+/// The Animations list: exercise demos, pending or live.
+final adminExercisesProvider =
+    AsyncNotifierProvider.autoDispose<
+      AdminExercisesNotifier,
+      AdminListState<AdminExercise, AdminExercisesPage>
+    >(AdminExercisesNotifier.new, retry: apiRetryPolicy);
