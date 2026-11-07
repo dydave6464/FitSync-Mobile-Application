@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/widgets/fs_kit.dart';
 import 'overview_screen.dart';
 import 'providers.dart';
+import 'users_screen.dart';
 
 /// The admin's app: four tabs over an IndexedStack, as the trainee's
 /// `NavShell` has, with no centre button (an admin starts no workouts).
@@ -79,7 +80,7 @@ class _AdminShellState extends ConsumerState<AdminShell> {
           index: index,
           children: [
             _tab(0, () => const OverviewScreen()),
-            _tab(1, () => const Center(child: Text('Users'))),
+            _tab(1, () => const UsersScreen()),
             _tab(2, () => const Center(child: Text('Content'))),
             _tab(3, () => const Center(child: Text('Revenue'))),
           ],

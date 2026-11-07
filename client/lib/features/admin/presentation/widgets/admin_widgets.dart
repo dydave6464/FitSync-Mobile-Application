@@ -88,12 +88,15 @@ class InitialsAvatar extends StatelessWidget {
   final String fullName;
 
   String get _initials {
-    final words = fullName.trim().split(RegExp(r'\s+'));
-    final letters = [
-      if (words.isNotEmpty && words.first.isNotEmpty) words.first[0],
-      if (words.length > 1) words.last[0],
-    ];
-    return letters.join().toUpperCase();
+    // Greeting's rule: first and last word, "?" for no name at all.
+    final words = fullName
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((w) => w.isNotEmpty)
+        .toList();
+    if (words.isEmpty) return '?';
+    if (words.length == 1) return words.first[0].toUpperCase();
+    return (words.first[0] + words.last[0]).toUpperCase();
   }
 
   @override
