@@ -127,16 +127,19 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
         }
       }
       if (!mounted) return;
+      // A suspended account can't sign in however often it retries (spec
+      // §3), so that refusal is the error shown instead of the good news.
+      final goodNews = _verified && error.code != 'ACCOUNT_SUSPENDED';
       setState(() {
         _status = (
-          text: _verified
+          text: goodNews
               ? 'Your email is verified. Tap to sign in.'
               : (error.code == 'CODE_INVALID'
                     ? wrongCodeMessage
                     : userMessage(error)),
           // Verified is good news, drawn in neutral text rather than as an
           // error even though the sign-in after it failed.
-          isError: !_verified,
+          isError: !goodNews,
         );
       });
     } finally {

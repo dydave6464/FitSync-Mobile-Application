@@ -202,7 +202,9 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         }
       }
       if (!mounted) return;
-      if (_resetDone) {
+      // A suspended account can still reset its password (spec §3), but no
+      // retry will sign it in, so that refusal is the error shown instead.
+      if (_resetDone && error.code != 'ACCOUNT_SUSPENDED') {
         // Good news, drawn in neutral text rather than as an error even
         // though the sign-in after it failed.
         setState(

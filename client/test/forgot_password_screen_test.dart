@@ -417,6 +417,43 @@ void main() {
     expect(seen, [_user]);
   });
 
+  // Spec §3: a reset still works for a suspended account, but sign-in stays
+  // refused, and the refusal says why rather than inviting a retry that can
+  // only fail the same way.
+  testWidgets('reset but the account is suspended: the sign-in error says so', (
+    tester,
+  ) async {
+    final repo = FakeAuthRepository(
+      onLogin: () async => throw const ApiException(
+        'ACCOUNT_SUSPENDED',
+        'This account is suspended.',
+      ),
+    );
+    final handle = tester.ensureSemantics();
+    final seen = await _pump(tester, repo);
+
+    await _sendCode(tester);
+    await _fillReset(tester);
+
+    final message = find.text('This account is suspended.');
+    expect(
+      find.ancestor(of: message, matching: find.byType(FsErrorLine)),
+      findsOneWidget,
+    );
+    expect(_isLive(tester, message), isTrue);
+    expect(find.text('Your password is reset. Tap to sign in.'), findsNothing);
+
+    // Tapping again retries the sign-in only, and still says why.
+    await tester.tap(find.byKey(const Key('reset')));
+    await tester.pumpAndSettle();
+
+    expect(repo.resetCalls, 1, reason: 'the spent code is not sent again');
+    expect(repo.loginCalls, 2);
+    expect(find.text('This account is suspended.'), findsOneWidget);
+    expect(seen, isEmpty);
+    handle.dispose();
+  });
+
   testWidgets('Send a new code asks again', (tester) async {
     final repo = FakeAuthRepository();
     await _pump(tester, repo);

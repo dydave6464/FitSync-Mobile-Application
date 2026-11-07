@@ -340,6 +340,48 @@ void main() {
     },
   );
 
+  // Spec §3: sign-in stays refused while suspended, and the refusal says why
+  // rather than inviting a retry that can only fail the same way.
+  testWidgets(
+    'verified but the account is suspended: the sign-in error says so',
+    (tester) async {
+      final repo = FakeAuthRepository(
+        onLogin: () async => throw const ApiException(
+          'ACCOUNT_SUSPENDED',
+          'This account is suspended.',
+        ),
+      );
+      final handle = tester.ensureSemantics();
+      final seen = await _pump(tester, repo);
+
+      await tester.enterText(find.byKey(const Key('code')), '048213');
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('verify')));
+      await tester.pumpAndSettle();
+
+      final message = find.text('This account is suspended.');
+      expect(
+        find.ancestor(of: message, matching: find.byType(FsErrorLine)),
+        findsOneWidget,
+      );
+      expect(_isLive(tester, message), isTrue);
+      expect(
+        find.text('Your email is verified. Tap to sign in.'),
+        findsNothing,
+      );
+
+      // Tapping again retries the sign-in only, and still says why.
+      await tester.tap(find.byKey(const Key('verify')));
+      await tester.pumpAndSettle();
+
+      expect(repo.verifyCalls, 1, reason: 'the spent code is not sent again');
+      expect(repo.loginCalls, 2);
+      expect(find.text('This account is suspended.'), findsOneWidget);
+      expect(seen, isEmpty);
+      handle.dispose();
+    },
+  );
+
   testWidgets('Send a new code resends with the same credentials', (
     tester,
   ) async {
