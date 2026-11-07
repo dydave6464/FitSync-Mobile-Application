@@ -8,13 +8,28 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
+import 'package:fitsync/features/ads/data/ad_source.dart';
+import 'package:fitsync/features/ads/presentation/ad_slot.dart';
 import 'package:fitsync/features/nutrition/domain/nutrition.dart';
 import 'package:fitsync/features/nutrition/presentation/log_food_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/nutrition_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/providers.dart';
 import 'package:fitsync/features/nutrition/presentation/widgets/log_food_sheet.dart';
+import 'package:fitsync/features/profile/domain/profile.dart';
+import 'package:fitsync/features/profile/presentation/providers.dart';
 
+import 'helpers/fake_ad_source.dart';
 import 'nutrition_controller_test.dart' show FakeNutritionRepository;
+
+/// A free trainee's profile: the ad card at the foot of the tab asks it
+/// whether to show at all.
+class _FreeProfile extends ProfileNotifier {
+  @override
+  Future<Profile> build() async => const Profile(
+    userId: 1, email: 'juan@example.com', fullName: 'Juan Dela Cruz', onboardingCompleted: true,
+    isPremium: false, notificationsEnabled: true, equipment: [], injuries: [],
+  );
+}
 
 NutritionDay _day(String date, {bool target = true, List<FoodEntry> lunch = const [], List<String> missing = const []}) {
   final base = NutritionDay(
@@ -65,6 +80,8 @@ Future<FakeNutritionRepository> _pump(
   Size size = const Size(390, 844),
   double textScale = 1,
   VoidCallback? onGoToProfile,
+  // No ad running unless a test hands over a source with one.
+  FakeAdSource? adSource,
 }) async {
   final repo0 = (repo ?? FakeNutritionRepository())..days[today.date] = today;
   tester.view.physicalSize = size;
@@ -74,6 +91,8 @@ Future<FakeNutritionRepository> _pump(
     overrides: [
       nutritionRepositoryProvider.overrideWithValue(repo0),
       nutritionClockProvider.overrideWithValue(() => now ?? DateTime.utc(2026, 10, 14, 11)), // 19:00 Manila
+      profileProvider.overrideWith(_FreeProfile.new),
+      adSourceProvider.overrideWithValue(adSource ?? FakeAdSource()),
     ],
     child: MaterialApp(
       // Inside the app, so it adjusts the MediaQuery MaterialApp builds from
@@ -90,6 +109,21 @@ Future<FakeNutritionRepository> _pump(
 }
 
 void main() {
+  testWidgets('a free trainee finds the ad card at the very end of Nutrition', (tester) async {
+    final source = FakeAdSource(ad: sampleHouseAd);
+    await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]), adSource: source);
+
+    final list = tester.widget<ListView>(
+        find.descendant(of: find.byType(NutritionScreen), matching: find.byType(ListView)).first);
+    final children = (list.childrenDelegate as SliverChildListDelegate).children;
+    expect(children.last, isA<AdSlot>().having((slot) => slot.placement, 'placement', 'nutrition'));
+
+    await tester.scrollUntilVisible(find.text(sampleHouseAd.title), 200);
+    await tester.pumpAndSettle();
+    expect(find.text(sampleHouseAd.title), findsOneWidget);
+    expect(source.calls, ['viewed 7']);
+  });
+
   testWidgets('shows eaten against the target, macros and meals', (tester) async {
     await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]));
     expect(find.text('1,160'), findsOneWidget);

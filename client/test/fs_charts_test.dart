@@ -330,6 +330,84 @@ void main() {
     });
   });
 
+  group('FsStackedBarChart', () {
+    // It shares FsBarChart's touch, tooltip and label sizing; these pin
+    // that it still behaves the same.
+    List<FsStackedBar> months(String prefix) => [
+      for (final m in ['Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov'])
+        FsStackedBar(
+          values: const [1200, 800],
+          label: m,
+          total: '₱2,000',
+          tooltip: '$prefix$m · ₱2,000',
+        ),
+    ];
+
+    FsStackedBarChart chart(String prefix) => FsStackedBarChart(
+      label: 'Revenue',
+      bars: months(prefix),
+      colors: const [Colors.green, Colors.blue],
+    );
+
+    Offset barAt(WidgetTester tester, int i) {
+      final rect = tester.getRect(find.byType(BarChart));
+      return Offset(rect.left + (i + 0.5) * rect.width / 6, rect.top + 60);
+    }
+
+    List<int> showing(WidgetTester tester) => [
+      for (final (i, group) in _barData(tester).barGroups.indexed)
+        if (group.showingTooltipIndicators.isNotEmpty) i,
+    ];
+
+    testWidgets('a tapped bar keeps its tooltip until the next tap', (
+      tester,
+    ) async {
+      await _pump(tester, chart(''));
+      expect(_barData(tester).barTouchData.handleBuiltInTouches, isFalse);
+
+      await tester.tapAt(barAt(tester, 2));
+      await tester.pump(const Duration(seconds: 5));
+      expect(showing(tester), [2]);
+
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pump();
+      expect(showing(tester), isEmpty);
+    });
+
+    testWidgets('new numbers put an old tooltip away', (tester) async {
+      await _pump(tester, chart(''));
+      await tester.tapAt(barAt(tester, 2));
+      await tester.pump();
+      expect(showing(tester), [2]);
+
+      await _pump(tester, chart('Last year: '));
+      expect(showing(tester), isEmpty);
+    });
+
+    testWidgets('a bar can be touched anywhere in its column', (tester) async {
+      await _pump(tester, chart(''));
+      final touch = _barData(tester).barTouchData;
+      expect(touch.allowTouchBarBackDraw, isTrue);
+      expect(touch.touchExtraThreshold.horizontal, greaterThan(0));
+    });
+
+    testWidgets('large text keeps every month one size', (tester) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await _pump(tester, chart(''));
+
+      final names = ['Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov'];
+      final sizes = {
+        for (final m in names) tester.widget<Text>(find.text(m)).style!.fontSize,
+      };
+      expect(sizes, hasLength(1), reason: 'one size for every label');
+      expect(sizes.single, lessThan(22), reason: 'shrunk to fit its slot');
+    });
+  });
+
   testWidgets('a bar row fills in the data green by default', (tester) async {
     await _pump(tester, const FsBarRow(label: 'Chest', fraction: 0.6));
     final bar = tester.widget<LinearProgressIndicator>(

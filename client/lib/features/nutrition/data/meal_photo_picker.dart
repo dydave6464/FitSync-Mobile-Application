@@ -60,27 +60,35 @@ class ImagePickerMealPhotoPicker implements MealPhotoPicker {
       if (e.code == 'camera_access_denied') throw const CameraAccessDenied();
       rethrow;
     }
-    if (file == null) return null;
-    final Uint8List bytes;
-    try {
-      bytes = await file.readAsBytes();
-    } finally {
-      // The photo is not kept: the bytes are all the app needs.
-      _deleteCopy(file);
-    }
-    final type = sniffImageType(bytes);
-    if (type == null) throw const UnsupportedPhoto();
-    return PickedPhoto(bytes, type);
+    return pickedPhotoFrom(file);
   }
+}
 
-  /// Deletes the file image_picker returned. It is always the plugin's own
-  /// copy in the app's tmp or cache folder (resized, or copied out of the
-  /// gallery), never the original in the user's photos. Best effort: a copy
-  /// left behind is cleared by the OS in time.
-  static void _deleteCopy(XFile file) {
-    if (kIsWeb) return; // a blob URL on the web, not a file
-    try {
-      File(file.path).deleteSync();
-    } catch (_) {}
+/// What image_picker handed back, read and checked: the bytes and the type
+/// they really are, or null when the user backed out. Throws
+/// [UnsupportedPhoto] for anything but a JPEG or PNG. Shared by every
+/// picker, so the clean-up and the type check live in one place.
+Future<PickedPhoto?> pickedPhotoFrom(XFile? file) async {
+  if (file == null) return null;
+  final Uint8List bytes;
+  try {
+    bytes = await file.readAsBytes();
+  } finally {
+    // The photo is not kept: the bytes are all the app needs.
+    _deleteCopy(file);
   }
+  final type = sniffImageType(bytes);
+  if (type == null) throw const UnsupportedPhoto();
+  return PickedPhoto(bytes, type);
+}
+
+/// Deletes the file image_picker returned. It is always the plugin's own
+/// copy in the app's tmp or cache folder (resized, or copied out of the
+/// gallery), never the original in the user's photos. Best effort: a copy
+/// left behind is cleared by the OS in time.
+void _deleteCopy(XFile file) {
+  if (kIsWeb) return; // a blob URL on the web, not a file
+  try {
+    File(file.path).deleteSync();
+  } catch (_) {}
 }

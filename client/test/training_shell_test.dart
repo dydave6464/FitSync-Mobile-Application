@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/features/ads/presentation/ad_slot.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/presentation/exercise_list_screen.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart'
@@ -351,6 +352,8 @@ void main() {
     expect(find.byKey(const Key('tab.progress')), findsOneWidget);
     expect(find.byKey(const Key('tab.recovery')), findsOneWidget);
     expect(find.text('Week 1 — Full body'), findsOneWidget);
+    // Ads stay in calm spots: never on Training (spec §5, Ads).
+    expect(find.byType(AdSlot, skipOffstage: false), findsNothing);
   });
 
   testWidgets('Progress is a real tab now, and says so honestly when empty', (
@@ -436,6 +439,8 @@ void main() {
       reason: 'the button must reach the controller, not just relabel itself',
     );
     expect(find.byType(SessionLoggerScreen), findsOneWidget);
+    // Never mid-workout: no ad on the logger either.
+    expect(find.byType(AdSlot, skipOffstage: false), findsNothing);
     // The same button resumes a session left in progress, so it opens on
     // where that was left. A fresh session has nothing logged, which puts
     // it on exercise 1 anyway.

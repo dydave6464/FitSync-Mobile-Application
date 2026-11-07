@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
-import '../domain/auth_user.dart';
+import '../domain/sign_in_outcome.dart';
 import 'auth_controller.dart';
 import 'auth_text_link.dart';
 import 'code_entry.dart';
@@ -167,13 +167,13 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     });
 
     // No `mounted` check here: repo.login has already stored the session
-    // token, so finishing onAuthenticated keeps the app consistent with
+    // token, so finishing onSignedIn keeps the app consistent with
     // that stored session even if this screen was closed mid-flight.
     // Skipping it would leave the UI signed out while holding a valid
     // token.
-    void signedIn(AuthUser user) {
+    void signedIn(SignInOutcome outcome) {
       navigator.popUntil((route) => route.isFirst);
-      controller.onAuthenticated(user);
+      controller.onSignedIn(outcome);
       showSignedInBanner(messenger, resetSignInMessage);
     }
 
@@ -195,14 +195,16 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       if (!_resetDone && error.code == 'CODE_INVALID') {
         // Perhaps the reset went through and only the reply was lost: then
         // the new password already works.
-        final user = await signInAfterRejectedCode(repo, email, password);
-        if (user != null) {
-          signedIn(user);
+        final outcome = await signInAfterRejectedCode(repo, email, password);
+        if (outcome != null) {
+          signedIn(outcome);
           return;
         }
       }
       if (!mounted) return;
-      if (_resetDone) {
+      // A suspended account can still reset its password (spec §3), but no
+      // retry will sign it in, so that refusal is the error shown instead.
+      if (_resetDone && error.code != 'ACCOUNT_SUSPENDED') {
         // Good news, drawn in neutral text rather than as an error even
         // though the sign-in after it failed.
         setState(

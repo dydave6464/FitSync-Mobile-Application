@@ -231,11 +231,12 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         // user to hand the controller. Send the way forward instead.
         _pushCheckEmail(email, password, sendCodeOnOpen: false);
       } else {
-        final user = await repo.login(email, password);
+        final outcome = await repo.login(email, password);
         if (!mounted) return;
         // The token is already stored by the repository, so the shell can
-        // move on without a second round trip.
-        ref.read(authControllerProvider.notifier).onAuthenticated(user);
+        // move on without a second round trip: to the trainee app, or to
+        // the admin tabs when the email was an admin's.
+        ref.read(authControllerProvider.notifier).onSignedIn(outcome);
       }
     } on ApiException catch (error) {
       if (!mounted) return;
@@ -293,9 +294,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   Widget build(BuildContext context) {
     final t = context.fs;
     final theme = Theme.of(context);
-    final accountDeleted =
-        ref.watch(authControllerProvider).value?.reason ==
-        SignOutReason.accountDeleted;
+    final reason = ref.watch(authControllerProvider).value?.reason;
 
     return Scaffold(
       backgroundColor: t.bg,
@@ -321,9 +320,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   'Filipino-context nutrition — built for your goals.',
                   style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.5),
                 ),
-                if (accountDeleted) ...[
+                if (reason != null) ...[
                   const SizedBox(height: 18),
-                  const _AccountDeletedNote(),
+                  _SignOutNote(reason),
                 ],
                 const SizedBox(height: 30),
                 // One group so a password manager fills the email and the
@@ -521,19 +520,36 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   }
 }
 
-/// Why the user is back on sign-in after Delete account: the account is
-/// gone, and without a word the screen looks like an unexplained sign-out.
+/// Why the user is back on sign-in: after Delete account the account is
+/// gone, and after a suspension at launch it is shut until an admin
+/// reinstates it. Without a word either looks like an unexplained sign-out.
 /// Stays until they sign in, unlike a SnackBar that can time out unseen. A
 /// live region, so a screen reader says it as the screen appears.
-class _AccountDeletedNote extends StatelessWidget {
-  const _AccountDeletedNote();
+class _SignOutNote extends StatelessWidget {
+  const _SignOutNote(this.reason);
+
+  final SignOutReason reason;
 
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
+    final (key, icon, iconColor, text) = switch (reason) {
+      SignOutReason.accountDeleted => (
+        'signIn.accountDeleted',
+        Icons.check_circle_outline,
+        t.text2,
+        'Your account was deleted.',
+      ),
+      SignOutReason.suspended => (
+        'signIn.suspended',
+        Icons.block,
+        t.red,
+        'This account is suspended.',
+      ),
+    };
 
     return FsCard(
-      key: const Key('signIn.accountDeleted'),
+      key: Key(key),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Semantics(
         container: true,
@@ -541,11 +557,11 @@ class _AccountDeletedNote extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.check_circle_outline, size: 18, color: t.text2),
+            Icon(icon, size: 18, color: iconColor),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'Your account was deleted.',
+                text,
                 style: TextStyle(fontSize: 13, height: 1.4, color: t.text),
               ),
             ),

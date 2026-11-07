@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/features/auth/data/auth_repository.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
+import 'package:fitsync/features/auth/domain/sign_in_outcome.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
@@ -185,7 +186,7 @@ class FakeAuthRepository implements AuthRepository {
   @override
   Future<void> signOut() => tokens.clear();
   @override
-  Future<AuthUser> login(String email, String password) =>
+  Future<SignInOutcome> login(String email, String password) =>
       throw UnimplementedError();
   @override
   Future<void> register({

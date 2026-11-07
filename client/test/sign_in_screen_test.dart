@@ -6,11 +6,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart' show FaIcon;
 
+import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/features/auth/data/auth_repository.dart';
+import 'package:fitsync/features/admin/domain/admin_user.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
+import 'package:fitsync/features/auth/domain/sign_in_outcome.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/auth/presentation/check_email_screen.dart';
 import 'package:fitsync/features/auth/presentation/forgot_password_screen.dart';
@@ -31,7 +34,7 @@ AuthUser _user() => const AuthUser(
 class FakeAuthRepository implements AuthRepository {
   FakeAuthRepository({this.onLogin, this.onRegister});
 
-  final Future<AuthUser> Function()? onLogin;
+  final Future<SignInOutcome> Function()? onLogin;
   final Future<void> Function()? onRegister;
 
   int loginCalls = 0;
@@ -41,7 +44,7 @@ class FakeAuthRepository implements AuthRepository {
   String? lastFullName;
 
   @override
-  Future<AuthUser> login(String email, String password) {
+  Future<SignInOutcome> login(String email, String password) {
     loginCalls++;
     lastEmail = email;
     return onLogin!();
@@ -106,9 +109,10 @@ class FakeAuthRepository implements AuthRepository {
 }
 
 class RecordingAuthController extends AuthController {
-  RecordingAuthController(this.seen);
+  RecordingAuthController(this.seen, [this.seenAdmins]);
 
   final List<AuthUser> seen;
+  final List<AdminUser>? seenAdmins;
 
   @override
   Future<AuthState> build() async => AuthState.signedOut;
@@ -117,6 +121,12 @@ class RecordingAuthController extends AuthController {
   void onAuthenticated(AuthUser user) {
     seen.add(user);
     super.onAuthenticated(user);
+  }
+
+  @override
+  void onAdminAuthenticated(AdminUser admin) {
+    seenAdmins?.add(admin);
+    super.onAdminAuthenticated(admin);
   }
 }
 
@@ -127,16 +137,24 @@ class _DeletedAuthController extends AuthController {
       const AuthState(AuthStatus.signedOut, null, SignOutReason.accountDeleted);
 }
 
+/// Signed out at launch because an admin suspended the account.
+class _SuspendedAuthController extends AuthController {
+  @override
+  Future<AuthState> build() async =>
+      const AuthState(AuthStatus.signedOut, null, SignOutReason.suspended);
+}
+
 Future<void> _pump(
   WidgetTester tester,
   FakeAuthRepository repo, {
   List<AuthUser>? seen,
+  List<AdminUser>? seenAdmins,
 }) => tester.pumpWidget(
   ProviderScope(
     overrides: [
       authRepositoryProvider.overrideWithValue(repo),
       authControllerProvider.overrideWith(
-        () => RecordingAuthController(seen ?? []),
+        () => RecordingAuthController(seen ?? [], seenAdmins),
       ),
     ],
     child: const MaterialApp(home: SignInScreen()),
@@ -236,12 +254,83 @@ void main() {
     handle.dispose();
   });
 
+  testWidgets('says the account is suspended when that is why it is here', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(FakeAuthRepository()),
+          authControllerProvider.overrideWith(_SuspendedAuthController.new),
+        ],
+        child: MaterialApp(theme: fsLightTheme(), home: const SignInScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final note = find.byKey(const Key('signIn.suspended'));
+    final message = find.descendant(
+      of: note,
+      matching: find.text('This account is suspended.'),
+    );
+    expect(message, findsOneWidget);
+    final icon = tester.widget<Icon>(
+      find.descendant(of: note, matching: find.byType(Icon)),
+    );
+    expect(icon.icon, Icons.block);
+    expect(icon.color, FsTokens.light.red);
+    expect(
+      _isLive(tester, message),
+      isTrue,
+      reason: 'a screen reader says it as the sign-in screen appears',
+    );
+    expect(find.text('Your account was deleted.'), findsNothing);
+    handle.dispose();
+  });
+
+  testWidgets('the suspended note fits 360x640 at 2x text, dark', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 2.0;
+    tester.view.physicalSize = const Size(360 * 2.0, 640 * 2.0);
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(FakeAuthRepository()),
+          authControllerProvider.overrideWith(_SuspendedAuthController.new),
+        ],
+        child: MaterialApp(
+          theme: fsDarkTheme(),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: const TextScaler.linear(2.0)),
+            child: child!,
+          ),
+          home: const SignInScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    final icon = tester.widget<Icon>(
+      find.descendant(
+        of: find.byKey(const Key('signIn.suspended')),
+        matching: find.byType(Icon),
+      ),
+    );
+    expect(icon.color, FsTokens.dark.red);
+  });
+
   testWidgets('says nothing about deletion after a plain sign-out', (
     tester,
   ) async {
     await _pump(tester, FakeAuthRepository());
     await tester.pumpAndSettle();
     expect(find.text('Your account was deleted.'), findsNothing);
+    expect(find.byKey(const Key('signIn.suspended')), findsNothing);
   });
 
   testWidgets('renders an email and a password field', (tester) async {
@@ -274,7 +363,9 @@ void main() {
     tester,
   ) async {
     final seen = <AuthUser>[];
-    final repo = FakeAuthRepository(onLogin: () async => _user());
+    final repo = FakeAuthRepository(
+      onLogin: () async => TraineeSignedIn(_user()),
+    );
     await _pump(tester, repo, seen: seen);
     await tester.pumpAndSettle();
 
@@ -283,6 +374,49 @@ void main() {
 
     expect(repo.loginCalls, 1);
     expect(seen.single.email, 'juan@example.com');
+  });
+
+  testWidgets('an admin sign-in hands the admin to the controller', (
+    tester,
+  ) async {
+    final seen = <AuthUser>[];
+    final seenAdmins = <AdminUser>[];
+    final repo = FakeAuthRepository(
+      onLogin: () async => const AdminSignedIn(
+        AdminUser(id: 1, email: 'admin@fitsync.ph', fullName: 'Ana Reyes'),
+      ),
+    );
+    await _pump(tester, repo, seen: seen, seenAdmins: seenAdmins);
+    await tester.pumpAndSettle();
+
+    await _fillAndSubmit(tester, email: 'admin@fitsync.ph');
+    await tester.pumpAndSettle();
+
+    expect(seenAdmins.single.email, 'admin@fitsync.ph');
+    expect(seen, isEmpty, reason: 'an admin is not a trainee');
+  });
+
+  testWidgets('a suspended account is told so under the form', (tester) async {
+    final repo = FakeAuthRepository(
+      onLogin: () async => throw const ApiException(
+        'ACCOUNT_SUSPENDED',
+        'This account is suspended.',
+      ),
+    );
+    await _pump(tester, repo);
+    await tester.pumpAndSettle();
+
+    await _fillAndSubmit(tester);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('error')),
+        matching: find.text('This account is suspended.'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byType(FsErrorLine), findsOneWidget);
   });
 
   testWidgets('INVALID_CREDENTIALS shows the message and keeps the input', (
@@ -791,7 +925,9 @@ void main() {
     tester,
   ) async {
     // An account made before the rule must still be able to sign in.
-    final repo = FakeAuthRepository(onLogin: () async => _user());
+    final repo = FakeAuthRepository(
+      onLogin: () async => TraineeSignedIn(_user()),
+    );
     await _pump(tester, repo);
     await tester.pumpAndSettle();
 

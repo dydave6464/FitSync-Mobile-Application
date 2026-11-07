@@ -11,6 +11,8 @@ import 'package:fitsync/core/widgets/fs_kit.dart' hide FsRing;
 import 'package:fitsync/features/activity/data/step_permission.dart';
 import 'package:fitsync/features/activity/data/step_source.dart';
 import 'package:fitsync/features/activity/presentation/providers.dart';
+import 'package:fitsync/features/ads/data/ad_source.dart';
+import 'package:fitsync/features/ads/presentation/ad_slot.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart'
     show exerciseDetailProvider;
@@ -42,6 +44,7 @@ import 'package:fitsync/features/streaks/presentation/providers.dart'
 import 'package:fitsync/features/streaks/presentation/streaks_screen.dart';
 
 import 'helpers/dialog_buttons.dart';
+import 'helpers/fake_ad_source.dart';
 import 'helpers/in_memory_secure_store.dart';
 
 const _someEquipment = [EquipmentOption(equipmentId: 1, name: 'Dumbbells')];
@@ -305,6 +308,8 @@ Future<void> _pumpHome(
   StepPermission? stepPermission,
   bool planReady = false,
   ThemeData? theme,
+  // No ad running unless a test hands over a source with one.
+  FakeAdSource? adSource,
 }) async {
   var streakReads = 0;
   await tester.pumpWidget(
@@ -368,6 +373,7 @@ Future<void> _pumpHome(
         ),
         stepSourceProvider.overrideWithValue(const NoStepSource()),
         if (planReady) planReadyProvider.overrideWith(_JustOnboarded.new),
+        adSourceProvider.overrideWithValue(adSource ?? FakeAdSource()),
       ],
       child: MaterialApp(
         theme: theme,
@@ -1140,6 +1146,7 @@ void main() {
             reminderPromptStoreProvider.overrideWithValue(
               inMemoryReminderPromptStore(),
             ),
+            adSourceProvider.overrideWithValue(FakeAdSource()),
           ],
           child: const MaterialApp(home: HomeScreen()),
         ),
@@ -1354,5 +1361,33 @@ void main() {
       200,
     );
     expect(find.byKey(const Key('home.activity.steps')), findsOneWidget);
+  });
+
+  testWidgets('a free trainee finds the ad card at the very end of Home', (
+    tester,
+  ) async {
+    final source = FakeAdSource(ad: sampleHouseAd);
+    await _pumpHome(tester, adSource: source);
+
+    final list = tester.widget<ListView>(
+      find
+          .descendant(
+            of: find.byType(HomeScreen),
+            matching: find.byType(ListView),
+          )
+          .first,
+    );
+    final children =
+        (list.childrenDelegate as SliverChildListDelegate).children;
+    expect(
+      children.last,
+      isA<AdSlot>().having((slot) => slot.placement, 'placement', 'home'),
+    );
+
+    await tester.scrollUntilVisible(find.text(sampleHouseAd.title), 200);
+    await tester.pumpAndSettle();
+    expect(find.text(sampleHouseAd.title), findsOneWidget);
+    expect(find.byKey(const Key('ad.removeWithPro')), findsOneWidget);
+    expect(source.calls, ['viewed 7']);
   });
 }
