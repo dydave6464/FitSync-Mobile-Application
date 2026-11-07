@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -471,6 +473,81 @@ void main() {
 
       expect(find.text('The server said no.'), findsOneWidget);
       expect(find.byKey(const Key('admin.food.hide')), findsOneWidget);
+    });
+
+    testWidgets('leaving during a save keeps the page below', (tester) async {
+      final pending = Completer<AdminFood>();
+      final repo = FakeAdminRepository(updateFood: (_, _) => pending.future);
+      await _pump(tester, repo, food: worked);
+
+      await _type(tester, 'fat', '20');
+      await tester.tap(find.byKey(const Key('save')));
+      await tester.pump();
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(FoodFormScreen), findsNothing);
+
+      pending.complete(sampleFood(id: 12));
+      await tester.pumpAndSettle();
+
+      expect(find.text('open'), findsOneWidget);
+      expect(find.text('Food saved.'), findsOneWidget);
+    });
+
+    testWidgets('Hide food is off while a save runs', (tester) async {
+      final pending = Completer<AdminFood>();
+      final repo = FakeAdminRepository(updateFood: (_, _) => pending.future);
+      await _pump(tester, repo, food: worked);
+
+      await _type(tester, 'fat', '20');
+      await tester.tap(find.byKey(const Key('save')));
+      await tester.pump();
+
+      expect(
+        tester
+            .widget<FsButton>(find.byKey(const Key('admin.food.hide')))
+            .onPressed,
+        isNull,
+      );
+      pending.complete(sampleFood(id: 12));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('Show food is off while a save runs', (tester) async {
+      final pending = Completer<AdminFood>();
+      final repo = FakeAdminRepository(updateFood: (_, _) => pending.future);
+      await _pump(tester, repo, food: sampleFood(id: 12, hidden: true));
+
+      await _type(tester, 'fat', '20');
+      await tester.tap(find.byKey(const Key('save')));
+      await tester.pump();
+
+      expect(
+        tester
+            .widget<FsButton>(find.byKey(const Key('admin.food.show')))
+            .onPressed,
+        isNull,
+      );
+      pending.complete(sampleFood(id: 12));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('Save is off while Hide or Show runs', (tester) async {
+      final pending = Completer<AdminFood>();
+      final repo = FakeAdminRepository(showFood: (_) => pending.future);
+      await _pump(tester, repo, food: sampleFood(id: 12, hidden: true));
+
+      await _type(tester, 'fat', '20');
+      expect(_save(tester), isNotNull);
+      await tester.ensureVisible(find.byKey(const Key('admin.food.show')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('admin.food.show')));
+      await tester.pump();
+
+      expect(_save(tester), isNull);
+      pending.complete(sampleFood(id: 12));
+      await tester.pumpAndSettle();
+      expect(_save(tester), isNotNull);
     });
   });
 

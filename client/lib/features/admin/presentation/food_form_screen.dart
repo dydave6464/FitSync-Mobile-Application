@@ -177,6 +177,7 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
     final container = ProviderScope.containerOf(context, listen: false);
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
+    final route = ModalRoute.of(context);
     final repo = ref.read(adminRepositoryProvider);
     setState(() {
       _saving = true;
@@ -199,8 +200,12 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
       return;
     }
     container.invalidate(adminFoodsProvider);
-    // Still "saving" as it pops, so the discard guard lets it go.
-    navigator.pop();
+    // Back stays open while saving, so the admin may have left already, or a
+    // dialog may sit on top. Not `mounted`: during back's exit transition the
+    // form is still mounted but no longer current, and pop() would close the
+    // route under it. Still "saving" as it pops, so the discard guard lets
+    // it go.
+    if (route != null && route.isCurrent) navigator.pop();
     messenger.showSnackBar(
       SnackBar(content: Text(_editing ? 'Food saved.' : 'Food added.')),
     );
@@ -350,7 +355,8 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
       hint:
           missing ??
           (nothingToCount ? 'Add calories, protein, carbs or fat' : null),
-      onSave: valid ? _save : null,
+      // Not while Hide or Show runs: one change to the food at a time.
+      onSave: valid && !_toggling ? _save : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -471,7 +477,7 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
                 label: 'Show food',
                 kind: FsButtonKind.secondary,
                 busy: _toggling,
-                onPressed: () => _show(food),
+                onPressed: _saving ? null : () => _show(food),
               )
             else
               FsButton(
@@ -480,7 +486,7 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
                 kind: FsButtonKind.ghost,
                 danger: true,
                 busy: _toggling,
-                onPressed: () => _hide(food),
+                onPressed: _saving ? null : () => _hide(food),
               ),
           ],
         ],
