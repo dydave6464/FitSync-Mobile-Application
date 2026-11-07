@@ -3,7 +3,7 @@ const express = require('express');
 const AppError = require('../lib/app-error');
 const { parsePositiveInt } = require('../lib/query-params');
 const {
-  STATUSES, asAdminExercise, listAdminExercises, publishExercise,
+  STATUSES, asAdminExercise, listAdminExercises, publishExercise, unpublishExercise,
 } = require('../db/admin-exercises');
 
 const DEFAULT_LIMIT = 30;
@@ -56,16 +56,23 @@ function buildAdminContentRouter({ pool, storage = null }) {
     }
   });
 
-  router.post('/exercises/:id/publish', async (req, res, next) => {
-    try {
-      const exerciseId = idParam(req.params.id);
-      const row = exerciseId === null ? null : await publishExercise(pool, exerciseId, req.admin.adminId);
-      if (!row) throw noSuchExercise();
-      res.json({ data: { exercise: asAdminExercise(row, toUrl) } });
-    } catch (err) {
-      next(err);
-    }
-  });
+  // Repeat calls are harmless: each answers the exercise as it now is.
+  const changes = {
+    publish: (exerciseId, req) => publishExercise(pool, exerciseId, req.admin.adminId),
+    unpublish: (exerciseId) => unpublishExercise(pool, exerciseId),
+  };
+  for (const [action, apply] of Object.entries(changes)) {
+    router.post(`/exercises/:id/${action}`, async (req, res, next) => {
+      try {
+        const exerciseId = idParam(req.params.id);
+        const row = exerciseId === null ? null : await apply(exerciseId, req);
+        if (!row) throw noSuchExercise();
+        res.json({ data: { exercise: asAdminExercise(row, toUrl) } });
+      } catch (err) {
+        next(err);
+      }
+    });
+  }
 
   return router;
 }

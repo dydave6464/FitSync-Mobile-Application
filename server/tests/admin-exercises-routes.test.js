@@ -285,4 +285,108 @@ test('admin exercises endpoints', async (t) => {
     await post(`/exercises/${press.id}/publish`).expect(200);
     assert.deepEqual(await search(), [press.id]);
   });
+
+  // ---- Unpublish ----------------------------------------------------------
+
+  const newTrainee = async (email) => {
+    const [r] = await pool.query(
+      "INSERT INTO users (email, password_hash, full_name) VALUES (?, 'x', 'Trainee')", [email],
+    );
+    return r.insertId;
+  };
+  const newPlan = async (userId) => {
+    const [r] = await pool.query(
+      `INSERT INTO workout_plans (user_id, name, split_style, days_per_week, session_length_min)
+       VALUES (?, 'Plan', 'full_body', 3, 45)`, [userId],
+    );
+    return r.insertId;
+  };
+  const newSession = async (userId) => {
+    const [r] = await pool.query(
+      "INSERT INTO workout_sessions (user_id, session_date) VALUES (?, '2026-11-01')", [userId],
+    );
+    return r.insertId;
+  };
+  const newSwap = async (userId, rejected, chosen) => {
+    const [r] = await pool.query(
+      `INSERT INTO plan_swaps (user_id, rejected_exercise_id, chosen_exercise_id, muscle_group)
+       VALUES (?, ?, ?, 'pectorals')`, [userId, rejected, chosen],
+    );
+    return r.insertId;
+  };
+  // Each way a trainee can have used an exercise, by table.
+  const USES = {
+    plan_exercises: async (userId, exerciseId) => pool.query(
+      `INSERT INTO plan_exercises (plan_id, exercise_id, order_no, target_sets, target_reps)
+       VALUES (?, ?, 1, 3, '8-12')`, [await newPlan(userId), exerciseId],
+    ),
+    session_exercises: async (userId, exerciseId) => pool.query(
+      'INSERT INTO session_exercises (session_id, exercise_id, order_no) VALUES (?, ?, 1)',
+      [await newSession(userId), exerciseId],
+    ),
+    set_logs: async (userId, exerciseId) => pool.query(
+      'INSERT INTO set_logs (session_id, exercise_id, set_number) VALUES (?, ?, 1)',
+      [await newSession(userId), exerciseId],
+    ),
+    'plan_swaps.rejected_exercise_id': (userId, exerciseId) => newSwap(userId, exerciseId, pushUp.id),
+    'plan_swaps.chosen_exercise_id': (userId, exerciseId) => newSwap(userId, pushUp.id, exerciseId),
+    plan_swap_alternatives: async (userId, exerciseId) => pool.query(
+      'INSERT INTO plan_swap_alternatives (swap_id, exercise_id, position_no) VALUES (?, ?, 1)',
+      [await newSwap(userId, pushUp.id, curl.id), exerciseId],
+    ),
+    lift_goals: (userId, exerciseId) => pool.query(
+      'INSERT INTO lift_goals (user_id, exercise_id, target_kg) VALUES (?, ?, 60)', [userId, exerciseId],
+    ),
+  };
+  const IN_USE = "Trainees have this exercise in their plans or workouts, so it can't be unpublished.";
+
+  await t.test('an unused live exercise goes back to pending; its safety rows stay', async () => {
+    const before = await safetyRows(incline.id);
+    assert.ok(before.contraindications.length > 0);
+    const res = await post(`/exercises/${incline.id}/unpublish`).expect(200);
+    assert.deepEqual(Object.keys(res.body.data.exercise).sort(), ROW_KEYS);
+    assert.equal(res.body.data.exercise.status, 'pending');
+    assert.equal((await exerciseRow(incline.id)).status, 'pending');
+    assert.deepEqual(await safetyRows(incline.id), before);
+  });
+
+  for (const [table, use] of Object.entries(USES)) {
+    await t.test(`an exercise in ${table} can't be unpublished`, async () => {
+      const used = await addExercise(`used in ${table}`, 'pectorals', 'chest', 'barbell', 'live');
+      const userId = await newTrainee(`${table}@example.com`);
+      await use(userId, used.id);
+      const res = await post(`/exercises/${used.id}/unpublish`).expect(409);
+      assert.equal(res.body.error.code, 'EXERCISE_IN_USE');
+      assert.equal(res.body.error.message, IN_USE);
+      assert.deepEqual(res.body.error.details, [{ trainees: 1 }]);
+      assert.equal((await exerciseRow(used.id)).status, 'live');
+    });
+  }
+
+  await t.test('the refusal counts each trainee once', async () => {
+    const used = await addExercise('used by two', 'pectorals', 'chest', 'barbell', 'live');
+    const one = await newTrainee('one@example.com');
+    const two = await newTrainee('two@example.com');
+    await USES.plan_exercises(one, used.id);
+    await USES.set_logs(one, used.id);
+    await USES.lift_goals(one, used.id);
+    await USES.plan_swap_alternatives(two, used.id);
+    const res = await post(`/exercises/${used.id}/unpublish`).expect(409);
+    assert.deepEqual(res.body.error.details, [{ trainees: 2 }]);
+  });
+
+  await t.test('unpublishing a pending exercise answers it unchanged', async () => {
+    const res = await post(`/exercises/${bike.id}/unpublish`).expect(200);
+    assert.equal(res.body.data.exercise.status, 'pending');
+    assert.equal(res.body.data.exercise.pendingReason, 'rare_equipment');
+    assert.equal((await exerciseRow(bike.id)).status, 'pending');
+  });
+
+  await t.test('unpublishing an unknown exercise is 404 EXERCISE_NOT_FOUND', async () => {
+    for (const id of ['999999', 'abc']) {
+      const res = await post(`/exercises/${id}/unpublish`).expect(404);
+      assert.equal(res.body.error.code, 'EXERCISE_NOT_FOUND', id);
+      assert.equal(res.body.error.message, 'No such exercise.');
+    }
+  });
 });

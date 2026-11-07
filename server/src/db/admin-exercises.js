@@ -158,6 +158,68 @@ async function publishExercise(pool, exerciseId, adminId) {
   }
 }
 
+/// Every trainee row that names an exercise: plans, manual sessions, set
+/// logs, plan swaps (either side) and the alternatives a swap offered, lift
+/// goals. One (user_id) per row; each part binds the exercise id once.
+const USES_SQL = `
+  SELECT wp.user_id FROM plan_exercises pe
+    JOIN workout_plans wp ON wp.plan_id = pe.plan_id WHERE pe.exercise_id = ?
+  UNION ALL SELECT ws.user_id FROM session_exercises se
+    JOIN workout_sessions ws ON ws.session_id = se.session_id WHERE se.exercise_id = ?
+  UNION ALL SELECT ws.user_id FROM set_logs sl
+    JOIN workout_sessions ws ON ws.session_id = sl.session_id WHERE sl.exercise_id = ?
+  UNION ALL SELECT user_id FROM plan_swaps WHERE rejected_exercise_id = ?
+  UNION ALL SELECT user_id FROM plan_swaps WHERE chosen_exercise_id = ?
+  UNION ALL SELECT ps.user_id FROM plan_swap_alternatives pa
+    JOIN plan_swaps ps ON ps.swap_id = pa.swap_id WHERE pa.exercise_id = ?
+  UNION ALL SELECT user_id FROM lift_goals WHERE exercise_id = ?`;
+const USES_PARTS = 7;
+
+/// Takes a live exercise out of the library (back to pending), but only
+/// while no trainee has used it: plans, Switch and past workouts read only
+/// live exercises, so unpublishing a used one would rewrite their history.
+/// Used → 409 EXERCISE_IN_USE with the number of trainees. Its safety rows
+/// stay (they are only read for live exercises). A pending exercise is
+/// answered unchanged; an unknown one is null.
+async function unpublishExercise(pool, exerciseId) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    // FOR UPDATE: a trainee's insert naming this exercise checks its foreign
+    // key with a shared lock on this row, so it waits for this transaction
+    // rather than slipping in between the count and the update.
+    const [[exercise]] = await conn.query(
+      'SELECT status FROM exercises WHERE exercise_id = ? FOR UPDATE', [exerciseId],
+    );
+    if (!exercise) {
+      await conn.rollback();
+      return null;
+    }
+    if (exercise.status === 'live') {
+      const [[{ trainees }]] = await conn.query(
+        `SELECT COUNT(DISTINCT user_id) AS trainees FROM (${USES_SQL}) u`,
+        Array(USES_PARTS).fill(exerciseId),
+      );
+      if (Number(trainees) > 0) {
+        throw AppError.conflict(
+          'EXERCISE_IN_USE',
+          "Trainees have this exercise in their plans or workouts, so it can't be unpublished.",
+          [{ trainees: Number(trainees) }],
+        );
+      }
+      await conn.query("UPDATE exercises SET status = 'pending' WHERE exercise_id = ?", [exerciseId]);
+    }
+    const row = await findAdminExercise(conn, exerciseId);
+    await conn.commit();
+    return row;
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
 module.exports = {
-  STATUSES, asAdminExercise, listAdminExercises, publishExercise,
+  STATUSES, asAdminExercise, listAdminExercises, publishExercise, unpublishExercise,
 };
