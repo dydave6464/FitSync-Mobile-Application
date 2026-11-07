@@ -15,6 +15,7 @@ const { codeKey, normaliseCode, TTL_MINUTES } = require('../lib/auth-codes');
 const { issueCode, checkCode } = require('../db/auth-codes');
 const { findAdminByEmail } = require('../db/admins');
 const { toPublicAdmin } = require('./admin');
+const { SUSPENDED } = require('../lib/suspension');
 const requireAuth = require('../middleware/require-auth');
 
 // users.email and users.full_name are both VARCHAR(255). Anything longer must
@@ -186,7 +187,9 @@ module.exports = function buildAuthRouter({
       // an address is registered without knowing its password -- exactly what
       // the DUMMY_HASH dance above exists to prevent. Reaching this line
       // already required the correct password, so disclosing the account's
-      // state costs nothing further.
+      // state costs nothing further. Suspended comes first: verifying the
+      // address would not let a suspended account in either.
+      if (user.suspended_at) throw SUSPENDED();
       if (!user.email_verified) {
         throw AppError.forbidden(
           'EMAIL_NOT_VERIFIED', 'Check your email to finish setting up your account.',
@@ -389,6 +392,7 @@ module.exports = function buildAuthRouter({
         throw AppError.conflict('EMAIL_TAKEN', 'That email is already registered.');
       }
       const { user, isNew } = await findOrCreateGoogleUser(pool, identity);
+      if (user.suspended_at) throw SUSPENDED();
       res.json({
         data: {
           user: toPublicUser(user),
