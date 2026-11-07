@@ -63,6 +63,28 @@ test('revenue copies of paid Pro payments', async (t) => {
     assert.equal(p.status, 'pending');
   });
 
+  await t.test('a copy that cannot be written leaves the payment unpaid (one transaction)', async () => {
+    const userId = await user();
+    const paymentId = await createPayment(pool, { userId, plan: 'monthly', amountPhp: 249 });
+    // Make the copy's own INSERT fail: the payment must not become paid and
+    // no period may be added, so the copy is part of the same transaction.
+    await pool.query('RENAME TABLE revenue_payments TO revenue_payments_off');
+    try {
+      await assert.rejects(
+        () => completePayment(pool, { userId, paymentId, months: 1, method: 'gcash' }),
+        /revenue_payments/,
+      );
+    } finally {
+      await pool.query('RENAME TABLE revenue_payments_off TO revenue_payments');
+    }
+    const [[p]] = await pool.query('SELECT status, paid_at FROM pro_payments WHERE payment_id = ?', [paymentId]);
+    assert.equal(p.status, 'pending');
+    assert.equal(p.paid_at, null);
+    const [subs] = await pool.query('SELECT 1 FROM subscriptions WHERE user_id = ?', [userId]);
+    assert.equal(subs.length, 0);
+    assert.deepEqual(await copies(paymentId), []);
+  });
+
   await t.test('deleting the trainee leaves the copy', async () => {
     const userId = await user();
     const paymentId = await createPayment(pool, { userId, plan: 'monthly', amountPhp: 249 });

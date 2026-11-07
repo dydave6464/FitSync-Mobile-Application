@@ -1,6 +1,9 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const path = require('node:path');
+const mysql = require('mysql2/promise');
 const { migrate } = require('../src/db/migrate');
 const { createPool } = require('../src/db/pool');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
@@ -59,10 +62,29 @@ test('revenue payments schema (047)', async (t) => {
     );
 
     // Run 047 again against these rows, as on a database that had payments
-    // before it landed.
+    // before it landed -- on a connection whose session is UTC, as a
+    // production MySQL's may be. The file's own SET must still date the
+    // 20:00Z payment on its Manila day; without it DATE() would give
+    // 2026-11-04.
     await pool.query('DELETE FROM schema_migrations WHERE version = ?', [FILE]);
     await pool.query('DROP TABLE revenue_payments');
-    assert.deepEqual(await migrate(testDbConfig()), [FILE]);
+    const cfg = testDbConfig();
+    const utc = await mysql.createConnection({
+      host: cfg.host,
+      port: cfg.port,
+      user: cfg.user,
+      password: cfg.password,
+      database: cfg.database,
+      multipleStatements: true,
+      charset: 'utf8mb4',
+    });
+    try {
+      await utc.query("SET time_zone = '+00:00'");
+      await utc.query(await fs.readFile(path.join(__dirname, '../src/db/migrations', FILE), 'utf8'));
+      await utc.query('INSERT INTO schema_migrations (version) VALUES (?)', [FILE]);
+    } finally {
+      await utc.end();
+    }
 
     const copies = async () => (await pool.query(
       `SELECT payment_id, plan, amount_php, method, DATE_FORMAT(paid_on, '%Y-%m-%d') AS paid_on
