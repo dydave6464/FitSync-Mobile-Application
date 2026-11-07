@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/api_exception.dart';
 import 'core/theme.dart';
 import 'core/widgets/fs_kit.dart';
+import 'features/admin/presentation/admin_shell.dart';
 import 'features/auth/presentation/auth_controller.dart';
 import 'features/auth/presentation/sign_in_screen.dart';
 import 'features/home/presentation/nav_shell.dart';
@@ -48,6 +49,7 @@ class AppShell extends ConsumerWidget {
         AuthStatus.signedOut => const SignInScreen(),
         AuthStatus.onboarding => const OnboardingFlow(),
         AuthStatus.ready => const NavShell(),
+        AuthStatus.admin => const AdminShell(),
       },
     );
   }
