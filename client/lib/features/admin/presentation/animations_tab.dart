@@ -43,6 +43,7 @@ class AnimationsTab extends ConsumerWidget {
       onSearch: ref.read(adminExercisesQueryProvider.notifier).setSearch,
       onChip: ref.read(adminExercisesQueryProvider.notifier).setChip,
       onLoadMore: ref.read(adminExercisesProvider.notifier).loadMore,
+      onRetryMore: ref.read(adminExercisesProvider.notifier).retryMore,
       onRetry: () => ref.invalidate(adminExercisesProvider),
       itemBuilder: (context, exercise) => _ExerciseRow(
         key: ValueKey('admin.exercise.${exercise.id}'),

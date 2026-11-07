@@ -41,6 +41,7 @@ class MealsTab extends ConsumerWidget {
       onSearch: ref.read(adminFoodsQueryProvider.notifier).setSearch,
       onChip: ref.read(adminFoodsQueryProvider.notifier).setChip,
       onLoadMore: ref.read(adminFoodsProvider.notifier).loadMore,
+      onRetryMore: ref.read(adminFoodsProvider.notifier).retryMore,
       onRetry: () => ref.invalidate(adminFoodsProvider),
       itemBuilder: (context, food) => _FoodRow(
         key: ValueKey('admin.food.${food.id}'),

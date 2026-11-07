@@ -85,6 +85,7 @@ class AdminUsersState {
     required this.total,
     required this.hasMore,
     this.loadingMore = false,
+    this.moreError,
   });
 
   final List<AdminUserRow> items;
@@ -95,18 +96,26 @@ class AdminUsersState {
   final bool hasMore;
   final bool loadingMore;
 
+  /// Why the last next page failed. While set, no next page is asked for
+  /// until [AdminUsersNotifier.retryMore]; a rebuild starts without it.
+  final Object? moreError;
+
+  /// Keeps [moreError]; a successful next page is built from a state that
+  /// has none.
   AdminUsersState copyWith({
     List<AdminUserRow>? items,
     int? page,
     int? total,
     bool? hasMore,
     bool? loadingMore,
+    Object? moreError,
   }) => AdminUsersState(
     items: items ?? this.items,
     page: page ?? this.page,
     total: total ?? this.total,
     hasMore: hasMore ?? this.hasMore,
     loadingMore: loadingMore ?? this.loadingMore,
+    moreError: moreError ?? this.moreError,
   );
 }
 
@@ -141,7 +150,9 @@ class AdminUsersNotifier extends AsyncNotifier<AdminUsersState> {
   }
 
   /// Loads the next page onto the list. A failure keeps the pages already
-  /// shown and is rethrown for the screen to report.
+  /// shown and is kept as [AdminUsersState.moreError] for the screen's
+  /// Try again row; until then no next page is asked for, so every scroll
+  /// near the end does not send (and fail) another request.
   ///
   /// Does nothing while the list is (re)loading: a refresh keeps the old
   /// pages in its loading state, and a page asked for on top of them would
@@ -149,7 +160,12 @@ class AdminUsersNotifier extends AsyncNotifier<AdminUsersState> {
   Future<void> loadMore() async {
     if (state.isLoading) return;
     final current = state.value;
-    if (current == null || !current.hasMore || current.loadingMore) return;
+    if (current == null ||
+        !current.hasMore ||
+        current.loadingMore ||
+        current.moreError != null) {
+      return;
+    }
     final generation = _generation;
     final query = ref.read(adminUsersQueryProvider);
     state = AsyncData(current.copyWith(loadingMore: true));
@@ -167,11 +183,27 @@ class AdminUsersNotifier extends AsyncNotifier<AdminUsersState> {
           loadingMore: false,
         ),
       );
-    } catch (_) {
+    } catch (error) {
       if (!ref.mounted || generation != _generation) return;
-      state = AsyncData(current.copyWith(loadingMore: false));
-      rethrow;
+      state = AsyncData(current.copyWith(loadingMore: false, moreError: error));
     }
+  }
+
+  /// The Try again row: asks for the page that failed once more.
+  Future<void> retryMore() async {
+    final current = state.value;
+    if (state.isLoading || current == null || current.moreError == null) {
+      return;
+    }
+    state = AsyncData(
+      AdminUsersState(
+        items: current.items,
+        page: current.page,
+        total: current.total,
+        hasMore: current.hasMore,
+      ),
+    );
+    await loadMore();
   }
 }
 
@@ -216,11 +248,15 @@ class AdminListState<T, P extends AdminPaged<T>> {
     required this.items,
     required this.last,
     this.loadingMore = false,
+    this.moreError,
   });
 
   final List<T> items;
   final P last;
   final bool loadingMore;
+
+  /// Why the last next page failed, as [AdminUsersState.moreError].
+  final Object? moreError;
 
   bool get hasMore => last.hasMore;
 }
@@ -246,11 +282,17 @@ abstract class AdminListNotifier<T, P extends AdminPaged<T>>
   }
 
   /// Loads the next page onto the list. A failure keeps the pages already
-  /// shown and is rethrown for the screen to report.
+  /// shown and is kept as [AdminListState.moreError]: no next page is
+  /// asked for again until [retryMore], as [AdminUsersNotifier.loadMore].
   Future<void> loadMore() async {
     if (state.isLoading) return;
     final current = state.value;
-    if (current == null || !current.hasMore || current.loadingMore) return;
+    if (current == null ||
+        !current.hasMore ||
+        current.loadingMore ||
+        current.moreError != null) {
+      return;
+    }
     final generation = _generation;
     state = AsyncData(
       AdminListState(
@@ -269,11 +311,26 @@ abstract class AdminListNotifier<T, P extends AdminPaged<T>>
       state = AsyncData(
         AdminListState(items: [...current.items, ...next.items], last: next),
       );
-    } catch (_) {
+    } catch (error) {
       if (!ref.mounted || generation != _generation) return;
-      state = AsyncData(current);
-      rethrow;
+      state = AsyncData(
+        AdminListState(
+          items: current.items,
+          last: current.last,
+          moreError: error,
+        ),
+      );
     }
+  }
+
+  /// The Try again row: asks for the page that failed once more.
+  Future<void> retryMore() async {
+    final current = state.value;
+    if (state.isLoading || current == null || current.moreError == null) {
+      return;
+    }
+    state = AsyncData(AdminListState(items: current.items, last: current.last));
+    await loadMore();
   }
 }
 

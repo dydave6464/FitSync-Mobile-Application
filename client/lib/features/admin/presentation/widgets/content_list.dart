@@ -28,6 +28,7 @@ class AdminContentList<T> extends StatefulWidget {
     required this.onSearch,
     required this.onChip,
     required this.onLoadMore,
+    required this.onRetryMore,
     required this.onRetry,
     required this.itemBuilder,
   });
@@ -48,8 +49,10 @@ class AdminContentList<T> extends StatefulWidget {
   final ValueChanged<String> onSearch;
   final ValueChanged<String> onChip;
 
-  /// Loads the next page; a failure is thrown, and shown in a SnackBar.
+  /// Loads the next page. A failure is the list's `moreError`, shown in a
+  /// Try again row at the end, whose button calls [onRetryMore].
   final Future<void> Function() onLoadMore;
+  final Future<void> Function() onRetryMore;
   final VoidCallback onRetry;
   final Widget Function(BuildContext context, T item) itemBuilder;
 
@@ -98,17 +101,8 @@ class _AdminContentListState<T> extends State<AdminContentList<T>> {
   void _onScroll() {
     if (!_scroll.hasClients) return;
     final position = _scroll.position;
-    if (position.maxScrollExtent - position.pixels < 400) _loadMore();
-  }
-
-  Future<void> _loadMore() async {
-    try {
-      await widget.onLoadMore();
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(userMessage(error))));
-    }
+    // A failed page stops this until Try again (see onLoadMore).
+    if (position.maxScrollExtent - position.pixels < 400) widget.onLoadMore();
   }
 
   @override
@@ -202,9 +196,21 @@ class _AdminContentListState<T> extends State<AdminContentList<T>> {
     return ListView.builder(
       controller: _scroll,
       padding: const EdgeInsets.only(bottom: 16),
-      itemCount: state.items.length + (state.loadingMore ? 1 : 0),
+      itemCount:
+          state.items.length +
+          (state.loadingMore || state.moreError != null ? 1 : 0),
       itemBuilder: (context, i) {
         if (i >= state.items.length) {
+          if (state.moreError case final error?) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: FsRetry(
+                message: userMessage(error),
+                buttonKey: Key('${widget.keyPrefix}.more.retry'),
+                onRetry: widget.onRetryMore,
+              ),
+            );
+          }
           return const Padding(
             padding: EdgeInsets.all(16),
             child: Center(child: CircularProgressIndicator()),

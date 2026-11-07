@@ -369,6 +369,55 @@ void main() {
     expect(repo.usersCalls.map((c) => c.page), [1, 2, 3]);
   });
 
+  // One failure, one request: scrolling on near the end does not ask again
+  // (and queue another message) until the admin taps Try again.
+  testWidgets('a failed next page is asked once, then offers Try again', (
+    tester,
+  ) async {
+    var fail = true;
+    final repo = FakeAdminRepository(
+      users: (_, _, page) async {
+        if (page > 1) {
+          if (fail) throw refused;
+          return usersPage(_rows(10, from: 30), page: 2, total: 40);
+        }
+        return usersPage(_rows(30), total: 40);
+      },
+    );
+    await _pump(tester, repo);
+
+    await tester.scrollUntilVisible(
+      find.text('Trainee 29'),
+      400,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 3; i++) {
+      await tester.drag(find.byType(Scrollable).last, const Offset(0, 100));
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(Scrollable).last, const Offset(0, -300));
+      await tester.pumpAndSettle();
+    }
+
+    expect(repo.usersCalls.map((c) => c.page), [1, 2]);
+    expect(find.text('The server said no.'), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
+    expect(find.text('Trainee 29'), findsOneWidget);
+
+    fail = false;
+    await tester.tap(find.byKey(const Key('admin.users.more.retry')));
+    await tester.pumpAndSettle();
+
+    expect(repo.usersCalls.map((c) => c.page), [1, 2, 2]);
+    expect(find.text('The server said no.'), findsNothing);
+    await tester.scrollUntilVisible(
+      find.text('Trainee 39'),
+      400,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(find.text('Trainee 39'), findsOneWidget);
+  });
+
   testWidgets('a spinner row shows while the next page loads', (tester) async {
     final next = Completer<AdminUsersPage>();
     final repo = FakeAdminRepository(

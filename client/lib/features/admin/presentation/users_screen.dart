@@ -72,16 +72,10 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
   void _onScroll() {
     if (!_scroll.hasClients) return;
     final position = _scroll.position;
-    if (position.maxScrollExtent - position.pixels < 400) _loadMore();
-  }
-
-  Future<void> _loadMore() async {
-    try {
-      await ref.read(adminUsersProvider.notifier).loadMore();
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(userMessage(error))));
+    // A failed page stops this until Try again: its error is the list's
+    // moreError, drawn as the last row.
+    if (position.maxScrollExtent - position.pixels < 400) {
+      ref.read(adminUsersProvider.notifier).loadMore();
     }
   }
 
@@ -247,11 +241,24 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
       controller: _scroll,
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.only(bottom: 16),
-      itemCount: 1 + state.items.length + (state.loadingMore ? 1 : 0),
+      itemCount:
+          1 +
+          state.items.length +
+          (state.loadingMore || state.moreError != null ? 1 : 0),
       itemBuilder: (context, index) {
         if (index == 0) return count;
         final i = index - 1;
         if (i >= state.items.length) {
+          if (state.moreError case final error?) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: FsRetry(
+                message: userMessage(error),
+                buttonKey: const Key('admin.users.more.retry'),
+                onRetry: ref.read(adminUsersProvider.notifier).retryMore,
+              ),
+            );
+          }
           return const Padding(
             padding: EdgeInsets.all(16),
             child: Center(child: CircularProgressIndicator()),

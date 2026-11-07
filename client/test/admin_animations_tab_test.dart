@@ -250,6 +250,53 @@ void main() {
     expect(find.text('Exercise 29'), findsOneWidget);
   });
 
+  // As the Users tab: one failure, one request, until Try again.
+  testWidgets('a failed next page is asked once, then offers Try again', (
+    tester,
+  ) async {
+    var fail = true;
+    final repo = FakeAdminRepository(
+      exercises: (_, _, page) async {
+        if (page > 1) {
+          if (fail) throw refused;
+          return exercisesPage(_rows(10, from: 30), page: 2, total: 40);
+        }
+        return exercisesPage(_rows(30), total: 40);
+      },
+    );
+    await _pump(tester, repo);
+
+    await tester.scrollUntilVisible(
+      find.text('Exercise 29'),
+      400,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 3; i++) {
+      await tester.drag(find.byType(Scrollable).last, const Offset(0, 100));
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(Scrollable).last, const Offset(0, -300));
+      await tester.pumpAndSettle();
+    }
+
+    expect(repo.exercisesCalls.map((c) => c.page), [1, 2]);
+    expect(find.text('The server said no.'), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
+
+    fail = false;
+    await tester.tap(find.byKey(const Key('admin.exercises.more.retry')));
+    await tester.pumpAndSettle();
+
+    expect(repo.exercisesCalls.map((c) => c.page), [1, 2, 2]);
+    expect(find.text('The server said no.'), findsNothing);
+    await tester.scrollUntilVisible(
+      find.text('Exercise 39'),
+      400,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(find.text('Exercise 39'), findsOneWidget);
+  });
+
   testWidgets('nothing pending says so', (tester) async {
     await _pump(
       tester,
