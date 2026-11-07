@@ -20,6 +20,7 @@
     "seed:preferences": "node scripts/seed-exercise-preferences.js",
     "export:ranker": "node scripts/export-ranker.js",
     "pro:grant": "node scripts/pro-grant.js",
+    "admin:create": "node scripts/admin-create.js",
     "review:safety": "node scripts/review-exercise-safety.js",
     "review:categories": "node scripts/review-exercise-categories.js"
   },

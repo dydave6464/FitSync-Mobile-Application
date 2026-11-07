@@ -119,6 +119,51 @@ test('food seed', async (t) => {
     assert.equal(row.calories, 320);
   });
 
+  // An admin added or edited it (added_by set): the seed must not undo that,
+  // and must not insert the list's version beside it either.
+  await t.test("leaves an admin's food as it is and inserts no duplicate", async () => {
+    const [a] = await pool.query(
+      "INSERT INTO admins (email, password_hash, full_name) VALUES ('seed-admin@fitsync.test', 'x', 'A')",
+    );
+    await pool.query(
+      "UPDATE foods SET calories = 1, serving_desc = 'admin cup', added_by = ? WHERE name = 'Chicken adobo'",
+      [a.insertId],
+    );
+    const s = await seedFoods(testDbConfig());
+    assert.equal(s.inserted, 0);
+    assert.equal(s.updated, 0);
+    const [rows] = await pool.query("SELECT calories, serving_desc FROM foods WHERE name = 'Chicken adobo'");
+    assert.deepEqual(rows.map((r) => [r.calories, r.serving_desc]), [[1, 'admin cup']]);
+  });
+
+  // The admin renamed a seeded food (PATCH keeps its list_order): the list's
+  // name finds nothing, but the food is still there under the admin's name,
+  // so the seed must not bring the old name back beside it.
+  await t.test("does not re-add a seeded food an admin renamed", async () => {
+    const [[admin]] = await pool.query("SELECT admin_id FROM admins WHERE email = 'seed-admin@fitsync.test'");
+    await pool.query(
+      "UPDATE foods SET name = 'Monggo guisado', added_by = ? WHERE name = 'Ginisang monggo'",
+      [admin.admin_id],
+    );
+    const s = await seedFoods(testDbConfig());
+    assert.equal(s.inserted, 0);
+    const [rows] = await pool.query("SELECT name FROM foods WHERE name IN ('Ginisang monggo', 'Monggo guisado')");
+    assert.deepEqual(rows.map((r) => r.name), ['Monggo guisado']);
+  });
+
+  // An admin's food that still has a list name is that list food, not a
+  // renamed one, even when it sits at another food's place in the list.
+  await t.test('still adds a missing list food when an admin food that kept its list name holds its place', async () => {
+    const [[admin]] = await pool.query("SELECT admin_id FROM admins WHERE email = 'seed-admin@fitsync.test'");
+    const tinola = FOODS.findIndex((f) => f.name === 'Tinolang manok') + 1;
+    await pool.query("DELETE FROM foods WHERE name = 'Tinolang manok'");
+    await pool.query("UPDATE foods SET list_order = ?, added_by = ? WHERE name = 'Bulalo'", [tinola, admin.admin_id]);
+    const s = await seedFoods(testDbConfig());
+    assert.equal(s.inserted, 1);
+    const [[{ n }]] = await pool.query("SELECT COUNT(*) AS n FROM foods WHERE name = 'Tinolang manok'");
+    assert.equal(Number(n), 1);
+  });
+
   await t.test('never touches a FatSecret copy with the same name', async () => {
     const [f] = await pool.query("INSERT INTO foods (name, category, calories) VALUES ('Banana', 'international', 999)");
     await pool.query("INSERT INTO food_sources (food_id, provider, external_id) VALUES (?, 'fatsecret', 'x1')", [f.insertId]);
@@ -142,6 +187,27 @@ test('food seed renames Steamed white rice in place', async (t) => {
   const again = await seedFoods(testDbConfig());
   assert.equal(again.inserted, 0);
   assert.equal(again.updated, 0);
+});
+
+test("food seed never renames an admin's food", async (t) => {
+  const pool = createPool(testDbConfig());
+  await dropAllTables(pool);
+  await migrate(testDbConfig());
+  t.after(async () => { await dropAllTables(pool); await pool.end(); });
+  const [a] = await pool.query(
+    "INSERT INTO admins (email, password_hash, full_name) VALUES ('seed-admin@fitsync.test', 'x', 'A')",
+  );
+  const [r] = await pool.query(
+    `INSERT INTO foods (name, category, serving_desc, calories, protein_g, carbs_g, fat_g, added_by)
+     VALUES ('Steamed white rice', 'filipino', '1 cup (160 g)', 205, 4.3, 44.5, 0.4, ?)`,
+    [a.insertId],
+  );
+  await seedFoods(testDbConfig());
+  const [[kept]] = await pool.query('SELECT name, calories FROM foods WHERE food_id = ?', [r.insertId]);
+  assert.deepEqual([kept.name, kept.calories], ['Steamed white rice', 205]);
+  // The list's own White rice is added beside it.
+  const [[{ n }]] = await pool.query("SELECT COUNT(*) AS n FROM foods WHERE name = 'White rice'");
+  assert.equal(Number(n), 1);
 });
 
 // Snap a meal's menu: 72 researched foods appended after the original 244,

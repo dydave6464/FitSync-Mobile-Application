@@ -173,6 +173,8 @@ async function listRecentFoods(pool, userId, limit = 20) {
          LEFT JOIN foods f ON f.food_id = m.food_id
          LEFT JOIN food_sources s ON s.food_id = m.food_id
         WHERE m.user_id = ?
+          -- A hidden food leaves Recents (manual entries have no food).
+          AND (m.food_id IS NULL OR f.hidden_at IS NULL)
      ) x
      WHERE rn = 1
      ORDER BY created_at DESC, meal_log_id DESC

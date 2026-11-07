@@ -8,13 +8,14 @@ const { isProSql } = require('./pro');
 // token_version is the account's token generation: requireAuth accepts only
 // tokens signed for it, and login and Google sign-in sign with the value read
 // here, in the same row as password_hash. has_google says whether a Google
-// identity is linked -- the public user's hasGoogle.
+// identity is linked -- the public user's hasGoogle. suspended_at is set while
+// an admin has suspended the account (044): sign-in and requireAuth refuse it.
 const USER_COLUMNS = `
   user_id, email, password_hash, full_name, sex, date_of_birth,
   height_cm, weight_kg, goal_weight_kg, main_goal, fitness_level,
   activity_level, training_location, city, ${isProSql('users')} AS is_premium,
   notifications_enabled, onboarding_completed_at, email_verified, created_at,
-  token_version,
+  token_version, suspended_at,
   EXISTS (SELECT 1 FROM user_identities gi
            WHERE gi.user_id = users.user_id AND gi.provider = 'google') AS has_google
 `;
