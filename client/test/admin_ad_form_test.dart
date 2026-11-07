@@ -471,6 +471,36 @@ void main() {
     expect(find.text('Discard your changes?'), findsOneWidget);
   });
 
+  testWidgets('a screen reader can open each date box', (tester) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester, FakeAdminRepository());
+
+    for (final (name, label) in [
+      ('startsOn', 'Start date'),
+      ('endsOn', 'End date'),
+    ]) {
+      await tester.ensureVisible(_field(name));
+      await tester.pumpAndSettle();
+      final node = tester.getSemantics(_field(name));
+      expect(
+        node,
+        isSemantics(
+          label: label,
+          isButton: true,
+          isEnabled: true,
+          hasTapAction: true,
+        ),
+        reason: name,
+      );
+      tester.semantics.tap(find.semantics.byLabel(label));
+      await tester.pumpAndSettle();
+      expect(find.byType(DatePickerDialog), findsOneWidget, reason: name);
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+    }
+    handle.dispose();
+  });
+
   for (final dark in [false, true]) {
     testWidgets(
       'fits a 360x640 phone at 2x text (${dark ? 'dark' : 'light'})',

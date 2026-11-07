@@ -619,6 +619,10 @@ class _DateBox extends StatelessWidget {
           label: label,
           value: shown == null ? 'Not chosen' : _dayText(shown),
           hint: error,
+          // excludeSemantics drops the InkWell's own tap, so the tap (and
+          // whether it is off while saving) is given here instead.
+          enabled: onTap != null,
+          onTap: onTap,
           excludeSemantics: true,
           child: Material(
             color: t.surface,
