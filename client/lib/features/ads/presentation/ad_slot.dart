@@ -104,46 +104,46 @@ class _AdCardState extends ConsumerState<_AdCard> {
         FsCard(
           small: true,
           onTap: link == null ? null : () => _open(link),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
+          // The prototype's compact row: a small square image, the title
+          // beside it, the "Ad" label, and a chevron when it opens a page.
+          child: Row(
             children: [
               Image.network(
                 ad.imageUrl,
                 key: const Key('ad.image'),
                 fit: BoxFit.cover,
-                // The title below says what the ad is, loaded image or not:
-                // an image's label is lost when it fails to load.
+                // The title beside it says what the ad is, loaded image or
+                // not: an image's label is lost when it fails to load.
                 excludeFromSemantics: true,
                 // The frame, gap included, is drawn only round a loaded
                 // image: one that fails leaves the title on its own.
                 frameBuilder: (context, child, frame, sync) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
+                  key: const Key('ad.thumb'),
+                  padding: const EdgeInsetsDirectional.only(end: 12),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(FsRadius.sm),
-                    child: AspectRatio(aspectRatio: 16 / 9, child: child),
+                    child: SizedBox.square(dimension: 52, child: child),
                   ),
                 ),
                 errorBuilder: (_, _, _) => const SizedBox.shrink(),
               ),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Text(
-                      ad.title,
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        height: 1.35,
-                        fontWeight: FontWeight.w600,
-                        color: t.text,
-                      ),
-                    ),
+              Expanded(
+                child: Text(
+                  ad.title,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    height: 1.35,
+                    fontWeight: FontWeight.w600,
+                    color: t.text,
                   ),
-                  const SizedBox(width: 8),
-                  const FsTag('Ad'),
-                ],
+                ),
               ),
+              const SizedBox(width: 8),
+              const FsTag('Ad'),
+              if (link != null) ...[
+                const SizedBox(width: 4),
+                Icon(Icons.chevron_right, size: 16, color: t.text3),
+              ],
             ],
           ),
         ),

@@ -14,6 +14,7 @@ import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 
 import 'helpers/fake_ad_source.dart';
+import 'helpers/fake_image_http.dart';
 import 'helpers/fake_pro_repository.dart';
 
 /// The profile arrives a moment later, as it does from the server, so a
@@ -95,6 +96,58 @@ void main() {
     expect(find.text('Remove ads with Pro'), findsOneWidget);
   });
 
+  testWidgets('a loaded image is a small thumbnail beside the title', (
+    tester,
+  ) async {
+    // The prototype's compact row: a 52 dp square image on the left, the
+    // title beside it, not a picture as wide as the screen.
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    debugNetworkImageHttpClientProvider = imageHttpClient;
+    // An address of its own, and a clean cache before and after: the other
+    // tests' failed loads of the sample ad's image must not stand in for it,
+    // nor this loaded one for theirs.
+    imageCache
+      ..clear()
+      ..clearLiveImages();
+    addTearDown(
+      () => imageCache
+        ..clear()
+        ..clearLiveImages(),
+    );
+
+    await _pump(
+      tester,
+      FakeAdSource(
+        ad: const HouseAd(
+          id: 7,
+          title: 'GymShark PH: 20% off',
+          imageUrl: 'http://fitsync.test/storage/ads/loaded.png',
+          linkUrl: 'https://shop.example.ph/promo',
+        ),
+      ),
+    );
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 200)),
+    );
+    await tester.pumpAndSettle();
+
+    final image = find.descendant(
+      of: find.byKey(const Key('ad.image')),
+      matching: find.byType(RawImage),
+    );
+    expect(tester.getSize(image), const Size(52, 52));
+    final title = find.text('GymShark PH: 20% off');
+    expect(
+      tester.getTopLeft(title).dx,
+      greaterThan(tester.getTopRight(image).dx),
+      reason: 'the title sits beside the image, not under it',
+    );
+    expect(tester.getSize(find.byType(FsCard)).height, lessThan(100));
+    debugNetworkImageHttpClientProvider = null;
+  });
+
   testWidgets('the view is reported exactly once across rebuilds', (
     tester,
   ) async {
@@ -126,7 +179,7 @@ void main() {
 
     final card = find.byType(FsCard);
     expect(
-      find.descendant(of: card, matching: find.byType(AspectRatio)),
+      find.byKey(const Key('ad.thumb')),
       findsNothing,
       reason: 'a failed image leaves no empty frame',
     );

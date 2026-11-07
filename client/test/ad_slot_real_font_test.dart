@@ -68,10 +68,7 @@ void main() {
 
     // The test HTTP client answers 400, so only the title row is left.
     final card = find.byType(FsCard);
-    expect(
-      find.descendant(of: card, matching: find.byType(AspectRatio)),
-      findsNothing,
-    );
+    expect(find.byKey(const Key('ad.thumb')), findsNothing);
     expect(tester.getSize(card).height, greaterThanOrEqualTo(48));
   });
 }
