@@ -234,6 +234,13 @@ test('report endpoints', async (t) => {
     const { path } = await shareFor('p14@example.com');
     const res = await request(app).get(path).expect(200);
     assert.match(res.text, /<script src="\/api\/v1\/reports\/print\.js" defer><\/script>/);
+    // On the hotspot's plain http, upgrade-insecure-requests would turn this
+    // same-origin script into a failing https request and the Print button
+    // would never appear. The rest of helmet's policy stays.
+    const csp = res.headers['content-security-policy'];
+    assert.match(csp, /script-src 'self'/);
+    assert.match(csp, /script-src-attr 'none'/);
+    assert.doesNotMatch(csp, /upgrade-insecure-requests/);
   });
 
   await t.test('an expired link stops working', async () => {
@@ -261,6 +268,12 @@ test('report endpoints', async (t) => {
     const unknown = await request(app)
       .get(`/api/v1/reports/${'z'.repeat(43)}`).expect(404);
     assert.equal(expired.text, unknown.text);
+    assert.equal(
+      expired.headers['content-security-policy'],
+      unknown.headers['content-security-policy'],
+    );
+    assert.doesNotMatch(expired.headers['content-security-policy'], /upgrade-insecure-requests/);
+    assert.doesNotMatch(unknown.headers['content-security-policy'], /upgrade-insecure-requests/);
   });
 
   // The name is interpolated into HTML and comes from user input.

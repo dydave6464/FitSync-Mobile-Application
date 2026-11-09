@@ -1,5 +1,6 @@
 'use strict';
 const express = require('express');
+const helmet = require('helmet');
 const requireAuth = require('../middleware/require-auth');
 const AppError = require('../lib/app-error');
 const {
@@ -16,6 +17,17 @@ module.exports = function buildReportsRouter(deps = {}) {
   const router = express.Router();
   const auth = requireAuth(deps);
   const publicBaseUrl = deps.publicBaseUrl || 'http://localhost:3000';
+
+  // helmet's CSP minus upgrade-insecure-requests, for the same reason as
+  // routes/pro.js (the stub checkout) and routes/account.js (the delete
+  // pages): on the phone hotspot's plain http that directive turns the
+  // page's <script src=".../print.js"> into an https request that fails, and
+  // the Print button never appears. script-src 'self' and the rest stay.
+  // Over https it changes nothing.
+  const pagePolicy = helmet.contentSecurityPolicy({
+    useDefaults: true,
+    directives: { upgradeInsecureRequests: null },
+  });
 
   router.post('/', auth, async (req, res, next) => {
     try {
@@ -65,7 +77,7 @@ module.exports = function buildReportsRouter(deps = {}) {
 
   // No auth: the token IS the credential. That is the whole point -- a coach
   // opens this without an account.
-  router.get('/:token', async (req, res, next) => {
+  router.get('/:token', pagePolicy, async (req, res, next) => {
     try {
       const found = await readSharedReport(deps.pool, req.params.token);
 

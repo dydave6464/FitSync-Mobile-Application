@@ -250,7 +250,8 @@ function musclesCard(muscles) {
 }
 
 /// A missing figure is left out rather than printed as 0: rows stored before
-/// 2026-11-09 may carry only a date and a set count.
+/// 2026-11-09 may carry only a date and a set count, and the old started_at
+/// bug (sessions.js) stored a duration of 0 on completion.
 function sessionsCard(sessions, end) {
   if (sessions.length === 0) return card('Sessions', emptyLine('No sessions in this period'));
   const items = sessions.map((x) => {
@@ -259,7 +260,7 @@ function sessionsCard(sessions, end) {
     const facts = [
       x.exerciseCount != null ? plural(x.exerciseCount, 'exercise') : null,
       x.setCount != null ? plural(x.setCount, 'set') : null,
-      x.durationMin != null ? `${x.durationMin} min` : null,
+      Number(x.durationMin) > 0 ? `${x.durationMin} min` : null,
       Number(x.totalVolumeKg) > 0 ? compactKg(x.totalVolumeKg) : null,
     ].filter(Boolean).join(' · ');
     return `<li class="session"><p class="t">${escapeHtml(title)}</p>`

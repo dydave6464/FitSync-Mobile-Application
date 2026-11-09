@@ -134,6 +134,14 @@ class _ShareReportSheetState extends ConsumerState<_ShareReportSheet> {
   /// so the link always matches what they show.
   SharedReport? _link;
 
+  /// True while Share, Copy or Open is running. A second tap in that time is
+  /// ignored: before the link exists it would make a second one, and after
+  /// it a second share replaces the open menu -- on Android share_plus then
+  /// answers the first as unavailable, and the sheet would say the menu
+  /// failed while it is on screen. Not drawn, so no setState: the buttons
+  /// stay as they are and the tap simply does nothing.
+  bool _acting = false;
+
   /// The include map the link was made with, entitlement mask applied. Once
   /// the link exists the rows draw from this, not from [_include] and the
   /// live Pro flag: an account that buys Pro (or lapses) with the sheet open
@@ -193,49 +201,92 @@ class _ShareReportSheetState extends ConsumerState<_ShareReportSheet> {
   }
 
   Future<void> _share() async {
-    final link = await _ensureLink();
-    if (link == null || !mounted) return;
-
-    // No name in the message: chat apps build preview cards server-side, the
-    // same reason the page's <title> carries none.
-    final text = 'My FitSync training report, $_window: ${link.url}';
-    var opened = false;
+    if (_acting) return;
+    _acting = true;
     try {
-      opened = await ref.read(shareActionsProvider).share(text);
-    } catch (_) {
-      opened = false;
-    }
-    if (!mounted || opened) return;
+      final link = await _ensureLink();
+      if (link == null || !mounted) return;
 
-    await Clipboard.setData(ClipboardData(text: link.url));
-    if (!mounted) return;
-    setState(
-      () => _notice =
-          "Couldn't open the share menu, so the link was copied instead.",
-    );
+      // No name in the message: chat apps build preview cards server-side,
+      // the same reason the page's <title> carries none.
+      final text = 'My FitSync training report, $_window: ${link.url}';
+      var opened = false;
+      try {
+        opened = await ref.read(shareActionsProvider).share(text);
+      } catch (_) {
+        opened = false;
+      }
+      if (!mounted || opened) return;
+
+      await _copyToClipboard(
+        link,
+        notice: "Couldn't open the share menu, so the link was copied instead.",
+        failure: "Couldn't open the share menu or copy the link. Try again.",
+      );
+    } finally {
+      _acting = false;
+    }
   }
 
   Future<void> _copy() async {
-    final link = await _ensureLink();
-    if (link == null || !mounted) return;
-    await Clipboard.setData(ClipboardData(text: link.url));
+    if (_acting) return;
+    _acting = true;
+    try {
+      final link = await _ensureLink();
+      if (link == null || !mounted) return;
+      await _copyToClipboard(
+        link,
+        notice: 'Link copied.',
+        failure: "Couldn't copy the link. Try again.",
+      );
+    } finally {
+      _acting = false;
+    }
+  }
+
+  /// Puts the link on the clipboard and says [notice], or shows [failure]
+  /// inline when the platform refuses -- not an unhandled error with
+  /// nothing on screen.
+  Future<void> _copyToClipboard(
+    SharedReport link, {
+    required String notice,
+    required String failure,
+  }) async {
+    try {
+      await Clipboard.setData(ClipboardData(text: link.url));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _notice = null;
+        _failure = failure;
+      });
+      return;
+    }
     if (!mounted) return;
-    setState(() => _notice = 'Link copied.');
+    setState(() {
+      _failure = null;
+      _notice = notice;
+    });
   }
 
   Future<void> _openPage() async {
     final link = _link;
-    if (link == null) return;
-    var opened = false;
+    if (link == null || _acting) return;
+    _acting = true;
     try {
-      opened = await ref.read(shareActionsProvider).open(Uri.parse(link.url));
-    } catch (_) {
-      opened = false;
+      var opened = false;
+      try {
+        opened = await ref.read(shareActionsProvider).open(Uri.parse(link.url));
+      } catch (_) {
+        opened = false;
+      }
+      if (!mounted || opened) return;
+      setState(
+        () => _notice = "Couldn't open the browser. Copy the link instead.",
+      );
+    } finally {
+      _acting = false;
     }
-    if (!mounted || opened) return;
-    setState(
-      () => _notice = "Couldn't open the browser. Copy the link instead.",
-    );
   }
 
   @override
