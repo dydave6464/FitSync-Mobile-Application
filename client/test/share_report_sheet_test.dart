@@ -12,6 +12,7 @@ import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/pro/presentation/pro_screen.dart';
 import 'package:fitsync/features/pro/presentation/providers.dart';
+import 'package:fitsync/features/sessions/presentation/widgets/share_preview_card.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/share_report_sheet.dart';
 import 'package:fitsync/features/profile/domain/body_weight.dart';
 import 'package:fitsync/features/sessions/domain/session_history.dart';
@@ -55,10 +56,13 @@ class _FakeRepo implements SessionRepository {
 /// The sheet reads isPremium to decide whether the Pro section can be
 /// switched on at all, so every test here has to say which kind of account
 /// is looking at it.
+///
+/// Reads [_Account] on every build, so a test can change the entitlement and
+/// invalidate profileProvider the way refreshProLocks does after a purchase.
 class _StubProfileNotifier extends ProfileNotifier {
-  _StubProfileNotifier({required this.premium});
+  _StubProfileNotifier(this.account);
 
-  final bool premium;
+  final _Account account;
 
   @override
   Future<Profile> build() async => Profile(
@@ -66,7 +70,7 @@ class _StubProfileNotifier extends ProfileNotifier {
     email: 'juan@example.com',
     fullName: 'Juan Dela Cruz',
     onboardingCompleted: true,
-    isPremium: premium,
+    isPremium: account.premium,
     notificationsEnabled: true,
     equipment: const [],
     injuries: const [],
@@ -117,22 +121,42 @@ class _FakeShare {
   );
 }
 
+/// The account's entitlement, which a test may change mid-sheet.
+class _Account {
+  _Account({required this.premium});
+
+  bool premium;
+}
+
+/// Changes the account's entitlement while the sheet is open, then refetches
+/// the profile the way refreshProLocks does once a purchase lands.
+Future<void> _becomePremium(
+  WidgetTester tester,
+  _Account account,
+  bool premium,
+) async {
+  account.premium = premium;
+  ProviderScope.containerOf(tester.element(find.byType(SharePreviewCard)))
+      .invalidate(profileProvider);
+  await tester.pumpAndSettle();
+}
+
 Future<(_FakeRepo, _FakeShare)> _open(
   WidgetTester tester, {
   Object? error,
   bool premium = true,
   bool menuOpens = true,
+  _Account? account,
 }) async {
   final repo = _FakeRepo(error: error);
+  final stubAccount = account ?? _Account(premium: premium);
   final share = _FakeShare()..menuOpens = menuOpens;
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         sessionRepositoryProvider.overrideWithValue(repo),
         proRepositoryProvider.overrideWithValue(FakeProRepository()),
-        profileProvider.overrideWith(
-          () => _StubProfileNotifier(premium: premium),
-        ),
+        profileProvider.overrideWith(() => _StubProfileNotifier(stubAccount)),
         shareActionsProvider.overrideWithValue(share.actions),
         trainingSummaryProvider.overrideWith(
           (ref) async => const TrainingSummary(
@@ -538,6 +562,50 @@ void main() {
       // report cannot contain.
       expect(repo.asked!['muscles'], isFalse);
       expect(repo.asked!['volume'], isTrue);
+    });
+  });
+
+  group('once the link exists, the rows show what it carries', () {
+    testWidgets('a free account that buys Pro sees muscles off', (
+      tester,
+    ) async {
+      _stubClipboard(tester);
+      final account = _Account(premium: false);
+      final (repo, _) = await _open(tester, account: account);
+      await _tap(tester, find.byKey(const Key('share.copy')));
+      await tester.pumpAndSettle();
+      expect(repo.asked!['muscles'], isFalse);
+
+      await _becomePremium(tester, account, true);
+
+      // The link has no muscle section, so the sheet must not say it has.
+      final toggle = tester.widget<SwitchListTile>(
+        find.byKey(const Key('share.toggle.muscles')),
+      );
+      expect(toggle.value, isFalse);
+      expect(toggle.onChanged, isNull);
+    });
+
+    testWidgets('a Pro account that lapses still sees muscles on', (
+      tester,
+    ) async {
+      _stubClipboard(tester);
+      final account = _Account(premium: true);
+      final (repo, _) = await _open(tester, account: account);
+      await _tap(tester, find.byKey(const Key('share.copy')));
+      await tester.pumpAndSettle();
+      expect(repo.asked!['muscles'], isTrue);
+
+      await _becomePremium(tester, account, false);
+
+      // The frozen link still carries muscles: a locked "Unlock with Pro"
+      // row would say it does not.
+      expect(find.byKey(const Key('share.locked.muscles')), findsNothing);
+      final toggle = tester.widget<SwitchListTile>(
+        find.byKey(const Key('share.toggle.muscles')),
+      );
+      expect(toggle.value, isTrue);
+      expect(toggle.onChanged, isNull);
     });
   });
 

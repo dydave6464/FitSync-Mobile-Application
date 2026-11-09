@@ -134,6 +134,12 @@ class _ShareReportSheetState extends ConsumerState<_ShareReportSheet> {
   /// so the link always matches what they show.
   SharedReport? _link;
 
+  /// The include map the link was made with, entitlement mask applied. Once
+  /// the link exists the rows draw from this, not from [_include] and the
+  /// live Pro flag: an account that buys Pro (or lapses) with the sheet open
+  /// must still see what the frozen link carries.
+  Map<String, bool>? _sent;
+
   /// Read from the provider where it is needed rather than cached in
   /// initState: profileProvider is an AsyncNotifier, so at initState it is
   /// still loading and its value is null -- a field seeded there reads
@@ -170,6 +176,7 @@ class _ShareReportSheetState extends ConsumerState<_ShareReportSheet> {
       if (!mounted) return null;
       setState(() {
         _link = report;
+        _sent = include;
         _busy = false;
       });
       return report;
@@ -237,14 +244,15 @@ class _ShareReportSheetState extends ConsumerState<_ShareReportSheet> {
     final premium = ref.watch(profileProvider).value?.isPremium ?? false;
     final link = _link;
     final locked = _busy || link != null;
+    final shown = _sent ?? _include;
 
     final tiles = sharePreviewTiles(
       period: widget.period,
       summary: ref.watch(trainingSummaryProvider).value,
       analytics: ref.watch(trainingAnalyticsProvider(widget.period)).value,
       bodyWeight: ref.watch(bodyWeightProvider(widget.period)).value,
-      includeVolume: _include['volume']!,
-      includeBodyWeight: _include['bodyWeight']!,
+      includeVolume: shown['volume']!,
+      includeBodyWeight: shown['bodyWeight']!,
     );
 
     // Scrolls once large text makes it taller than the sheet may be.
@@ -286,7 +294,12 @@ class _ShareReportSheetState extends ConsumerState<_ShareReportSheet> {
             const SizedBox(height: 4),
             for (var i = 0; i < _sections.length; i++) ...[
               if (i > 0) Divider(height: 1, thickness: 1, color: t.line),
-              _sectionRow(_sections[i], premium: premium, locked: locked),
+              _sectionRow(
+                _sections[i],
+                premium: premium,
+                locked: locked,
+                sent: _sent,
+              ),
             ],
             if (_failure != null) ...[
               const SizedBox(height: 8),
@@ -360,16 +373,22 @@ class _ShareReportSheetState extends ConsumerState<_ShareReportSheet> {
     ({String key, String label, bool pro, IconData icon}) s, {
     required bool premium,
     required bool locked,
+    required Map<String, bool>? sent,
   }) {
     final t = context.fs;
-    if (s.pro && !premium) {
+    // Once the link exists, a Pro section it carries keeps its (disabled)
+    // switch even if Pro has since lapsed, and one it was masked out of
+    // shows as off even if Pro was bought since: the row says what the link
+    // holds. Before that, the live entitlement decides.
+    final carried = sent?[s.key];
+    if (s.pro && !premium && carried != true) {
       return _LockedSection(label: s.label, sectionKey: s.key);
     }
     return SwitchListTile(
       key: Key('share.toggle.${s.key}'),
       contentPadding: EdgeInsets.zero,
       secondary: Icon(s.icon, size: 17, color: t.text2),
-      value: _include[s.key]!,
+      value: carried ?? _include[s.key]!,
       onChanged: locked ? null : (on) => setState(() => _include[s.key] = on),
       // The label wraps rather than pushing the Pro tag past the switch:
       // 'Muscle balance' and its tag need about 270 dp at 2.0x text.
