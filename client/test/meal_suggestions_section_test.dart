@@ -228,6 +228,53 @@ void main() {
     expect(find.text('Tinolang manok + 1 cup rice'), findsOneWidget);
   });
 
+  testWidgets('Retry shows the placeholders while it asks again', (tester) async {
+    final repo = FakeNutritionRepository()..failSuggestions = true;
+    await _pump(tester, repo: repo, lunch: _fits);
+    expect(find.text("Couldn't load suggestions."), findsOneWidget);
+    repo
+      ..failSuggestions = false
+      ..suggestionsHold = Completer<void>();
+    await tester.tap(find.byKey(const Key('suggest.retry')));
+    // One frame for the rebuild, then past the 200 ms cross-fade.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(find.byKey(const Key('suggest.placeholder.0')), findsOneWidget);
+    expect(find.text("Couldn't load suggestions."), findsNothing);
+    repo.suggestionsHold!.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('Tinolang manok + 1 cup rice'), findsOneWidget);
+  });
+
+  testWidgets('a failed refetch after Log plate shows the error line, not the old rows', (tester) async {
+    final repo = await _pump(tester, lunch: _fits);
+    await tester.tap(find.byKey(const Key('suggest.row.0')));
+    await tester.pumpAndSettle();
+    // UNKNOWN_ERROR: never retried, so the refetch fails at once.
+    repo.failSuggestions = true;
+    await tester.tap(find.byKey(const Key('logPlate.log')));
+    await tester.pumpAndSettle();
+    expect(find.text("Couldn't load suggestions."), findsOneWidget);
+    expect(find.text('Tinolang manok + 1 cup rice'), findsNothing);
+    expect(find.text('Logged to lunch'), findsOneWidget);
+
+    // Retry from there shows the placeholders, not the old rows, until the
+    // new answer comes.
+    repo
+      ..failSuggestions = false
+      ..suggestionsHold = Completer<void>();
+    await tester.tap(find.byKey(const Key('suggest.retry')));
+    // One frame for the rebuild, then past the 200 ms cross-fade.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(find.byKey(const Key('suggest.placeholder.0')), findsOneWidget);
+    expect(find.text('Tinolang manok + 1 cup rice'), findsNothing);
+    repo.suggestionsHold!.complete();
+    await tester.pumpAndSettle();
+    expect(find.text("Couldn't load suggestions."), findsNothing);
+    expect(find.byKey(const Key('suggest.row.0')), findsOneWidget);
+  });
+
   testWidgets('each row is one button saying the plate, with a Log hint', (tester) async {
     final semantics = tester.ensureSemantics();
     await _pump(tester, lunch: _fits);

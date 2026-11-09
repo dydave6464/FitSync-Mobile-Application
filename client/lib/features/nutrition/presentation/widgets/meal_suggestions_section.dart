@@ -37,20 +37,27 @@ class MealSuggestionsSection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = context.fs;
     final async = ref.watch(mealSuggestionsProvider(meal));
-    final data = async.value;
+    // Riverpod keeps the last value through a reload and through a failure,
+    // so the value alone does not say what to show. Once an error is
+    // attached the old rows are not trusted: they may hold the plate just
+    // logged, and a tap would log it again. A reload without an error (the
+    // refetch after a log, an edit or a removal) keeps the rows: no flicker.
+    final failed = async.hasError && !async.isLoading;
+    final data = async.hasError ? null : async.value;
     // An empty list hides the whole section, heading included.
     if (data != null && data.suggestions.isEmpty) return const SizedBox.shrink();
 
     final Widget body;
-    if (data != null) {
+    if (failed) {
+      body = _ErrorLine(key: const ValueKey('error'), onRetry: () => ref.invalidate(mealSuggestionsProvider(meal)));
+    } else if (data != null) {
       body = _Plates(
         key: ValueKey(_signature(data)),
         data: data,
         onOpen: enabled ? (plate) => _open(context, ref, data, plate) : null,
       );
-    } else if (async.hasError) {
-      body = _ErrorLine(key: const ValueKey('error'), onRetry: () => ref.invalidate(mealSuggestionsProvider(meal)));
     } else {
+      // The first load, Retry, or the automatic retries after a failure.
       body = const _Placeholders(key: ValueKey('loading'));
     }
 
