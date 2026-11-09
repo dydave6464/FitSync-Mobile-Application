@@ -113,44 +113,50 @@ class SnapMealCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
-    return FsCard(
-      key: const Key('snap.card'),
-      small: true,
-      accent: true,
-      onTap: onTap,
-      child: Row(
-        children: [
-          ExcludeSemantics(
-            child: Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(color: t.accent, borderRadius: BorderRadius.circular(FsRadius.sm)),
-              child: Icon(Icons.photo_camera_outlined, size: 20, color: t.onAccent),
+    // Faded like a disabled FsButton while the tab is busy, as the
+    // suggestion rows below it are.
+    return AnimatedOpacity(
+      opacity: onTap == null ? fsDisabledOpacity : 1,
+      duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 150),
+      child: FsCard(
+        key: const Key('snap.card'),
+        small: true,
+        accent: true,
+        onTap: onTap,
+        child: Row(
+          children: [
+            ExcludeSemantics(
+              child: Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(color: t.accent, borderRadius: BorderRadius.circular(FsRadius.sm)),
+                child: Icon(Icons.photo_camera_outlined, size: 20, color: t.onAccent),
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // The tag drops under the title at large text rather than
-                // squeezing it.
-                Wrap(
-                  spacing: 7,
-                  runSpacing: 4,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    Text('Snap a meal', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: t.text)),
-                    const FsTag('Pro'),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text('AI suggests the food — you confirm & log.', style: TextStyle(fontSize: 12, color: t.text2)),
-              ],
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // The tag drops under the title at large text rather than
+                  // squeezing it.
+                  Wrap(
+                    spacing: 7,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text('Snap a meal', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: t.text)),
+                      const FsTag('Pro'),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text('AI suggests the food — you confirm & log.', style: TextStyle(fontSize: 12, color: t.text2)),
+                ],
+              ),
             ),
-          ),
-          ExcludeSemantics(child: Icon(Icons.chevron_right, size: 18, color: t.accentText)),
-        ],
+            ExcludeSemantics(child: Icon(Icons.chevron_right, size: 18, color: t.accentText)),
+          ],
+        ),
       ),
     );
   }

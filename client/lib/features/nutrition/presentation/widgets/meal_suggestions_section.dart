@@ -207,48 +207,54 @@ class _PlateRow extends StatelessWidget {
       hint: 'Log to $meal',
       onTap: onTap,
       excludeSemantics: true,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 48),
-        child: FsCard(
-          small: true,
-          onTap: onTap,
-          padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      plateTitle(plate),
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: t.text),
-                    ),
-                    const SizedBox(height: 2),
-                    Text.rich(
-                      TextSpan(
-                        style: TextStyle(fontSize: 12, color: t.text2),
-                        children: [
-                          TextSpan(text: '${meta.lead} · '),
-                          // The Protein bar's green, and never without its
-                          // number: colour is not the only cue.
-                          TextSpan(
-                            text: meta.protein,
-                            style: TextStyle(color: t.accentText, fontWeight: FontWeight.w600),
-                          ),
-                        ],
+      // Faded like a disabled FsButton while the tab loads a day; eased so
+      // a quick reload does not flash, at once with reduced motion.
+      child: AnimatedOpacity(
+        opacity: onTap == null ? fsDisabledOpacity : 1,
+        duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 150),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: FsCard(
+            small: true,
+            onTap: onTap,
+            padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        plateTitle(plate),
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: t.text),
                       ),
-                      key: Key('suggest.meta.$index'),
-                    ),
-                    if (plate.highProtein) ...[
-                      const SizedBox(height: 6),
-                      const FsTag('High protein'),
+                      const SizedBox(height: 2),
+                      Text.rich(
+                        TextSpan(
+                          style: TextStyle(fontSize: 12, color: t.text2),
+                          children: [
+                            TextSpan(text: '${meta.lead} · '),
+                            // The Protein bar's green, and never without its
+                            // number: colour is not the only cue.
+                            TextSpan(
+                              text: meta.protein,
+                              style: TextStyle(color: t.accentText, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                        key: Key('suggest.meta.$index'),
+                      ),
+                      if (plate.highProtein) ...[
+                        const SizedBox(height: 6),
+                        const FsTag('High protein'),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Icon(Icons.add, size: 18, color: t.text2),
-            ],
+                const SizedBox(width: 8),
+                Icon(Icons.add, size: 18, color: t.text2),
+              ],
+            ),
           ),
         ),
       ),

@@ -13,6 +13,7 @@ import 'package:fitsync/features/nutrition/presentation/meal_photo/snap_meal.dar
 import 'package:fitsync/features/nutrition/presentation/nutrition_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/providers.dart';
 import 'package:fitsync/features/nutrition/presentation/widgets/log_plate_sheet.dart';
+import 'package:fitsync/features/nutrition/presentation/widgets/meal_suggestions_section.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 
@@ -449,6 +450,52 @@ void main() {
       find.descendant(of: find.byKey(const Key('suggest.section')), matching: find.byType(AnimatedSwitcher)),
       findsNothing,
     );
+  });
+
+  group('while the tab loads a day', () {
+    /// The section alone, [enabled] or not, its rows already loaded.
+    Future<void> pumpSection(WidgetTester tester, {required bool enabled, bool reduceMotion = false}) async {
+      final r = FakeNutritionRepository()..suggestionsByMeal['lunch'] = _fits;
+      await tester.pumpWidget(ProviderScope(
+        overrides: [nutritionRepositoryProvider.overrideWithValue(r)],
+        child: MaterialApp(
+          theme: fsLightTheme(),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(disableAnimations: reduceMotion),
+            child: child!,
+          ),
+          home: Scaffold(
+            body: ListView(children: [MealSuggestionsSection(meal: 'lunch', enabled: enabled)]),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+    }
+
+    AnimatedOpacity fade(WidgetTester tester, int i) => tester.widget<AnimatedOpacity>(
+      find.descendant(of: find.byKey(Key('suggest.row.$i')), matching: find.byType(AnimatedOpacity)),
+    );
+
+    testWidgets('the rows fade to the disabled 0.45, over 150 ms', (tester) async {
+      await pumpSection(tester, enabled: false);
+      for (var i = 0; i < 3; i++) {
+        expect(fade(tester, i).opacity, 0.45);
+        expect(fade(tester, i).duration, const Duration(milliseconds: 150));
+      }
+    });
+
+    testWidgets('enabled, the rows are whole', (tester) async {
+      await pumpSection(tester, enabled: true);
+      for (var i = 0; i < 3; i++) {
+        expect(fade(tester, i).opacity, 1.0);
+      }
+    });
+
+    testWidgets('with reduced motion the rows fade at once', (tester) async {
+      await pumpSection(tester, enabled: false, reduceMotion: true);
+      expect(fade(tester, 0).opacity, 0.45);
+      expect(fade(tester, 0).duration, Duration.zero);
+    });
   });
 
   for (final dark in [false, true]) {
