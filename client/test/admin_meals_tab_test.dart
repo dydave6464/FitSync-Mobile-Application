@@ -44,17 +44,19 @@ List<AdminFood> _rows(int count, {int from = 0}) => [
 ];
 
 void main() {
-  testWidgets('asks for the shown foods first, with both counts', (
+  testWidgets('asks for the shown foods first, with all three counts', (
     tester,
   ) async {
     final repo = FakeAdminRepository(
-      foods: (_, _, _) async => foodsPage(_rows(2), shown: 412, hidden: 3),
+      foods: (_, _, _) async =>
+          foodsPage(_rows(2), shown: 412, hidden: 3, suggested: 35),
     );
     await _pump(tester, repo);
 
     expect(repo.foodsCalls, [(show: 'shown', q: '', page: 1)]);
     expect(find.text('Shown (412)'), findsOneWidget);
     expect(find.text('Hidden (3)'), findsOneWidget);
+    expect(find.text('Suggested (35)'), findsOneWidget);
     expect(find.text('Search foods'), findsOneWidget);
   });
 
@@ -197,6 +199,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('No hidden foods.'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('admin.foods.chip.suggested')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('No suggested foods.'), findsOneWidget);
   });
 
   testWidgets('a failed load offers Try again', (tester) async {
@@ -255,4 +262,101 @@ void main() {
       Brightness.dark,
     );
   });
+
+  testWidgets('the Suggested chip asks for suggested foods', (tester) async {
+    final repo = FakeAdminRepository(
+      foods: (_, _, _) async => foodsPage(_rows(2)),
+    );
+    await _pump(tester, repo);
+
+    await tester.tap(find.byKey(const Key('admin.foods.chip.suggested')));
+    await tester.pumpAndSettle();
+
+    expect(repo.foodsCalls.last, (show: 'suggested', q: '', page: 1));
+  });
+
+  testWidgets(
+    'a suggested food is labelled so, on screen and to a screen reader',
+    (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pump(
+        tester,
+        FakeAdminRepository(
+          foods: (_, _, _) async => foodsPage([
+            sampleFood(
+              id: 12,
+              name: 'Tinolang manok',
+              servingDesc: '1 bowl (350 g)',
+              kcal: 260,
+              foodType: 'home',
+              suggestMeals: const ['lunch', 'dinner'],
+              suggestWithRice: true,
+            ),
+            sampleFood(
+              id: 13,
+              name: 'Turon',
+              servingDesc: null,
+              kcal: 180,
+              foodType: 'snack_sweet',
+            ),
+          ]),
+        ),
+      );
+
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('admin.food.12')),
+          matching: find.descendant(
+            of: find.byType(StatusTag),
+            matching: find.text('Suggested'),
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('admin.food.13')),
+          matching: find.byType(StatusTag),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.bySemanticsLabel(
+          'Tinolang manok, 1 bowl (350 g) · 260 kcal, Home-cooked, Suggested',
+        ),
+        findsOneWidget,
+      );
+      handle.dispose();
+    },
+  );
+
+  for (final dark in [false, true]) {
+    testWidgets(
+      'a suggested, hidden row fits a 320 dp phone at 2x text (${dark ? 'dark' : 'light'})',
+      (tester) async {
+        tester.view.devicePixelRatio = 1.0;
+        tester.view.physicalSize = const Size(320, 640);
+        addTearDown(tester.view.reset);
+        await _pump(
+          tester,
+          FakeAdminRepository(
+            foods: (_, _, _) async => foodsPage([
+              sampleFood(
+                name: 'Ginataang tulingan (frigate tuna in coconut milk)',
+                servingDesc: '1 fish piece with sauce (210 g)',
+                kcal: 293,
+                hidden: true,
+                suggestMeals: const ['lunch', 'dinner'],
+                suggestWithRice: true,
+              ),
+              ..._rows(3),
+            ]),
+          ),
+          textScale: 2.0,
+          dark: dark,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 }

@@ -6,8 +6,17 @@ const {
   checkManual, round1, round2, MAX_NAME, MAX_SERVING_DESC,
 } = require('../lib/nutrition-input');
 const { FOOD_TYPES } = require('./foods');
+const { MEALS } = require('./nutrition');
 
-const SHOW = { shown: 'f.hidden_at IS NULL', hidden: 'f.hidden_at IS NOT NULL' };
+/// Rice is offered beside these; a snack never comes with it.
+const MAIN_MEALS = ['breakfast', 'lunch', 'dinner'];
+
+const SHOW = {
+  shown: 'f.hidden_at IS NULL',
+  hidden: 'f.hidden_at IS NOT NULL',
+  // What trainees are offered as local meals: shown, and marked for a meal.
+  suggested: "f.hidden_at IS NULL AND f.suggest_meals <> ''",
+};
 const CATEGORIES = ['filipino', 'international'];
 // The numbers that decide a food's calories (nutrition-input.js's rule).
 const CALORIE_FIELDS = ['kcal', 'proteinG', 'carbsG', 'fatG'];
@@ -18,7 +27,8 @@ const OWN = 'NOT EXISTS (SELECT 1 FROM food_sources s WHERE s.food_id = f.food_i
 
 const SELECT_FOOD = `
   SELECT f.food_id, f.name, f.category, f.food_type, f.serving_desc, f.calories, f.protein_g, f.carbs_g,
-         f.fat_g, f.fiber_g, f.sugar_g, f.sodium_mg, f.hidden_at IS NOT NULL AS hidden
+         f.fat_g, f.fiber_g, f.sugar_g, f.sodium_mg, f.hidden_at IS NOT NULL AS hidden,
+         f.suggest_meals, f.suggest_with_rice
     FROM foods f`;
 
 // DECIMAL columns arrive as strings.
@@ -41,6 +51,9 @@ function asAdminFood(r) {
     sugarG: nullable2(r.sugar_g),
     sodiumMg: nullable1(r.sodium_mg),
     hidden: Boolean(r.hidden),
+    // A SET column reads as 'lunch,dinner' in the meals' own order, '' for none.
+    suggestMeals: r.suggest_meals ? String(r.suggest_meals).split(',') : [],
+    suggestWithRice: Boolean(r.suggest_with_rice),
   };
 }
 
@@ -48,8 +61,27 @@ function nameTaken() {
   return AppError.conflict('FOOD_NAME_TAKEN', 'A food with that name already exists.');
 }
 
+/// The meals a food is suggested for, in the meals' own order: absent is
+/// none; anything but a list of the four meals is a 400.
+function checkSuggestMeals(value) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || !value.every((meal) => MEALS.includes(meal))) {
+    throw invalidAdminField('suggestMeals', `suggestMeals must be a list of: ${MEALS.join(', ')}.`);
+  }
+  return MEALS.filter((meal) => value.includes(meal));
+}
+
+/// Whether it comes with 1 cup of rice: absent is no. Kept only beside a
+/// main meal, since the picker never adds rice to a snack.
+function checkSuggestWithRice(value, meals) {
+  if (value === undefined) return false;
+  if (typeof value !== 'boolean') throw invalidAdminField('suggestWithRice', 'suggestWithRice must be true or false.');
+  return value && meals.some((meal) => MAIN_MEALS.includes(meal));
+}
+
 /// [food] with every field checked: name 1-100 and serving 1-60 characters
-/// (trimmed), category and type from their lists (400 INVALID_ADMIN_FIELD),
+/// (trimmed), category and type from their lists, the local-meal
+/// suggestions (400 INVALID_ADMIN_FIELD),
 /// and the numbers by the typed-food rule, checkManual (400
 /// INVALID_NUTRITION_FIELD): typed calories are kept, none are worked out
 /// from protein, carbs and fat, and a food with neither is refused.
@@ -70,6 +102,7 @@ function checkFood(food) {
   }
   const numbers = Object.fromEntries(NUMBER_FIELDS.map((k) => [k, food[k]]));
   const checked = checkManual({ name, servingDesc: null, ...numbers });
+  const suggestMeals = checkSuggestMeals(food.suggestMeals);
   return {
     name,
     category: food.category,
@@ -82,6 +115,8 @@ function checkFood(food) {
     fiberG: checked.fiberG,
     sugarG: checked.sugarG,
     sodiumMg: checked.sodiumMg,
+    suggestMeals,
+    suggestWithRice: checkSuggestWithRice(food.suggestWithRice, suggestMeals),
   };
 }
 
@@ -101,9 +136,10 @@ async function ownNameTaken(pool, name, exceptId = null) {
   return rows.length > 0;
 }
 
-/// One page of FitSync's own foods, shown or hidden ([show]), whose name
-/// matches [q], in the food list's order, with the filtered total and the
-/// shown and hidden counts of them all (the chips' numbers).
+/// One page of FitSync's own foods, shown, hidden or suggested ([show]),
+/// whose name matches [q], in the food list's order, with the filtered total
+/// and the shown, hidden and suggested counts of them all (the chips'
+/// numbers).
 async function listAdminFoods(pool, { show, q = null, page = 1, limit = 30 }) {
   const where = [OWN, SHOW[show]];
   const params = [];
@@ -120,21 +156,23 @@ async function listAdminFoods(pool, { show, q = null, page = 1, limit = 30 }) {
     [...params, limit, (page - 1) * limit],
   );
   const [[counts]] = await pool.query(
-    `SELECT COALESCE(SUM(f.hidden_at IS NULL), 0) AS shown, COALESCE(SUM(f.hidden_at IS NOT NULL), 0) AS hidden
+    `SELECT COALESCE(SUM(f.hidden_at IS NULL), 0) AS shown, COALESCE(SUM(f.hidden_at IS NOT NULL), 0) AS hidden,
+            COALESCE(SUM(f.hidden_at IS NULL AND f.suggest_meals <> ''), 0) AS suggested
        FROM foods f WHERE ${OWN}`,
   );
   return {
     foods: rows.map(asAdminFood),
-    counts: { shown: Number(counts.shown), hidden: Number(counts.hidden) },
+    counts: { shown: Number(counts.shown), hidden: Number(counts.hidden), suggested: Number(counts.suggested) },
     total: Number(total),
   };
 }
 
 const WRITE_COLUMNS = `name = ?, category = ?, food_type = ?, serving_desc = ?, calories = ?, protein_g = ?,
-  carbs_g = ?, fat_g = ?, fiber_g = ?, sugar_g = ?, sodium_mg = ?, added_by = ?`;
+  carbs_g = ?, fat_g = ?, fiber_g = ?, sugar_g = ?, sodium_mg = ?, suggest_meals = ?, suggest_with_rice = ?,
+  added_by = ?`;
 const writeValues = (f, adminId) => [
   f.name, f.category, f.foodType, f.servingDesc, f.kcal, f.proteinG, f.carbsG, f.fatG, f.fiberG, f.sugarG,
-  f.sodiumMg, adminId,
+  f.sodiumMg, f.suggestMeals.join(','), f.suggestWithRice, adminId,
 ];
 
 /// Adds one of FitSync's own foods, added by [adminId]. 400 per bad field;
@@ -156,7 +194,7 @@ async function updateFood(pool, foodId, input, adminId) {
   if (!existing) return null;
   const sent = (k) => Object.hasOwn(input, k);
   const merged = Object.fromEntries(
-    ['name', 'category', 'foodType', 'servingDesc', ...NUMBER_FIELDS]
+    ['name', 'category', 'foodType', 'servingDesc', ...NUMBER_FIELDS, 'suggestMeals', 'suggestWithRice']
       .map((k) => [k, sent(k) ? input[k] : existing[k]]),
   );
   // Sent without kcal (or kcal null): worked out from protein, carbs and fat.

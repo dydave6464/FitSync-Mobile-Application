@@ -15,6 +15,7 @@ import 'providers.dart';
 import 'widgets/fatsecret_attribution.dart';
 import 'widgets/log_food_sheet.dart';
 import 'widgets/meal_section.dart';
+import 'widgets/meal_suggestions_section.dart';
 import 'widgets/nutrition_summary_card.dart';
 
 class NutritionScreen extends ConsumerWidget {
@@ -138,6 +139,12 @@ class NutritionScreen extends ConsumerWidget {
     ));
   }
 
+  /// Try again on the day: the day and today's suggestions both reload.
+  void _reload(WidgetRef ref) {
+    ref.invalidate(nutritionDayProvider);
+    ref.invalidate(mealSuggestionsProvider);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = context.fs;
@@ -155,7 +162,7 @@ class NutritionScreen extends ConsumerWidget {
                 ? FsRetry(
                     fullScreen: true,
                     message: userMessage(async.error!),
-                    onRetry: () => ref.invalidate(nutritionDayProvider),
+                    onRetry: () => _reload(ref),
                   )
                 : const Center(child: CircularProgressIndicator()))
             : _body(context, ref, day, today, now, busy: async.isLoading, failed: async.hasError),
@@ -194,7 +201,7 @@ class NutritionScreen extends ConsumerWidget {
         if (failed)
           MaterialBanner(
             content: const Text("Couldn't refresh. Showing the last loaded day."),
-            actions: [TextButton(onPressed: () => ref.invalidate(nutritionDayProvider), child: const Text('Try again'))],
+            actions: [TextButton(onPressed: () => _reload(ref), child: const Text('Try again'))],
           ),
         const SizedBox(height: 8),
         NutritionSummaryCard(day: day, onGoToProfile: onGoToProfile),
@@ -202,6 +209,10 @@ class NutritionScreen extends ConsumerWidget {
         SnapMealCard(
           onTap: busy ? null : () => _snap(context, ref, day.date == today ? suggested : null, suggested, day.date),
         ),
+        // Today only: what to eat next, fitted by the server to what is left.
+        // It brings its own 16 above, and nothing at all when there is
+        // nothing to suggest.
+        if (day.date == today) MealSuggestionsSection(meal: suggested, enabled: !busy),
         const SizedBox(height: 16),
         // One way to add, by meal. The clock's guess marks the likely
         // meal's row, today only: on another day the time says nothing.

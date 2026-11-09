@@ -1,4 +1,5 @@
 import '../../../core/api_client.dart';
+import '../domain/meal_suggestion.dart';
 import '../domain/nutrition.dart';
 
 /// The food log: /nutrition for days and entries, /foods for finding foods.
@@ -54,6 +55,13 @@ class NutritionRepository {
   Future<void> deleteEntry(int id) async {
     await _api.deleteJson('/api/v1/nutrition/entries/$id');
   }
+
+  /// Today's local Filipino suggestions for [meal] -- the server's own today
+  /// in Manila, whatever the phone's clock says: up to three plates, best
+  /// first.
+  Future<MealSuggestions> suggestions(String meal) async => MealSuggestions.fromJson(
+    await _api.getJson('/api/v1/nutrition/suggestions', query: {'meal': meal}),
+  );
 
   Future<FoodSearchResult> search(String q) async {
     final data = await _api.getJson('/api/v1/foods/search', query: {'q': q});

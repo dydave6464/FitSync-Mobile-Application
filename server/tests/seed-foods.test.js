@@ -29,6 +29,46 @@ test('the seed list is well formed', () => {
   assert.ok(!FOODS.some((f) => f.name === 'Steamed white rice'), 'renamed to White rice');
 });
 
+// View Local Filipino Meal Suggestions (spec 2026-11-09): the starting list
+// of 35 dishes, by meal, and whether each comes with 1 cup of rice.
+const LUNCH_DINNER = [
+  'Tinolang manok', 'Sinigang na bangus (milkfish sour soup)', 'Sinigang na hipon', 'Sinigang na baboy',
+  'Nilagang baka', 'Grilled bangus', 'Tilapia, grilled or steamed', 'Inihaw na tuna (grilled tuna steak)',
+  'Paksiw na bangus (milkfish in vinegar)', 'Sarciadong isda (fish with tomato-egg sauce)',
+  'Sutukil sinugba (grilled fish)', 'Ginataang tulingan (frigate tuna in coconut milk)', 'Chicken adobo',
+  'Chicken afritada', 'Bistek tagalog', 'Lechon manok', 'Chicken inasal', 'Ginisang monggo', 'Pinakbet', 'Chopsuey',
+  'Ginisang ampalaya with egg', 'Adobong kangkong',
+];
+const SNACKS = [
+  'Saba banana, boiled', 'Kamote (sweet potato), boiled', 'Lakatan banana', 'Carabao mango, ripe',
+  'Papaya fresh fruit', 'Pinya (pineapple)', 'Bayabas (guava)', 'Hard-boiled egg',
+];
+
+test('the starting list of local meal suggestions', () => {
+  const MEALS = ['breakfast', 'lunch', 'dinner', 'snack'];
+  assert.ok(
+    FOODS.every((f) => (f.suggestMeals === undefined) === (f.suggestWithRice === undefined)),
+    'both fields or neither',
+  );
+  const suggested = FOODS.filter((f) => f.suggestMeals !== undefined);
+  for (const f of suggested) {
+    assert.ok(Array.isArray(f.suggestMeals) && f.suggestMeals.length > 0, `${f.name} suggestMeals`);
+    assert.ok(f.suggestMeals.every((m) => MEALS.includes(m)), `${f.name} suggestMeals`);
+    assert.equal(typeof f.suggestWithRice, 'boolean', `${f.name} suggestWithRice`);
+  }
+  const group = (meals, rice) => suggested
+    .filter((f) => f.suggestMeals.join(',') === meals && f.suggestWithRice === rice)
+    .map((f) => f.name)
+    .sort();
+  assert.deepEqual(group('breakfast', false), ['Bangsilog', 'Tapsilog']);
+  assert.deepEqual(group('breakfast', true), [
+    'Daing na bangus', 'Tinapang galunggong (smoked round scad)', 'Tortang talong',
+  ]);
+  assert.deepEqual(group('lunch,dinner', true), [...LUNCH_DINNER].sort());
+  assert.deepEqual(group('snack', false), [...SNACKS].sort());
+  assert.equal(suggested.length, 35);
+});
+
 test('food seed', async (t) => {
   const pool = createPool(testDbConfig());
   await dropAllTables(pool);
@@ -42,6 +82,24 @@ test('food seed', async (t) => {
     assert.equal(Number(n), FOODS.length);
   });
 
+  await t.test('inserts the starting suggestions with each food', async () => {
+    const [rows] = await pool.query(
+      `SELECT name, suggest_meals, suggest_with_rice FROM foods
+        WHERE name IN ('Tapsilog', 'Tortang talong', 'Tinolang manok', 'Hard-boiled egg', 'White rice', 'Lechon kawali')
+        ORDER BY name`,
+    );
+    assert.deepEqual(rows.map((r) => [r.name, r.suggest_meals, r.suggest_with_rice]), [
+      ['Hard-boiled egg', 'snack', 0],
+      ['Lechon kawali', '', 0],
+      ['Tapsilog', 'breakfast', 0],
+      ['Tinolang manok', 'lunch,dinner', 1],
+      ['Tortang talong', 'breakfast', 1],
+      ['White rice', '', 0],
+    ]);
+    const [[{ n }]] = await pool.query("SELECT COUNT(*) AS n FROM foods WHERE suggest_meals <> ''");
+    assert.equal(Number(n), 35);
+  });
+
   await t.test('writes each food\'s type and its 1-based place in the list', async () => {
     const [[rice]] = await pool.query("SELECT food_type, list_order FROM foods WHERE name = 'White rice'");
     assert.deepEqual([rice.food_type, rice.list_order], ['home', 1]);
@@ -51,9 +109,11 @@ test('food seed', async (t) => {
     assert.equal(Number(n), 0);
   });
 
-  await t.test('seeds Ginisang monggo\'s fiber_g as 6', async () => {
+  // Read from the list rather than written here: the numbers are corrected as
+  // they are verified, and this checks that fiber is seeded, not its value.
+  await t.test('seeds Ginisang monggo\'s fiber_g from the list', async () => {
     const [[row]] = await pool.query("SELECT fiber_g FROM foods WHERE name = 'Ginisang monggo'");
-    assert.equal(Number(row.fiber_g), 6);
+    assert.equal(Number(row.fiber_g), FOODS.find((f) => f.name === 'Ginisang monggo').fiberG);
   });
 
   await t.test('seeds Nescafé Original\'s sugar and sodium from its label', async () => {
@@ -111,12 +171,28 @@ test('food seed', async (t) => {
     assert.deepEqual(s, { inserted: 0, updated: 0, unchanged: FOODS.length, total: FOODS.length });
   });
 
+  // Suggestions are written once, on insert: after that they are the
+  // admin's, and a re-seed must never put the list's back.
+  await t.test('a re-seed leaves suggestions as they are now', async () => {
+    await pool.query("UPDATE foods SET suggest_meals = 'snack', suggest_with_rice = FALSE WHERE name = 'Tinolang manok'");
+    await pool.query("UPDATE foods SET suggest_meals = 'lunch' WHERE name = 'Lechon kawali'");
+    const s = await seedFoods(testDbConfig());
+    assert.deepEqual([s.inserted, s.updated], [0, 0]);
+    const [rows] = await pool.query(
+      "SELECT name, suggest_meals, suggest_with_rice FROM foods WHERE name IN ('Tinolang manok', 'Lechon kawali') ORDER BY name",
+    );
+    assert.deepEqual(rows.map((r) => [r.name, r.suggest_meals, r.suggest_with_rice]), [
+      ['Lechon kawali', 'lunch', 0],
+      ['Tinolang manok', 'snack', 0],
+    ]);
+  });
+
   await t.test('updates a changed number in place', async () => {
     await pool.query("UPDATE foods SET calories = 1 WHERE name = 'Chicken adobo'");
     const s = await seedFoods(testDbConfig());
     assert.equal(s.updated, 1);
     const [[row]] = await pool.query("SELECT calories FROM foods WHERE name = 'Chicken adobo'");
-    assert.equal(row.calories, 320);
+    assert.equal(row.calories, FOODS.find((f) => f.name === 'Chicken adobo').kcal);
   });
 
   // An admin added or edited it (added_by set): the seed must not undo that,

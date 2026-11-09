@@ -372,6 +372,8 @@ AdminFood sampleFood({
   double? sugarG,
   double? sodiumMg,
   bool hidden = false,
+  List<String> suggestMeals = const [],
+  bool suggestWithRice = false,
 }) => AdminFood(
   id: id,
   name: name,
@@ -386,12 +388,15 @@ AdminFood sampleFood({
   sugarG: sugarG,
   sodiumMg: sodiumMg,
   hidden: hidden,
+  suggestMeals: suggestMeals,
+  suggestWithRice: suggestWithRice,
 );
 
 AdminFoodsPage foodsPage(
   List<AdminFood> foods, {
   int shown = 412,
   int hidden = 3,
+  int suggested = 35,
   int page = 1,
   int limit = 30,
   int? total,
@@ -399,6 +404,7 @@ AdminFoodsPage foodsPage(
   foods: foods,
   shownCount: shown,
   hiddenCount: hidden,
+  suggestedCount: suggested,
   page: page,
   limit: limit,
   total: total ?? foods.length,

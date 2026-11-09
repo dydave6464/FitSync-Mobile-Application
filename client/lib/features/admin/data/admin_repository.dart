@@ -85,7 +85,7 @@ class AdminRepository {
     await _api.postJson('/api/v1/admin/exercises/$id/unpublish', const {}),
   );
 
-  /// One page of FitSync's own foods. [show] is `shown` or `hidden`.
+  /// One page of FitSync's own foods. [show] is `shown`, `hidden` or `suggested`.
   Future<AdminFoodsPage> foods({
     String show = 'shown',
     String q = '',

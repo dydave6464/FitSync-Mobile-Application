@@ -313,6 +313,8 @@ class AdminFood {
     required this.sugarG,
     required this.sodiumMg,
     required this.hidden,
+    this.suggestMeals = const [],
+    this.suggestWithRice = false,
   });
 
   final int id;
@@ -338,6 +340,15 @@ class AdminFood {
   /// Left out of food search, Recents and Snap a meal.
   final bool hidden;
 
+  /// The meals trainees are offered it for as a local meal, in meal order
+  /// (`breakfast`, `lunch`, `dinner`, `snack`); empty when never.
+  final List<String> suggestMeals;
+
+  /// Offered as ulam with 1 cup of white rice (beside a main meal only).
+  final bool suggestWithRice;
+
+  bool get suggested => suggestMeals.isNotEmpty;
+
   factory AdminFood.fromJson(Map<String, dynamic> json) => AdminFood(
     id: (json['id'] as num).toInt(),
     name: json['name'] as String,
@@ -352,16 +363,22 @@ class AdminFood {
     sugarG: _optional(json['sugarG']),
     sodiumMg: _optional(json['sodiumMg']),
     hidden: json['hidden'] as bool,
+    suggestMeals: [
+      for (final meal in json['suggestMeals'] as List? ?? const [])
+        meal as String,
+    ],
+    suggestWithRice: json['suggestWithRice'] as bool? ?? false,
   );
 }
 
 /// One page of the Meals list, with the counts of all FitSync's own foods
-/// for the Shown and Hidden chips (they don't follow the search).
+/// for the Shown, Hidden and Suggested chips (they don't follow the search).
 class AdminFoodsPage implements AdminPaged<AdminFood> {
   const AdminFoodsPage({
     required this.foods,
     required this.shownCount,
     required this.hiddenCount,
+    required this.suggestedCount,
     required this.page,
     required this.limit,
     required this.total,
@@ -370,6 +387,7 @@ class AdminFoodsPage implements AdminPaged<AdminFood> {
   final List<AdminFood> foods;
   final int shownCount;
   final int hiddenCount;
+  final int suggestedCount;
   @override
   final int page;
   final int limit;
@@ -390,6 +408,7 @@ class AdminFoodsPage implements AdminPaged<AdminFood> {
       ],
       shownCount: (counts['shown'] as num).toInt(),
       hiddenCount: (counts['hidden'] as num).toInt(),
+      suggestedCount: (counts['suggested'] as num?)?.toInt() ?? 0,
       page: (json['page'] as num).toInt(),
       limit: (json['limit'] as num).toInt(),
       total: (json['total'] as num).toInt(),
@@ -414,6 +433,8 @@ class FoodInput {
     this.fiberG,
     this.sugarG,
     this.sodiumMg,
+    this.suggestMeals = const [],
+    this.suggestWithRice = false,
   });
 
   final String name;
@@ -432,6 +453,12 @@ class FoodInput {
   final double? sugarG;
   final double? sodiumMg;
 
+  /// The meals it is suggested for, in meal order; empty for none.
+  final List<String> suggestMeals;
+
+  /// With 1 cup of rice; only ever true beside a main meal.
+  final bool suggestWithRice;
+
   Map<String, dynamic> toJson() => {
     'name': name,
     'category': category,
@@ -444,6 +471,8 @@ class FoodInput {
     'fiberG': fiberG,
     'sugarG': sugarG,
     'sodiumMg': sodiumMg,
+    'suggestMeals': suggestMeals,
+    'suggestWithRice': suggestWithRice,
   };
 }
 
