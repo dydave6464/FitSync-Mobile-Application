@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/features/nutrition/data/nutrition_repository.dart';
+import 'package:fitsync/features/nutrition/domain/meal_suggestion.dart';
 import 'package:fitsync/features/nutrition/domain/nutrition.dart';
 import 'package:fitsync/features/nutrition/presentation/providers.dart';
 
@@ -112,6 +113,25 @@ class FakeNutritionRepository implements NutritionRepository {
   Future<List<Food>> recent() async {
     recentCalls++;
     return const [rice];
+  }
+
+  /// What `suggestions` answers per meal: nothing to suggest (the section
+  /// hidden) unless a test sets one. [failSuggestions] throws UNKNOWN_ERROR,
+  /// which apiRetryPolicy never retries (INTERNAL_ERROR would be, on timers);
+  /// [suggestionsHold] keeps the answer pending until
+  /// completed. [suggestionCalls] lists every meal asked for.
+  final Map<String, MealSuggestions> suggestionsByMeal = {};
+  final List<String> suggestionCalls = [];
+  bool failSuggestions = false;
+  Completer<void>? suggestionsHold;
+
+  @override
+  Future<MealSuggestions> suggestions(String meal) async {
+    suggestionCalls.add(meal);
+    if (suggestionsHold != null) await suggestionsHold!.future;
+    if (failSuggestions) throw const ApiException('UNKNOWN_ERROR', 'Something went wrong on our side. Please try again.');
+    return suggestionsByMeal[meal] ??
+        MealSuggestions(date: today, meal: meal, state: SuggestionState.noTarget, suggestions: const []);
   }
 }
 
@@ -394,6 +414,29 @@ void main() {
     await c.read(nutritionDayProvider.notifier).remove(entry);
     await c.read(recentFoodsProvider.future);
     expect(repo.recentCalls, before + 1);
+  });
+
+  test('adding, changing or removing an entry asks for the suggestions again', () async {
+    final repo = FakeNutritionRepository();
+    final c = _container(repo);
+    final sub = c.listen(mealSuggestionsProvider('lunch'), (_, _) {});
+    addTearDown(sub.close);
+    await c.read(nutritionDayProvider.future);
+    await c.read(mealSuggestionsProvider('lunch').future);
+    expect(repo.suggestionCalls, ['lunch']);
+
+    final entry = await c.read(nutritionDayProvider.notifier).log(rice, mealType: 'lunch', servings: 1);
+    await c.read(mealSuggestionsProvider('lunch').future);
+    expect(repo.suggestionCalls, hasLength(2), reason: 'after a log');
+
+    await c.read(nutritionDayProvider.notifier).change(entry, mealType: 'dinner', servings: 1);
+    await c.read(mealSuggestionsProvider('lunch').future);
+    expect(repo.suggestionCalls, hasLength(3), reason: 'after a change');
+
+    final moved = c.read(nutritionDayProvider).value!.meals['dinner']!.single;
+    await c.read(nutritionDayProvider.notifier).remove(moved);
+    await c.read(mealSuggestionsProvider('lunch').future);
+    expect(repo.suggestionCalls, hasLength(4), reason: 'after a removal');
   });
 }
 

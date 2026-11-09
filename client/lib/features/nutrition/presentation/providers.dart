@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/manila_day.dart';
 import '../../exercises/presentation/providers.dart' show apiClientProvider, apiRetryPolicy;
 import '../data/nutrition_repository.dart';
+import '../domain/meal_suggestion.dart';
 import '../domain/nutrition.dart';
 
 final nutritionRepositoryProvider = Provider<NutritionRepository>(
@@ -82,6 +83,7 @@ class NutritionDayController extends AsyncNotifier<NutritionDay> {
     // A retry may return an entry a reload already shows: listed once.
     _onDay(target, (day) => day.without(pending.id).without(saved.id).withEntry(saved));
     ref.invalidate(recentFoodsProvider);
+    ref.invalidate(mealSuggestionsProvider);
     await _settle(target);
     return saved;
   }
@@ -103,6 +105,7 @@ class NutritionDayController extends AsyncNotifier<NutritionDay> {
       return saved.mealType == shown.mealType ? day.replacing(saved) : day.without(entry.id).withEntry(saved);
     });
     ref.invalidate(recentFoodsProvider);
+    ref.invalidate(mealSuggestionsProvider);
     await _settle(target);
   }
 
@@ -119,6 +122,7 @@ class NutritionDayController extends AsyncNotifier<NutritionDay> {
       rethrow;
     }
     ref.invalidate(recentFoodsProvider);
+    ref.invalidate(mealSuggestionsProvider);
     await _settle(date);
   }
 
@@ -141,6 +145,15 @@ class NutritionDayController extends AsyncNotifier<NutritionDay> {
 
 final recentFoodsProvider = FutureProvider.autoDispose<List<Food>>(
   (ref) => ref.watch(nutritionRepositoryProvider).recent(),
+);
+
+/// Today's local Filipino suggestions for one meal (spec 2026-11-09). Asked
+/// again whenever an entry is added, changed or removed (see
+/// [NutritionDayController]), and wherever the day itself is refetched: a
+/// new Manila day, sign-out, Snap a meal.
+final mealSuggestionsProvider = FutureProvider.autoDispose.family<MealSuggestions, String>(
+  (ref, meal) => ref.watch(nutritionRepositoryProvider).suggestions(meal),
+  retry: apiRetryPolicy,
 );
 
 /// Keyed by the (already debounced, trimmed) query; Log food debounces.

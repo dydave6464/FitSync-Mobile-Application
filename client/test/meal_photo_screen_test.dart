@@ -192,6 +192,7 @@ Future<_Harness> _open(
                   Consumer(
                     builder: (context, ref, _) {
                       ref.watch(nutritionDayProvider);
+                      ref.watch(mealSuggestionsProvider('lunch'));
                       return const SizedBox.shrink();
                     },
                   ),
@@ -692,6 +693,16 @@ void main() {
       expect(dayLoads(h), before + 1);
     },
   );
+
+  testWidgets("logging a photo's meal asks for the meal suggestions again", (tester) async {
+    final h = _Harness();
+    await _open(tester, h: h, watchDay: true);
+    final before = h.nutrition.suggestionCalls.length;
+    await tester.tap(find.byKey(const Key('snap.log')));
+    await tester.pumpAndSettle();
+    expect(h.result, isTrue);
+    expect(h.nutrition.suggestionCalls.length, before + 1);
+  });
 
   testWidgets('a food copied from FatSecret shows the FatSecret attribution', (
     tester,
