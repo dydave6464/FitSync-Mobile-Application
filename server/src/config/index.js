@@ -11,6 +11,20 @@ function parsePositiveInteger(name, value) {
   return n;
 }
 
+/// A base URL that only this machine can open: localhost or 127.x.
+const LOOPBACK_URL = /^https?:\/\/(localhost|127(?:\.\d{1,3}){3})(?::\d+)?(?:\/|$)/i;
+
+/// The startup warning for a non-production server whose shared links will not
+/// open on any other device -- PUBLIC_BASE_URL unset (it defaults to localhost)
+/// or pointing at loopback. Production refuses these outright in load(); this
+/// is the gentler half for development. Null when there is nothing to say.
+function publicBaseUrlWarning({ env, publicBaseUrl }) {
+  if (env === 'production') return null;
+  if (!LOOPBACK_URL.test(publicBaseUrl || '')) return null;
+  return `PUBLIC_BASE_URL is ${publicBaseUrl}: shared coach-report links will only open on this machine. `
+    + 'Set it to an address other devices can reach, e.g. http://<this machine\'s LAN IP>:3000.';
+}
+
 function load(env = process.env) {
   const missing = REQUIRED.filter((key) => !env[key]);
   if (missing.length > 0) {
@@ -55,7 +69,7 @@ function load(env = process.env) {
   // address -- the coach it was sent to cannot open it, with nothing in the
   // response or the logs to say why. Same reasoning as the two guards
   // above: fail at startup, not in an incident.
-  if (nodeEnv === 'production' && /^https?:\/\/(localhost|127(?:\.\d{1,3}){3})(?::\d+)?(?:\/|$)/i.test(publicBaseUrl)) {
+  if (nodeEnv === 'production' && LOOPBACK_URL.test(publicBaseUrl)) {
     throw new Error(
       'PUBLIC_BASE_URL is unset or still points at localhost while NODE_ENV is '
         + '"production". Shared coach-report links would be unreachable — set '
@@ -155,4 +169,4 @@ function load(env = process.env) {
   };
 }
 
-module.exports = { load, REQUIRED };
+module.exports = { load, REQUIRED, publicBaseUrlWarning };

@@ -53,6 +53,7 @@ dependencies:
   font_awesome_flutter: ^11.0.0
   # Snap a meal: the camera or the photo library, resized on the phone before upload.
   image_picker: ^1.2.4
+  share_plus: ^13.3.1
 
 dev_dependencies:
   flutter_test:

@@ -1,5 +1,5 @@
 'use strict';
-const { load } = require('./src/config');
+const { load, publicBaseUrlWarning } = require('./src/config');
 const { createLogger } = require('./src/lib/logger');
 const { createPool } = require('./src/db/pool');
 const { createMlService } = require('./src/services/ml');
@@ -15,6 +15,8 @@ const { assertSchemaCurrent } = require('./src/db/migrate');
 
 const config = load();
 const logger = createLogger({ level: config.logLevel, env: config.env });
+const publicUrlWarning = publicBaseUrlWarning(config);
+if (publicUrlWarning) logger.warn(publicUrlWarning);
 const pool = createPool(config.db);
 const ml = createMlService(config.ml);
 // Throws here, not on the first workout, when CUES_MODE=groq has no key.
