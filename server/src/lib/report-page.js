@@ -100,7 +100,8 @@ function bucketName({ period, index, count, fallback, end }) {
 
   if (period === 'year') {
     const middle = back(end, behind * width + Math.floor(width / 2));
-    return { axis: behind % 2 === 0 ? MONTHS[middle.getUTCMonth()] : '', full };
+    const month = MONTHS[middle.getUTCMonth()];
+    return { axis: behind % 2 === 0 ? month : '', full, month };
   }
   return { axis: shortDate(spanEnd), full };
 }
@@ -159,33 +160,44 @@ function tiles(period, report) {
   return `<section class="tiles">${parts.join('')}</section>`;
 }
 
+/// Above this many bars a value over each one runs into its neighbour's
+/// ("38.8k39.1k"), so the values move to a list under the chart instead.
+const MAX_LABELLED_BARS = 8;
+
 function volumeChart(period, buckets, end) {
-  const W = 320;
+  const n = buckets.length;
+  // A dense chart draws in a narrower box: at a 320px phone the card is about
+  // 254px wide, so its 11-unit month names render at about 11.6px.
+  const dense = n > MAX_LABELLED_BARS;
+  const W = dense ? 240 : 320;
   const H = 150;
   const TOP = 18;
   const BOTTOM = 22;
   const plot = H - TOP - BOTTOM;
-  const n = buckets.length;
   const slot = W / n;
   const barW = Math.min(28, slot * 0.6);
   const max = Math.max(...buckets.map((b) => Number(b.volumeKg) || 0));
 
+  const values = [];
   const bars = buckets.map((b, i) => {
     const kg = Number(b.volumeKg) || 0;
     const name = bucketName({ period, index: i, count: n, fallback: b.label, end });
+    values.push(`<li><span class="m">${escapeHtml(name.month || name.full)}</span>`
+      + ` <span class="num">${escapeHtml(compactNumber(kg))}</span></li>`);
     const h = max > 0 ? Math.round((kg / max) * plot) : 0;
     const x = (i * slot + (slot - barW) / 2).toFixed(1);
     const cx = (i * slot + slot / 2).toFixed(1);
     const y = TOP + plot - h;
     return `<g><title>${escapeHtml(`${name.full}: ${compactKg(kg)}`)}</title>`
       + (h > 0 ? `<rect x="${x}" y="${y}" width="${barW.toFixed(1)}" height="${h}" rx="4"/>` : '')
-      + (kg > 0 ? `<text class="val" x="${cx}" y="${y - 4}" text-anchor="middle">${escapeHtml(compactNumber(kg))}</text>` : '')
+      + (kg > 0 && !dense ? `<text class="val" x="${cx}" y="${y - 4}" text-anchor="middle">${escapeHtml(compactNumber(kg))}</text>` : '')
       + (name.axis ? `<text x="${cx}" y="${H - 6}" text-anchor="middle">${escapeHtml(name.axis)}</text>` : '')
       + '</g>';
   }).join('');
 
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img"`
-    + ` aria-label="Training volume across this ${escapeHtml(period)}">${bars}</svg>`;
+  return `<svg class="chart${dense ? ' dense' : ''}" viewBox="0 0 ${W} ${H}" role="img"`
+    + ` aria-label="Training volume across this ${escapeHtml(period)}">${bars}</svg>`
+    + (dense ? `<ol class="vals">${values.join('')}</ol>` : '');
 }
 
 /// The direction, not the comparand: previousKg is what the percentage is
@@ -313,6 +325,11 @@ ul.sessions li{display:block}
 .chart rect{fill:var(--fill)}
 .chart text{fill:var(--text2);font-size:10px;font-family:inherit}
 .chart text.val{fill:var(--text)}
+.chart.dense text{font-size:11px}
+ol.vals{list-style:none;margin:8px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:6px 8px;
+font-size:.875rem}
+ol.vals li{display:flex;flex-direction:column;line-height:1.3}
+ol.vals .m{color:var(--text2);font-size:.75rem}
 footer{margin-top:24px;color:var(--text2);font-size:.875rem;text-align:center}
 footer p+p,footer .print+p{margin-top:8px}
 .print{display:inline-block;margin-top:12px;min-height:48px;padding:0 22px;border:0;border-radius:99px;

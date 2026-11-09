@@ -208,3 +208,33 @@ test('the chart writes each bar value as text', () => {
   assert.match(html, />7\.3k</);
   assert.match(html, /<title>Oct 21 – Oct 25: 7\.3k kg<\/title>/);
 });
+
+test('a year chart lists its twelve values under the bars, readable at phone width', () => {
+  const kg = [38800, 39100, 30100, 29900, 100500, 99800, 41000, 0, 52300, 48700, 61200, 57400];
+  const report = monthReport();
+  report.volume.buckets = kg.map((volumeKg, i) => ({ label: `-${11 - i}m`, volumeKg }));
+  const html = page({ period: 'year', windowStart: '2025-11-10', windowEnd: '2026-11-09', report });
+
+  // Twelve values above twelve bars run together ("38.8k39.1k"), so none sit
+  // in the drawing; the drawing is narrower so its month names stay >= 11px.
+  assert.doesNotMatch(html, /<text class="val"/);
+  assert.match(html, /<svg class="chart dense" viewBox="0 0 240 150"/);
+  assert.match(html, /\.chart\.dense text\{font-size:11px\}/);
+
+  // Each month's value is HTML text in a four-column list, oldest first.
+  const list = html.match(/<ol class="vals">(.*?)<\/ol>/)[1];
+  const items = [...list.matchAll(/<li><span class="m">(\w+)<\/span> <span class="num">([^<]+)<\/span><\/li>/g)]
+    .map((m) => `${m[1]} ${m[2]}`);
+  assert.deepEqual(items, [
+    'Nov 38.8k', 'Dec 39.1k', 'Jan 30.1k', 'Feb 29.9k', 'Mar 100.5k', 'Apr 99.8k',
+    'May 41k', 'Jun 0', 'Jul 52.3k', 'Aug 48.7k', 'Sep 61.2k', 'Oct 57.4k',
+  ]);
+  assert.match(html, /ol\.vals\{[^}]*grid-template-columns:repeat\(4,1fr\)/);
+});
+
+test('week and month charts keep their values above the bars', () => {
+  const html = page();
+  assert.match(html, /<svg class="chart" viewBox="0 0 320 150"/);
+  assert.equal((html.match(/<text class="val"/g) || []).length, 6);
+  assert.doesNotMatch(html, /<ol class="vals">/);
+});
