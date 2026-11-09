@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -31,12 +33,16 @@ class _FakeRepo implements SessionRepository {
   Map<String, bool>? asked;
   int calls = 0;
 
+  /// When set, every create waits on it: a link still being made.
+  Completer<void>? gate;
+
   @override
   Future<SharedReport> shareReport({
     required String period,
     required Map<String, bool> include,
   }) async {
     calls++;
+    if (gate != null) await gate!.future;
     if (error != null) throw error!;
     asked = include;
     return SharedReport(
@@ -109,10 +115,21 @@ class _FakeShare {
   final opened = <Uri>[];
   bool menuOpens = true;
 
+  /// When true, a share stays open until the test answers [pending] -- the
+  /// menu on screen. A second share while one is open answers the first
+  /// with false, the way share_plus does on Android (RESULT_UNAVAILABLE
+  /// when a new share replaces its callback).
+  bool holdOpen = false;
+  Completer<bool>? pending;
+
   ShareActions get actions => ShareActions(
     share: (text) async {
       shared.add(text);
-      return menuOpens;
+      if (!holdOpen) return menuOpens;
+      final previous = pending;
+      if (previous != null && !previous.isCompleted) previous.complete(false);
+      final current = pending = Completer<bool>();
+      return current.future;
     },
     open: (url) async {
       opened.add(url);
@@ -506,6 +523,83 @@ void main() {
     expect(
       find.text(
         "Couldn't open the share menu, so the link was copied instead.",
+      ),
+      findsOneWidget,
+    );
+  });
+
+  // A second tap while the menu is still open must not start a second
+  // share: on Android that answers the first with "unavailable", and the
+  // sheet would claim the menu failed while it is on screen.
+  testWidgets('a second tap while the share menu is open does nothing', (
+    tester,
+  ) async {
+    _stubClipboard(tester);
+    final (repo, share) = await _open(tester);
+    share.holdOpen = true;
+
+    await _tap(tester, find.byKey(const Key('share.share')));
+    await tester.pump();
+    await tester.pump();
+    expect(share.shared.length, 1);
+
+    // The link exists now, so "Share again" is drawn and enabled.
+    await _tap(tester, find.byKey(const Key('share.share')));
+    await tester.pump();
+
+    share.pending!.complete(true);
+    await tester.pumpAndSettle();
+
+    expect(share.shared.length, 1);
+    expect(repo.calls, 1);
+    expect(find.textContaining("Couldn't open the share menu"), findsNothing);
+  });
+
+  // Two taps in one frame, before the first has made the link: one link.
+  testWidgets('Share and Copy tapped together make one link', (tester) async {
+    _stubClipboard(tester);
+    final (repo, _) = await _open(tester);
+    repo.gate = Completer<void>();
+
+    await tester.ensureVisible(find.byKey(const Key('share.copy')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('share.share')));
+    await tester.tap(find.byKey(const Key('share.copy')));
+
+    repo.gate!.complete();
+    await tester.pumpAndSettle();
+
+    expect(repo.calls, 1);
+  });
+
+  // A clipboard that refuses must say so on the sheet, not surface as an
+  // unhandled error with nothing shown.
+  testWidgets('a copy the clipboard refuses says so', (tester) async {
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          throw PlatformException(code: 'denied');
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+
+    await _open(tester);
+    await _tap(tester, find.byKey(const Key('share.copy')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Link copied.'), findsNothing);
+    expect(
+      find.ancestor(
+        of: find.textContaining("Couldn't copy the link"),
+        matching: find.byType(FsErrorLine),
       ),
       findsOneWidget,
     );
