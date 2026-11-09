@@ -26,7 +26,9 @@ class SharePreviewCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          FsEyebrow(heading, maxLines: 2),
+          // Three lines: a year window names both years ("Year · Nov 10,
+          // 2025 – Nov 9, 2026"), which needs a third at 2.0x on 320 dp.
+          FsEyebrow(heading, maxLines: 3),
           const SizedBox(height: 10),
           LayoutBuilder(
             builder: (context, constraints) {
