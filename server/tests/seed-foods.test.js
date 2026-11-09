@@ -51,9 +51,11 @@ test('food seed', async (t) => {
     assert.equal(Number(n), 0);
   });
 
-  await t.test('seeds Ginisang monggo\'s fiber_g as 6', async () => {
+  // Read from the list rather than written here: the numbers are corrected as
+  // they are verified, and this checks that fiber is seeded, not its value.
+  await t.test('seeds Ginisang monggo\'s fiber_g from the list', async () => {
     const [[row]] = await pool.query("SELECT fiber_g FROM foods WHERE name = 'Ginisang monggo'");
-    assert.equal(Number(row.fiber_g), 6);
+    assert.equal(Number(row.fiber_g), FOODS.find((f) => f.name === 'Ginisang monggo').fiberG);
   });
 
   await t.test('seeds Nescafé Original\'s sugar and sodium from its label', async () => {
@@ -116,7 +118,7 @@ test('food seed', async (t) => {
     const s = await seedFoods(testDbConfig());
     assert.equal(s.updated, 1);
     const [[row]] = await pool.query("SELECT calories FROM foods WHERE name = 'Chicken adobo'");
-    assert.equal(row.calories, 320);
+    assert.equal(row.calories, FOODS.find((f) => f.name === 'Chicken adobo').kcal);
   });
 
   // An admin added or edited it (added_by set): the seed must not undo that,
