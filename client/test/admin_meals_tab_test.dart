@@ -359,4 +359,33 @@ void main() {
       },
     );
   }
+
+  testWidgets('a hidden food is Hidden, not Suggested: the server never suggests it', (tester) async {
+    final handle = tester.ensureSemantics();
+    await _pump(
+      tester,
+      FakeAdminRepository(
+        foods: (_, _, _) async => foodsPage([
+          sampleFood(
+            id: 12,
+            name: 'Tinolang manok',
+            servingDesc: '1 bowl (350 g)',
+            kcal: 260,
+            foodType: 'home',
+            hidden: true,
+            suggestMeals: const ['lunch', 'dinner'],
+            suggestWithRice: true,
+          ),
+        ]),
+      ),
+    );
+    Finder tag(String text) => find.descendant(
+      of: find.byKey(const ValueKey('admin.food.12')),
+      matching: find.descendant(of: find.byType(StatusTag), matching: find.text(text)),
+    );
+    expect(tag('Hidden'), findsOneWidget);
+    expect(tag('Suggested'), findsNothing);
+    expect(find.bySemanticsLabel('Tinolang manok, 1 bowl (350 g) · 260 kcal, Home-cooked, Hidden'), findsOneWidget);
+    handle.dispose();
+  });
 }

@@ -767,4 +767,39 @@ void main() {
       },
     );
   }
+
+  group('a hidden food is not suggested', () {
+    const note = "Hidden foods aren't suggested until shown again.";
+
+    testWidgets('editing a hidden food says so under the local-meal choices', (tester) async {
+      await _pump(
+        tester,
+        FakeAdminRepository(),
+        food: sampleFood(id: 12, hidden: true, suggestMeals: const ['lunch'], suggestWithRice: true),
+      );
+      expect(find.text(note), findsOneWidget);
+      // Below the choices, above Show food.
+      final y = tester.getTopLeft(find.text(note)).dy;
+      expect(y, greaterThan(tester.getTopLeft(find.byKey(const Key('admin.food.suggest.lunch'))).dy));
+      expect(y, lessThan(tester.getTopLeft(find.byKey(const Key('admin.food.show'))).dy));
+      // The chips the food keeps are left as they are.
+      expect(tester.widget<FsChip>(find.byKey(const Key('admin.food.suggest.lunch'))).selected, isTrue);
+    });
+
+    testWidgets('a shown food has no such line', (tester) async {
+      await _pump(tester, FakeAdminRepository(), food: sampleFood(id: 12, suggestMeals: const ['lunch']));
+      expect(find.text(note), findsNothing);
+    });
+
+    testWidgets('a new food has no such line', (tester) async {
+      await _pump(tester, FakeAdminRepository());
+      expect(find.text(note), findsNothing);
+    });
+
+    testWidgets('Show food takes the line away', (tester) async {
+      await _pump(tester, FakeAdminRepository(), food: sampleFood(id: 12, hidden: true));
+      await _tap(tester, find.byKey(const Key('admin.food.show')));
+      expect(find.text(note), findsNothing);
+    });
+  });
 }
