@@ -222,6 +222,20 @@ test('report endpoints', async (t) => {
     assert.match(res.headers['x-robots-tag'], /noindex/);
   });
 
+  // helmet's CSP refuses inline script, so the Print button's script is a
+  // same-origin file. It sits beside /:token and must not be read as one.
+  await t.test('the print script is served as JavaScript, not as a token', async () => {
+    const res = await request(app).get('/api/v1/reports/print.js').expect(200);
+    assert.match(res.headers['content-type'], /javascript/);
+    assert.match(res.text, /window\.print\(\)/);
+  });
+
+  await t.test('the page loads its print script from this server', async () => {
+    const { path } = await shareFor('p14@example.com');
+    const res = await request(app).get(path).expect(200);
+    assert.match(res.text, /<script src="\/api\/v1\/reports\/print\.js" defer><\/script>/);
+  });
+
   await t.test('an expired link stops working', async () => {
     const { path, userId } = await shareFor('p3@example.com');
     await pool.query(
@@ -317,7 +331,8 @@ test('report endpoints', async (t) => {
 
     assert.ok(page.text.includes(muscleGroup), 'muscle group name should appear');
     assert.ok(page.text.includes('82.5 kg'), 'body-weight figure should appear');
-    assert.match(page.text, /<td>\d{4}-\d{2}-\d{2}<\/td><td>1 sets<\/td>/);
+    // One session today: a two-line row with its set count, singular.
+    assert.match(page.text, /<li class="session"><p class="t">[A-Z][a-z]{2}, [A-Z][a-z]{2} \d{1,2} · Workout<\/p><p class="d">[^<]*\b1 set\b/);
     // Two entries fell inside the window, so it was never widened.
     assert.ok(!page.text.includes('Fewer than two entries'));
   });
@@ -358,7 +373,7 @@ test('report endpoints', async (t) => {
     // And the page itself shows one row, matching the count in its Summary.
     const page = await request(app)
       .get(new URL(created.body.data.url).pathname).expect(200);
-    assert.equal((page.text.match(/<td>\d+ sets<\/td>/g) || []).length, 1);
+    assert.equal((page.text.match(/<li class="session">/g) || []).length, 1);
   });
 
   // changePct is what analytics.js calls the honest half of volume, and it
