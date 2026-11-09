@@ -128,6 +128,16 @@ test('an old snapshot without plan name or duration still renders', () => {
   assert.ok(!/\d+ min\b/.test(html), 'no duration invented');
 });
 
+// The old started_at bug saved 0 on completion (sessions.js), so a stored
+// 0 means "not known", not a zero-minute workout.
+test('a session stored with zero minutes leaves the duration out', () => {
+  const report = monthReport();
+  report.sessions = [{ sessionDate: '2026-11-08', setCount: 3, durationMin: 0 }];
+  const html = page({ report });
+  assert.match(html, />3 sets</);
+  assert.doesNotMatch(html, /\b0 min\b/);
+});
+
 test('the footer names the frozen day and the expiry', () => {
   assert.match(page(), /Frozen on Nov 9, 2026 · This link works until Dec 9, 2026/);
 });
