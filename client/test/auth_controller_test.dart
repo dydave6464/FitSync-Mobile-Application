@@ -15,6 +15,8 @@ import 'package:fitsync/features/auth/domain/auth_user.dart';
 import 'package:fitsync/features/auth/domain/sign_in_outcome.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/home/presentation/plan_ready.dart';
+import 'package:fitsync/features/nutrition/presentation/providers.dart'
+    show mealSuggestionsProvider, nutritionRepositoryProvider;
 import 'package:fitsync/features/reminders/data/reminder_scheduler.dart';
 import 'package:fitsync/features/reminders/domain/reminders.dart';
 import 'package:fitsync/features/routine/data/routine_repository.dart';
@@ -31,6 +33,8 @@ import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/streaks/data/streaks_repository.dart';
 import 'package:fitsync/features/streaks/domain/streaks.dart';
 import 'package:fitsync/features/streaks/presentation/providers.dart';
+
+import 'nutrition_controller_test.dart' show FakeNutritionRepository;
 
 AuthUser _user({bool onboardingCompleted = false}) => AuthUser(
   userId: 7,
@@ -590,6 +594,31 @@ void main() {
       2,
       reason: 'the pending outcome was not re-fetched',
     );
+  });
+
+  test("signing out drops the previous account's meal suggestions", () async {
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('tok');
+    final nutrition = FakeNutritionRepository();
+    final container = ProviderContainer(
+      overrides: [
+        tokenStoreProvider.overrideWithValue(tokens),
+        authRepositoryProvider.overrideWithValue(
+          FakeAuthRepository(tokens, onMe: () async => _user(onboardingCompleted: true)),
+        ),
+        nutritionRepositoryProvider.overrideWithValue(nutrition),
+      ],
+    );
+    addTearDown(container.dispose);
+    final sub = container.listen(mealSuggestionsProvider('lunch'), (_, _) {});
+    addTearDown(sub.close);
+
+    await container.read(authControllerProvider.future);
+    await container.read(mealSuggestionsProvider('lunch').future);
+    await container.read(authControllerProvider.notifier).signOut();
+    await container.read(mealSuggestionsProvider('lunch').future);
+
+    expect(nutrition.suggestionCalls, ['lunch', 'lunch'], reason: 'the suggestions were not asked for again');
   });
 
   test("signing out drops the previous account's plan-ready welcome", () async {

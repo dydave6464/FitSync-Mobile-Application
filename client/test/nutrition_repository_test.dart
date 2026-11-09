@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:fitsync/core/api_client.dart';
 import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/features/nutrition/data/nutrition_repository.dart';
+import 'package:fitsync/features/nutrition/domain/meal_suggestion.dart';
 import 'package:fitsync/features/nutrition/domain/nutrition.dart';
 
 NutritionRepository _repo(MockClient client) => NutritionRepository(
@@ -224,5 +225,29 @@ void main() {
     expect(food.servingDesc, '1 thigh');
     expect(food.kcal, 107);
     expect(food.isFatsecret, isTrue);
+  });
+
+  test('suggestions asks for one meal and reads the plates', () async {
+    final repo = _repo(MockClient((r) async {
+      expect(r.method, 'GET');
+      expect(r.url.path, '/api/v1/nutrition/suggestions');
+      expect(r.url.queryParameters, {'meal': 'dinner'});
+      return _ok({
+        'date': '2026-10-14', 'meal': 'dinner', 'state': 'reached', 'share': null,
+        'suggestions': [{
+          'food': {
+            'foodId': 13, 'name': 'Hard-boiled egg', 'servingDesc': '1 large', 'kcal': 78, 'proteinG': 6.3,
+            'carbsG': 0.6, 'fatG': 5.3,
+          },
+          'rice': null,
+          'total': {'kcal': 78, 'proteinG': 6.3, 'carbsG': 0.6, 'fatG': 5.3},
+          'highProtein': true,
+        }],
+      });
+    }));
+    final s = await repo.suggestions('dinner');
+    expect(s.state, SuggestionState.reached);
+    expect(s.suggestions.single.food.name, 'Hard-boiled egg');
+    expect(s.suggestions.single.rice, isNull);
   });
 }

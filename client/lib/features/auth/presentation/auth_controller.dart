@@ -12,7 +12,7 @@ import '../../admin/presentation/providers.dart' show adminRepositoryProvider;
 import '../../exercises/presentation/providers.dart';
 import '../../home/presentation/plan_ready.dart';
 import '../../nutrition/presentation/providers.dart'
-    show nutritionDayProvider, nutritionDateProvider, recentFoodsProvider;
+    show mealSuggestionsProvider, nutritionDayProvider, nutritionDateProvider, recentFoodsProvider;
 import '../../plans/presentation/providers.dart';
 import '../../pro/presentation/providers.dart' show proPendingCheckoutProvider;
 import '../../recovery/presentation/providers.dart';
@@ -232,6 +232,7 @@ class AuthController extends AsyncNotifier<AuthState> {
     ref.invalidate(nutritionDayProvider);
     ref.invalidate(nutritionDateProvider);
     ref.invalidate(recentFoodsProvider);
+    ref.invalidate(mealSuggestionsProvider);
     ref.invalidate(planReadyProvider);
     ref.invalidate(proPendingCheckoutProvider);
     ref.invalidate(currentAdProvider);

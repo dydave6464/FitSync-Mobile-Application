@@ -12,7 +12,8 @@ import 'widgets/admin_widgets.dart';
 import 'widgets/content_list.dart';
 
 /// The Content tab's Meals segment: FitSync's own foods (never FatSecret
-/// copies), Shown or Hidden, searchable by name. A row opens the food form.
+/// copies), Shown, Hidden or Suggested, searchable by name. A row opens the
+/// food form.
 class MealsTab extends ConsumerWidget {
   const MealsTab({super.key});
 
@@ -33,11 +34,14 @@ class MealsTab extends ConsumerWidget {
       chips: [
         (value: 'shown', label: counted('Shown', last?.shownCount)),
         (value: 'hidden', label: counted('Hidden', last?.hiddenCount)),
+        (value: 'suggested', label: counted('Suggested', last?.suggestedCount)),
       ],
       list: list,
-      emptyMessage: query.chip == 'shown'
-          ? 'No foods yet.'
-          : 'No hidden foods.',
+      emptyMessage: switch (query.chip) {
+        'hidden' => 'No hidden foods.',
+        'suggested' => 'No suggested foods.',
+        _ => 'No foods yet.',
+      },
       onSearch: ref.read(adminFoodsQueryProvider.notifier).setSearch,
       onChip: ref.read(adminFoodsQueryProvider.notifier).setChip,
       onLoadMore: ref.read(adminFoodsProvider.notifier).loadMore,
@@ -79,6 +83,7 @@ class _FoodRow extends StatelessWidget {
       subtitle,
       ?type,
       if (food.hidden) 'Hidden',
+      if (food.suggested) 'Suggested',
     ].join(', ');
 
     return ConstrainedBox(
@@ -111,6 +116,11 @@ class _FoodRow extends StatelessWidget {
                       Text(
                         type,
                         style: TextStyle(fontSize: 11, color: t.text3),
+                      ),
+                    if (food.suggested)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: StatusTag('Suggested'),
                       ),
                   ],
                 ),

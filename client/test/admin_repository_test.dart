@@ -518,6 +518,71 @@ void main() {
       expect(sent.single.url.queryParameters, {'show': 'shown', 'page': '1'});
     });
 
+    test(
+      'a food reads its local-meal suggestions, and a page its suggested count',
+      () async {
+        final repo = _repo(
+          [],
+          (_) => _ok({
+            'foods': [
+              {
+                ...foodJson(),
+                'suggestMeals': ['lunch', 'dinner'],
+                'suggestWithRice': true,
+              },
+            ],
+            'counts': {'shown': 412, 'hidden': 3, 'suggested': 35},
+            'page': 1,
+            'limit': 30,
+            'total': 1,
+          }),
+        );
+        final result = await repo.foods(show: 'suggested');
+        expect(result.suggestedCount, 35);
+        expect(result.foods.single.suggestMeals, ['lunch', 'dinner']);
+        expect(result.foods.single.suggestWithRice, isTrue);
+        expect(result.foods.single.suggested, isTrue);
+      },
+    );
+
+    test('a food sent without suggestions reads as never suggested', () async {
+      final repo = _repo(
+        [],
+        (_) => _ok({
+          'foods': [foodJson()],
+          'counts': {'shown': 412, 'hidden': 3},
+          'page': 1,
+          'limit': 30,
+          'total': 1,
+        }),
+      );
+      final result = await repo.foods();
+      expect(result.suggestedCount, 0);
+      expect(result.foods.single.suggestMeals, isEmpty);
+      expect(result.foods.single.suggestWithRice, isFalse);
+    });
+
+    test('createFood sends the chosen meals and the rice', () async {
+      final sent = <http.Request>[];
+      final repo = _repo(sent, (_) => _ok({'food': foodJson()}));
+      await repo.createFood(
+        const FoodInput(
+          name: 'Tinolang manok',
+          category: 'filipino',
+          foodType: 'home',
+          servingDesc: '1 bowl (350 g)',
+          proteinG: 26,
+          carbsG: 10,
+          fatG: 12,
+          suggestMeals: ['lunch', 'dinner'],
+          suggestWithRice: true,
+        ),
+      );
+      final body = jsonDecode(sent.single.body) as Map<String, dynamic>;
+      expect(body['suggestMeals'], ['lunch', 'dinner']);
+      expect(body['suggestWithRice'], isTrue);
+    });
+
     const input = FoodInput(
       name: 'Chicken adobo',
       category: 'filipino',
@@ -549,6 +614,8 @@ void main() {
         'fiberG': null,
         'sugarG': 1.5,
         'sodiumMg': null,
+        'suggestMeals': <String>[],
+        'suggestWithRice': false,
       });
       expect(food.id, 12);
     });

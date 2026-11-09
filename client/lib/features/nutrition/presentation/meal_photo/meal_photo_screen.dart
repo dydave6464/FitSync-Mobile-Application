@@ -314,6 +314,7 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
       // The log is all or nothing, but the server may have saved it before
       // the answer was lost: Nutrition reloads its day to show the truth.
       container.invalidate(nutritionDayProvider);
+      container.invalidate(mealSuggestionsProvider);
       if (!mounted) return;
       setState(() => _logging = false);
       // The list stays as it was, so Log can be tried again.
@@ -336,6 +337,7 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
   ) {
     container.invalidate(nutritionDayProvider);
     container.invalidate(recentFoodsProvider);
+    container.invalidate(mealSuggestionsProvider);
     _undoShowing = false;
     if (mounted) navigator.pop(true);
     messenger.hideCurrentSnackBar();
