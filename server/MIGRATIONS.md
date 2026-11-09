@@ -66,7 +66,7 @@ migrations (or an equivalent forward-only mechanism) with a real rollback
 and data-migration story. That transition is an **open item for a later
 sub-project** — it has not been designed yet.
 
-## Exceptions: `007`, `008`, `011`, `012`, `013`, `014`, `017`, `028`, `032`, `033`, `034`, `035`, `036`, `037`, `038`, `042`, `044`, `045`, `046` and `047`
+## Exceptions: `007`, `008`, `011`, `012`, `013`, `014`, `017`, `028`, `032`, `033`, `034`, `035`, `036`, `037`, `038`, `042`, `044`, `045`, `046`, `047` and `048`
 
 `007_auth_identities.sql`, `008_equipment_curation.sql`,
 `011_email_verification.sql`, `012_weight_unit.sql`, `013_plan_days.sql`,
@@ -75,10 +75,10 @@ sub-project** — it has not been designed yet.
 `033_food_fiber.sql`, `034_meal_log_fiber.sql`, `035_food_sugar_sodium.sql`,
 `036_meal_log_sugar_sodium.sql`, `037_injury_risk_drivers.sql` and
 `038_food_types.sql`, `042_account_deletion.sql`,
-`044_user_suspension.sql`, `045_food_hiding.sql`, `046_ad_details.sql` and
-`047_revenue_payments.sql`.
+`044_user_suspension.sql`, `045_food_hiding.sql`, `046_ad_details.sql`,
+`047_revenue_payments.sql` and `048_meal_suggestions.sql`.
 
-All twenty files break the rule above on purpose. Nineteen of them do so for
+All twenty-one files break the rule above on purpose. Twenty of them do so for
 the same reason: each needs to change tables that migrations `001`–`006`
 already defined and that may already be applied on someone's database.
 The runner has no checksum
@@ -90,7 +90,7 @@ the failure mode the pre-release policy above depends on nobody hitting. A
 new, forward-only file sidesteps that. `047` is the odd one: it creates a new
 table, then copies rows already in `pro_payments` into it (see its entry
 below). The tradeoff is the one below: unlike
-a `CREATE TABLE IF NOT EXISTS`-only file, six of the twenty are not safe to
+a `CREATE TABLE IF NOT EXISTS`-only file, seven of the twenty-one are not safe to
 replay after a partial failure. `014`, `028`, `032`, `033`, `034`, `035`,
 `036`, `037`, `038`, `042`, `044`, `045`, `046` and `047` are the exceptions to the exception, and they
 replay cleanly for different reasons: `014` and `028` restate a column
@@ -102,7 +102,7 @@ two: it restates the `purpose` column like `014`, then ends on one atomic
 `ADD COLUMN` like `032`; `044` and `045` are each one atomic `ADD COLUMN` like
 `033`, and `046` one atomic `ALTER`, for the same reason (see their entries
 below); `047` is a `CREATE TABLE IF NOT EXISTS` followed by an `INSERT
-IGNORE` keyed on the primary key. Which of the twenty you
+IGNORE` keyed on the primary key. Which of the twenty-one you
 are holding is the thing to know before retrying one.
 
 **`007_auth_identities.sql`** — alongside its
@@ -162,8 +162,8 @@ followed by ONE `ALTER TABLE meal_logs` (adds `serving_desc`, widens
 single atomic statement, so a failure anywhere replays cleanly: before it,
 nothing non-idempotent has run; inside it, nothing was applied.
 
-**Consequence: six of the twenty are not replay-safe.** Unlike every other
-migration file, if 007, 008, 011, 012, 013 or 017 fails partway through,
+**Consequence: seven of the twenty-one are not replay-safe.** Unlike every other
+migration file, if 007, 008, 011, 012, 013, 017 or 048 fails partway through,
 `IF NOT EXISTS` does not protect the `ALTER TABLE` (or, for 008, the
 trailing `CREATE INDEX`) statements — a second run will hit
 `ER_DUP_FIELDNAME` (or, for 008's index, the equivalent "duplicate key name"
@@ -270,6 +270,21 @@ cleanly: the table's primary key is the payment's own `payment_id`, so
 `INSERT IGNORE` skips every copy a failed or repeated run already made, and
 `IF NOT EXISTS` skips the table. The `SET` only makes `DATE(paid_at)` the
 Manila day whatever zone the runner's connection has; it is safe to repeat.
+
+**`048_meal_suggestions.sql`** — one `ALTER TABLE foods` that adds
+`suggest_meals` (a `SET` of the four meals, `''` = never suggested) and
+`suggest_with_rice`, and drops `is_suggested` (004's flag, which nothing ever
+read); then four `UPDATE`s that mark the starting list of 35 local Filipino
+dishes on FitSync's own foods by exact name (View Local Filipino Meal
+Suggestions, spec 2026-11-09). The `UPDATE`s are a seed of sorts, which the
+rule forbids: they are here because a database that already has its foods
+would otherwise get the columns with nothing suggested, and `seed-foods.js`
+writes suggestions on insert only (after that they are the admin's). The
+`UPDATE`s set the same values every time and are safe to repeat; the `ALTER`
+is not. A run where the `ALTER` applied and an `UPDATE` failed hits
+`ER_DUP_FIELDNAME` on re-run: check `DESCRIBE foods;` for `suggest_meals`, run
+the file's four `UPDATE`s by hand, then record it with
+`INSERT INTO schema_migrations (version) VALUES ('048_meal_suggestions.sql');`.
 
 **If 007, 008, 011, 012, 013 or 017 fails partway through**, recovery is
 manual:
