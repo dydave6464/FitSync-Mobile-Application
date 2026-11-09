@@ -7,6 +7,8 @@ import '../../../../core/manila_day.dart';
 import '../../../../core/theme.dart';
 import '../../../../core/units.dart';
 import '../../../../core/widgets/fs_kit.dart';
+import '../../../nutrition/presentation/providers.dart'
+    show mealSuggestionsProvider, nutritionDayProvider;
 import '../../domain/body_weight.dart';
 import '../providers.dart'
     show
@@ -127,6 +129,10 @@ class _WeighInsSheetState extends ConsumerState<_WeighInsSheet> {
     // Through the container, which outlives a sheet closed mid-delete.
     container.invalidate(bodyWeightProvider);
     container.invalidate(profileProvider);
+    // And today's target, worked out from that weight, with the meal
+    // suggestions fitted to it.
+    container.invalidate(nutritionDayProvider);
+    container.invalidate(mealSuggestionsProvider);
     // Closed first, so the snackbar is not drawn under the sheet, where it
     // would be neither seen nor read out. Only while the sheet is still the
     // top route: once it is closing or gone, a pop would take the page

@@ -2,10 +2,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/units.dart';
+import 'package:fitsync/features/nutrition/presentation/providers.dart';
 import 'package:fitsync/features/profile/data/profile_repository.dart';
 import 'package:fitsync/features/profile/domain/body_weight.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
+
+import 'nutrition_controller_test.dart' show FakeNutritionRepository;
 
 /// A profile with both figures the body-weight card is drawn from, so a test
 /// can change one and leave the other alone.
@@ -52,6 +55,9 @@ class _FakeRepo implements ProfileRepository {
     );
     return current;
   }
+
+  @override
+  Future<Profile> setGoals(List<String> goals, String mainGoal) async => current;
 
   @override
   Future<BodyWeightSeries> bodyWeight(String period) async {
@@ -164,5 +170,69 @@ void main() {
     // round trip bought for no change at all.
     expect(container.read(weightUnitProvider), WeightUnit.lb);
     expect(repo.fetches, ['month']);
+  });
+
+  group("today's target and the meal suggestions", () {
+    /// The profile, plus the Nutrition tab's day and lunch suggestions
+    /// already on screen (listened, for the reason [_open] gives).
+    Future<(ProviderContainer, FakeNutritionRepository)> openNutrition() async {
+      final nutrition = FakeNutritionRepository();
+      final container = ProviderContainer(
+        overrides: [
+          profileRepositoryProvider.overrideWithValue(_FakeRepo()),
+          nutritionRepositoryProvider.overrideWithValue(nutrition),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.listen(nutritionDayProvider, (_, _) {});
+      container.listen(mealSuggestionsProvider('lunch'), (_, _) {});
+      await container.read(nutritionDayProvider.future);
+      await container.read(mealSuggestionsProvider('lunch').future);
+      await container.read(profileProvider.future);
+      return (container, nutrition);
+    }
+
+    Future<(int, int)> fetchesAfter(ProviderContainer container, FakeNutritionRepository nutrition) async {
+      await container.read(nutritionDayProvider.future);
+      await container.read(mealSuggestionsProvider('lunch').future);
+      return (nutrition.calls.where((c) => c.startsWith('get ')).length, nutrition.suggestionCalls.length);
+    }
+
+    // The server works the target out from these (nutrition-target.js), so
+    // a change to any of them leaves the ring and "Fits the ~... left" wrong.
+    for (final field in <String, Object>{
+      'weightKg': 84.0,
+      'heightCm': 170.0,
+      'dateOfBirth': '1999-05-01',
+      'sex': 'female',
+      'activityLevel': 'active',
+    }.entries) {
+      test('a new ${field.key} refetches both', () async {
+        final (container, nutrition) = await openNutrition();
+        expect(await fetchesAfter(container, nutrition), (1, 1));
+
+        await container.read(profileProvider.notifier).patch({field.key: field.value});
+
+        expect(await fetchesAfter(container, nutrition), (2, 2));
+      });
+    }
+
+    test('a new main goal refetches both', () async {
+      final (container, nutrition) = await openNutrition();
+      await container.read(profileProvider.notifier).setGoals(['lose_weight'], 'lose_weight');
+      expect(await fetchesAfter(container, nutrition), (2, 2));
+    });
+
+    for (final field in <String, Object>{
+      'notificationsEnabled': false,
+      'goalWeightKg': 80.0,
+      'weightUnit': 'lb',
+    }.entries) {
+      test('${field.key} refetches neither', () async {
+        final (container, nutrition) = await openNutrition();
+        await container.read(profileProvider.notifier).patch({field.key: field.value});
+        expect(await fetchesAfter(container, nutrition), (1, 1));
+      });
+    }
   });
 }
