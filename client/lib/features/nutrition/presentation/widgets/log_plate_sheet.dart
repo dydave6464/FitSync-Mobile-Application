@@ -10,20 +10,34 @@ import '../../domain/nutrition.dart';
 import '../providers.dart';
 
 /// Opens "Log to Lunch" for [plate] on [date] (the suggestions' own day, the
-/// server's today). Returns the entries logged -- the dish, then its rice --
-/// or null when the sheet was closed without logging.
-Future<List<FoodEntry>?> showLogPlateSheet(
+/// server's today). The sheet tells the caller how the save ended rather
+/// than the route's pop value, because a drag can close the sheet while it
+/// saves and the save still finishes: [onLogged] gets the entries logged --
+/// the dish, then its rice -- and [onFailedAfterClose] a message for a
+/// failure the closed sheet can no longer show. Closed without logging,
+/// neither is called.
+Future<void> showLogPlateSheet(
   BuildContext context, {
   required MealSuggestion plate,
   required String meal,
   required String date,
-}) => showModalBottomSheet<List<FoodEntry>>(
+  required ValueChanged<List<FoodEntry>> onLogged,
+  required ValueChanged<String> onFailedAfterClose,
+}) => showModalBottomSheet<void>(
   context: context,
   // FsSheetHeader draws the handle.
   showDragHandle: false,
   isScrollControlled: true,
   useSafeArea: true,
-  builder: (_) => FsSheetHeightCap(child: LogPlateSheet(plate: plate, meal: meal, date: date)),
+  builder: (_) => FsSheetHeightCap(
+    child: LogPlateSheet(
+      plate: plate,
+      meal: meal,
+      date: date,
+      onLogged: onLogged,
+      onFailedAfterClose: onFailedAfterClose,
+    ),
+  ),
 );
 
 /// 26.0 -> "26", 6.3 -> "6.3".
@@ -35,11 +49,25 @@ String _g(double v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStrin
 /// ones, so an item that did save the first time comes back rather than
 /// being saved twice.
 class LogPlateSheet extends ConsumerStatefulWidget {
-  const LogPlateSheet({super.key, required this.plate, required this.meal, required this.date});
+  const LogPlateSheet({
+    super.key,
+    required this.plate,
+    required this.meal,
+    required this.date,
+    required this.onLogged,
+    required this.onFailedAfterClose,
+  });
 
   final MealSuggestion plate;
   final String meal;
   final String date;
+
+  /// Both entries saved, whether or not the sheet is still open.
+  final ValueChanged<List<FoodEntry>> onLogged;
+
+  /// The save failed after the sheet was dragged away, so it cannot show
+  /// the message itself.
+  final ValueChanged<String> onFailedAfterClose;
 
   @override
   ConsumerState<LogPlateSheet> createState() => _LogPlateSheetState();
@@ -56,6 +84,9 @@ class _LogPlateSheetState extends ConsumerState<LogPlateSheet> {
       _failure = null;
     });
     final controller = ref.read(nutritionDayProvider.notifier);
+    // Kept before the first await: the sheet may be gone when it ends.
+    final onLogged = widget.onLogged;
+    final onFailedAfterClose = widget.onFailedAfterClose;
     final logged = <FoodEntry>[];
     try {
       for (final (i, item) in widget.plate.items.indexed) {
@@ -68,15 +99,19 @@ class _LogPlateSheetState extends ConsumerState<LogPlateSheet> {
         ));
       }
     } catch (error) {
-      if (!mounted) return;
+      final message = "Couldn't log the plate. ${userMessage(error)}";
+      if (!mounted) {
+        onFailedAfterClose(message);
+        return;
+      }
       setState(() {
         _busy = false;
-        _failure = "Couldn't log the plate. ${userMessage(error)}";
+        _failure = message;
       });
       return;
     }
-    if (!mounted) return;
-    Navigator.of(context).pop(logged);
+    onLogged(logged);
+    if (mounted) Navigator.of(context).pop();
   }
 
   @override
@@ -84,7 +119,9 @@ class _LogPlateSheetState extends ConsumerState<LogPlateSheet> {
     final t = context.fs;
     final plate = widget.plate;
     return PopScope(
-      // Not while saving: the Undo comes once both entries are saved.
+      // While saving, the ×, the barrier and Back do nothing. A drag still
+      // closes the sheet (it pops the route directly, past PopScope); the
+      // save carries on and its outcome still reaches the caller.
       canPop: !_busy,
       child: SafeArea(
         child: SingleChildScrollView(

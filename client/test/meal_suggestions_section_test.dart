@@ -52,6 +52,29 @@ class _RiceFailsOnce extends FakeNutritionRepository {
   }
 }
 
+/// Holds each log until [logHold] completes, so a test can act while the
+/// sheet saves. With [refuseRice], the rice is then refused.
+class _HeldLog extends FakeNutritionRepository {
+  Completer<void>? logHold;
+  bool refuseRice = false;
+
+  @override
+  Future<FoodEntry> logEntry({
+    required String date,
+    required String mealType,
+    required double servings,
+    required Food food,
+    String? clientId,
+  }) async {
+    if (logHold != null) await logHold!.future;
+    if (refuseRice && food.name == 'White rice') {
+      calls.add('log $date $mealType ${food.name} x$servings');
+      throw const ApiException('NETWORK_ERROR', 'offline');
+    }
+    return super.logEntry(date: date, mealType: mealType, servings: servings, food: food, clientId: clientId);
+  }
+}
+
 Map<String, dynamic> _food(int id, String name, String serving, int kcal, num proteinG, num carbsG, num fatG) => {
   'foodId': id, 'name': name, 'servingDesc': serving, 'kcal': kcal, 'proteinG': proteinG, 'carbsG': carbsG, 'fatG': fatG,
 };
@@ -364,6 +387,52 @@ void main() {
     // The dish saved the first time came back rather than being saved again.
     expect(repo.dayOf(_today).entries.where((e) => e.name == 'Tinolang manok'), hasLength(1));
     expect(repo.dayOf(_today).entries.where((e) => e.name == 'White rice'), hasLength(1));
+  });
+
+  testWidgets('dragged away mid-save, the plate still says Logged with Undo', (tester) async {
+    final repo = _HeldLog();
+    await _pump(tester, repo: repo, lunch: _fits);
+    await tester.tap(find.byKey(const Key('suggest.row.0')));
+    await tester.pumpAndSettle();
+    repo.logHold = Completer<void>();
+    await tester.tap(find.byKey(const Key('logPlate.log')));
+    // Not pumpAndSettle: the button's spinner keeps animating.
+    await tester.pump();
+    await tester.drag(find.byKey(const Key('sheet.handle')), const Offset(0, 600));
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byType(LogPlateSheet), findsNothing);
+
+    repo.logHold!.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('Logged to lunch'), findsOneWidget);
+    expect(find.text('Undo'), findsOneWidget);
+    expect(
+      repo.calls,
+      containsAllInOrder(['log $_today lunch Tinolang manok x1.0', 'log $_today lunch White rice x1.0']),
+    );
+  });
+
+  testWidgets('dragged away mid-save, a refused rice still says so', (tester) async {
+    final repo = _HeldLog();
+    await _pump(tester, repo: repo, lunch: _fits);
+    await tester.tap(find.byKey(const Key('suggest.row.0')));
+    await tester.pumpAndSettle();
+    repo
+      ..logHold = Completer<void>()
+      ..refuseRice = true;
+    await tester.tap(find.byKey(const Key('logPlate.log')));
+    await tester.pump();
+    await tester.drag(find.byKey(const Key('sheet.handle')), const Offset(0, 600));
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byType(LogPlateSheet), findsNothing);
+
+    repo.logHold!.complete();
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: find.byType(SnackBar), matching: find.textContaining("Couldn't log the plate.")),
+      findsOneWidget,
+    );
+    expect(find.text('Logged to lunch'), findsNothing);
   });
 
   testWidgets('the rows cross-fade over 200 ms', (tester) async {
