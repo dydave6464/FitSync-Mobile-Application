@@ -39,13 +39,14 @@ List<SharePreviewTile> _tiles({
   TrainingSummary? summary = _summary,
   TrainingAnalytics? analytics,
   BodyWeightSeries? bodyWeight,
+  bool weightLoading = false,
   bool includeVolume = true,
   bool includeBodyWeight = true,
 }) => sharePreviewTiles(
   period: 'month',
   summary: summary,
   analytics: analytics ?? _analytics(),
-  bodyWeight: bodyWeight ?? _weight(),
+  bodyWeight: weightLoading ? null : bodyWeight ?? _weight(),
   includeVolume: includeVolume,
   includeBodyWeight: includeBodyWeight,
 );
@@ -93,6 +94,23 @@ void main() {
     test('still loading reads as a dash', () {
       final tiles = _tiles(summary: null);
       expect(tiles.take(3).map((t) => t.value), ['–', '–', '–']);
+    });
+
+    test('volume rounds to whole kilograms first, as the page does', () {
+      TrainingSummary volume(double kg) =>
+          TrainingSummary(sessionCount: 1, setCount: 1, totalVolumeKg: kg);
+      expect(_tiles(summary: volume(31249.5))[0].value, '31.3k kg');
+      expect(_tiles(summary: volume(999.6))[0].value, '1k kg');
+      expect(_tiles(summary: volume(1049.6))[0].value, '1.1k kg');
+    });
+
+    test('body weight still loading, or failed, reads as a dash', () {
+      final tiles = _tiles(weightLoading: true);
+      expect(tiles.length, 4);
+      expect(tiles[3].label, 'Body weight');
+      expect(tiles[3].value, '–');
+      expect(tiles[3].note, isNull);
+      expect(_tiles(weightLoading: true, includeBodyWeight: false).length, 3);
     });
 
     test('no target, no "of N planned"', () {

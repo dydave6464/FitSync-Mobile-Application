@@ -53,7 +53,8 @@ List<SharePreviewTile> sharePreviewTiles({
     SharePreviewTile(
       value: summary == null
           ? dash
-          : '${formatWeightCompact(summary.totalVolumeKg, WeightUnit.kg)} kg',
+          // Whole kilograms first, as the page's compactKg rounds them.
+          : '${formatWeightCompact(summary.totalVolumeKg.roundToDouble(), WeightUnit.kg)} kg',
       label: 'Volume',
       note: pct == null
           ? null
@@ -70,6 +71,12 @@ List<SharePreviewTile> sharePreviewTiles({
     ),
   ];
 
+  if (includeBodyWeight && bodyWeight == null) {
+    // Still loading or failed: the page may open with this tile, so hold
+    // its place with a dash rather than dropping it.
+    tiles.add(const SharePreviewTile(value: dash, label: 'Body weight'));
+    return tiles;
+  }
   final change = includeBodyWeight ? _weightChange(bodyWeight) : null;
   if (change != null) {
     tiles.add(
