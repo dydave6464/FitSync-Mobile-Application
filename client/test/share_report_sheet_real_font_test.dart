@@ -118,9 +118,7 @@ void main() {
 
     final heading = 'Year · ${shareWindowLabel('year', volumeToday())}'
         .toUpperCase();
-    final paragraph = tester.renderObject<RenderParagraph>(
-      find.text(heading),
-    );
+    final paragraph = tester.renderObject<RenderParagraph>(find.text(heading));
     expect(paragraph.didExceedMaxLines, isFalse, reason: heading);
     expect(tester.takeException(), isNull);
   });
