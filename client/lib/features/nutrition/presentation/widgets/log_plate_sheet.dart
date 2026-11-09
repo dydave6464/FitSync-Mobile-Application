@@ -87,6 +87,10 @@ class _LogPlateSheetState extends ConsumerState<LogPlateSheet> {
     // Kept before the first await: the sheet may be gone when it ends.
     final onLogged = widget.onLogged;
     final onFailedAfterClose = widget.onFailedAfterClose;
+    // Whether the sheet is still open is its route's to say, not `mounted`:
+    // after a drag the sheet stays mounted for its exit animation while its
+    // route is already popping.
+    final route = ModalRoute.of(context);
     final logged = <FoodEntry>[];
     try {
       for (final (i, item) in widget.plate.items.indexed) {
@@ -100,7 +104,7 @@ class _LogPlateSheetState extends ConsumerState<LogPlateSheet> {
       }
     } catch (error) {
       final message = "Couldn't log the plate. ${userMessage(error)}";
-      if (!mounted) {
+      if (!(route?.isActive ?? false)) {
         onFailedAfterClose(message);
         return;
       }
@@ -111,7 +115,10 @@ class _LogPlateSheetState extends ConsumerState<LogPlateSheet> {
       return;
     }
     onLogged(logged);
-    if (mounted) Navigator.of(context).pop();
+    // Only the sheet's own route, while it is still on top: a pop once it
+    // is closing would take the screen under it. (A current route's sheet
+    // is always mounted; the check is for the analyzer.)
+    if (mounted && (route?.isCurrent ?? false)) Navigator.of(context).pop();
   }
 
   @override
@@ -121,7 +128,8 @@ class _LogPlateSheetState extends ConsumerState<LogPlateSheet> {
     return PopScope(
       // While saving, the ×, the barrier and Back do nothing. A drag still
       // closes the sheet (it pops the route directly, past PopScope); the
-      // save carries on and its outcome still reaches the caller.
+      // save carries on and its outcome still reaches the caller, and _log
+      // asks the route, not `mounted`, whether the sheet is still open.
       canPop: !_busy,
       child: SafeArea(
         child: SingleChildScrollView(

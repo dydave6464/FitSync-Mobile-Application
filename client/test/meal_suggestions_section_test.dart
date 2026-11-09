@@ -148,6 +148,15 @@ Future<FakeNutritionRepository> _pump(
   return r;
 }
 
+/// Drags the sheet a little past half its height and lets go: it closes,
+/// its route popping at once, but stays on screen for the rest of its exit.
+Future<void> _dragHalfAway(WidgetTester tester) async {
+  final height = tester.getSize(find.byType(LogPlateSheet)).height;
+  await tester.drag(find.byKey(const Key('sheet.handle')), Offset(0, height * 0.55));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 20));
+}
+
 Finder _inSheet(String text) => find.descendant(of: find.byType(LogPlateSheet), matching: find.text(text));
 
 void main() {
@@ -452,6 +461,51 @@ void main() {
 
     repo.logHold!.complete();
     await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: find.byType(SnackBar), matching: find.textContaining("Couldn't log the plate.")),
+      findsOneWidget,
+    );
+    expect(find.text('Logged to lunch'), findsNothing);
+  });
+
+  // The sheet stays mounted for its exit animation after a drag, while its
+  // route is already popping: a save landing then must not pop the screen
+  // under it.
+  testWidgets('a save landing while the dragged sheet slides away keeps the Nutrition screen', (tester) async {
+    final repo = _HeldLog();
+    await _pump(tester, repo: repo, lunch: _fits);
+    await tester.tap(find.byKey(const Key('suggest.row.0')));
+    await tester.pumpAndSettle();
+    repo.logHold = Completer<void>();
+    await tester.tap(find.byKey(const Key('logPlate.log')));
+    await tester.pump();
+    await _dragHalfAway(tester);
+    expect(find.byType(LogPlateSheet), findsOneWidget, reason: 'still sliding away');
+
+    repo.logHold!.complete();
+    await tester.pumpAndSettle();
+    expect(find.byType(NutritionScreen), findsOneWidget);
+    expect(find.byType(LogPlateSheet), findsNothing);
+    expect(find.text('Logged to lunch'), findsOneWidget);
+    expect(find.text('Undo'), findsOneWidget);
+  });
+
+  testWidgets('a refused rice landing while the dragged sheet slides away still says so', (tester) async {
+    final repo = _HeldLog();
+    await _pump(tester, repo: repo, lunch: _fits);
+    await tester.tap(find.byKey(const Key('suggest.row.0')));
+    await tester.pumpAndSettle();
+    repo
+      ..logHold = Completer<void>()
+      ..refuseRice = true;
+    await tester.tap(find.byKey(const Key('logPlate.log')));
+    await tester.pump();
+    await _dragHalfAway(tester);
+    expect(find.byType(LogPlateSheet), findsOneWidget, reason: 'still sliding away');
+
+    repo.logHold!.complete();
+    await tester.pumpAndSettle();
+    expect(find.byType(NutritionScreen), findsOneWidget);
     expect(
       find.descendant(of: find.byType(SnackBar), matching: find.textContaining("Couldn't log the plate.")),
       findsOneWidget,
