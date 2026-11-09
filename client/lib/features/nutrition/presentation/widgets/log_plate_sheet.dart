@@ -40,7 +40,7 @@ Future<void> showLogPlateSheet(
   ),
 );
 
-/// 26.0 -> "26", 6.3 -> "6.3".
+/// 26.0 -> "26", 6.3 -> "6.3": an item's own figures, as Log food shows them.
 String _g(double v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
 
 /// One line per item with its kcal, protein, carbs and fat, the plate's
@@ -143,18 +143,16 @@ class _LogPlateSheetState extends ConsumerState<LogPlateSheet> {
                   name: item.name,
                   serving: item.servingDesc ?? '1 serving',
                   kcal: item.kcal,
-                  proteinG: item.proteinG,
-                  carbsG: item.carbsG,
-                  fatG: item.fatG,
+                  macros: 'Protein ${_g(item.proteinG)} g · Carbs ${_g(item.carbsG)} g · Fat ${_g(item.fatG)} g',
                 ),
               Divider(height: 1, thickness: 1, color: t.line),
               _ItemLine(
                 key: const Key('logPlate.total'),
                 name: 'Plate total',
                 kcal: plate.total.kcal,
-                proteinG: plate.total.proteinG,
-                carbsG: plate.total.carbsG,
-                fatG: plate.total.fatG,
+                // Whole grams, so the protein is the row's own figure.
+                macros: 'Protein ${plateProteinG(plate)} g · Carbs ${plate.total.carbsG.round()} g · '
+                    'Fat ${plate.total.fatG.round()} g',
                 strong: true,
               ),
               if (_failure != null) ...[
@@ -184,18 +182,16 @@ class _ItemLine extends StatelessWidget {
     required this.name,
     this.serving,
     required this.kcal,
-    required this.proteinG,
-    required this.carbsG,
-    required this.fatG,
+    required this.macros,
     this.strong = false,
   });
 
   final String name;
   final String? serving;
   final int kcal;
-  final double proteinG;
-  final double carbsG;
-  final double fatG;
+
+  /// "Protein 26 g · Carbs 8 g · Fat 14 g".
+  final String macros;
   final bool strong;
 
   @override
@@ -218,7 +214,7 @@ class _ItemLine extends StatelessWidget {
               ],
             ),
             if (serving != null) Text(serving!, style: detail),
-            Text('Protein ${_g(proteinG)} g · Carbs ${_g(carbsG)} g · Fat ${_g(fatG)} g', style: detail),
+            Text(macros, style: detail),
           ],
         ),
       ),

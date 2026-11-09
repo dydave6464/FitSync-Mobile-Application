@@ -338,6 +338,29 @@ void main() {
     }
   });
 
+  testWidgets('one protein figure for one plate: the total is in whole grams, as the row is', (tester) async {
+    final adobo = _plate(_food(14, 'Adobong manok', '1 serving (150 g)', 260, 26.3, 8, 14));
+    await _pump(tester, lunch: _answer('fits', [adobo], share: {'kcal': 650, 'proteinG': 40}));
+    expect(find.text('1 serving + 1 cup · 466 kcal · 29 g protein'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('suggest.row.0')));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('logPlate.total')),
+        matching: find.text('Protein 29 g · Carbs 53 g · Fat 14 g'),
+      ),
+      findsOneWidget,
+    );
+    // The dish's own line keeps its decimal, as Log food does.
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('logPlate.item.14')),
+        matching: find.text('Protein 26.3 g · Carbs 8 g · Fat 14 g'),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('Log plate logs the dish and its rice, each with its own key, then offers Undo', (tester) async {
     final repo = await _pump(tester, lunch: _fits);
     final asked = repo.suggestionCalls.length;
