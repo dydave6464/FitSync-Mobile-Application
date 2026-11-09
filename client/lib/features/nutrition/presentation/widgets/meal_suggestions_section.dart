@@ -37,20 +37,27 @@ class MealSuggestionsSection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = context.fs;
     final async = ref.watch(mealSuggestionsProvider(meal));
-    final data = async.value;
+    // Riverpod keeps the last value through a reload and through a failure,
+    // so the value alone does not say what to show. Once an error is
+    // attached the old rows are not trusted: they may hold the plate just
+    // logged, and a tap would log it again. A reload without an error (the
+    // refetch after a log, an edit or a removal) keeps the rows: no flicker.
+    final failed = async.hasError && !async.isLoading;
+    final data = async.hasError ? null : async.value;
     // An empty list hides the whole section, heading included.
     if (data != null && data.suggestions.isEmpty) return const SizedBox.shrink();
 
     final Widget body;
-    if (data != null) {
+    if (failed) {
+      body = _ErrorLine(key: const ValueKey('error'), onRetry: () => ref.invalidate(mealSuggestionsProvider(meal)));
+    } else if (data != null) {
       body = _Plates(
         key: ValueKey(_signature(data)),
         data: data,
         onOpen: enabled ? (plate) => _open(context, ref, data, plate) : null,
       );
-    } else if (async.hasError) {
-      body = _ErrorLine(key: const ValueKey('error'), onRetry: () => ref.invalidate(mealSuggestionsProvider(meal)));
     } else {
+      // The first load, Retry, or the automatic retries after a failure.
       body = const _Placeholders(key: ValueKey('loading'));
     }
 
@@ -97,24 +104,32 @@ class MealSuggestionsSection extends ConsumerWidget {
   }
 
   /// Opens "Log to Lunch" for [plate]; once both entries are saved, says so
-  /// with an Undo that takes them off again.
+  /// with an Undo that takes them off again -- even when the sheet was
+  /// dragged away while saving, as is a failure it can no longer show.
   Future<void> _open(BuildContext context, WidgetRef ref, MealSuggestions data, MealSuggestion plate) async {
     final messenger = ScaffoldMessenger.of(context);
     // Read before the await, while the context is certainly here.
     final screenReader = MediaQuery.accessibleNavigationOf(context);
     final controller = ref.read(nutritionDayProvider.notifier);
-    final logged = await showLogPlateSheet(context, plate: plate, meal: data.meal, date: data.date);
-    if (logged == null) return;
-    // Replacing, not queueing behind, whatever message is up.
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(SnackBar(
-      duration: const Duration(seconds: 4),
-      // An action keeps a SnackBar up by default; only a screen reader, which
-      // takes longer than four seconds to reach Undo, keeps it here.
-      persist: screenReader,
-      content: Text('Logged to ${data.meal}'),
-      action: SnackBarAction(label: 'Undo', onPressed: () => _undo(messenger, controller, logged)),
-    ));
+    await showLogPlateSheet(
+      context,
+      plate: plate,
+      meal: data.meal,
+      date: data.date,
+      onLogged: (logged) {
+        // Replacing, not queueing behind, whatever message is up.
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(SnackBar(
+          duration: const Duration(seconds: 4),
+          // An action keeps a SnackBar up by default; only a screen reader,
+          // which takes longer than four seconds to reach Undo, keeps it here.
+          persist: screenReader,
+          content: Text('Logged to ${data.meal}'),
+          action: SnackBarAction(label: 'Undo', onPressed: () => _undo(messenger, controller, logged)),
+        ));
+      },
+      onFailedAfterClose: (message) => showErrorSnackBar(messenger, message),
+    );
   }
 
   /// Undo deletes both entries, as the meal list's ✕ would.

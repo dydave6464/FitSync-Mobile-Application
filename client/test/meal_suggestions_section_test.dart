@@ -52,6 +52,29 @@ class _RiceFailsOnce extends FakeNutritionRepository {
   }
 }
 
+/// Holds each log until [logHold] completes, so a test can act while the
+/// sheet saves. With [refuseRice], the rice is then refused.
+class _HeldLog extends FakeNutritionRepository {
+  Completer<void>? logHold;
+  bool refuseRice = false;
+
+  @override
+  Future<FoodEntry> logEntry({
+    required String date,
+    required String mealType,
+    required double servings,
+    required Food food,
+    String? clientId,
+  }) async {
+    if (logHold != null) await logHold!.future;
+    if (refuseRice && food.name == 'White rice') {
+      calls.add('log $date $mealType ${food.name} x$servings');
+      throw const ApiException('NETWORK_ERROR', 'offline');
+    }
+    return super.logEntry(date: date, mealType: mealType, servings: servings, food: food, clientId: clientId);
+  }
+}
+
 Map<String, dynamic> _food(int id, String name, String serving, int kcal, num proteinG, num carbsG, num fatG) => {
   'foodId': id, 'name': name, 'servingDesc': serving, 'kcal': kcal, 'proteinG': proteinG, 'carbsG': carbsG, 'fatG': fatG,
 };
@@ -228,6 +251,53 @@ void main() {
     expect(find.text('Tinolang manok + 1 cup rice'), findsOneWidget);
   });
 
+  testWidgets('Retry shows the placeholders while it asks again', (tester) async {
+    final repo = FakeNutritionRepository()..failSuggestions = true;
+    await _pump(tester, repo: repo, lunch: _fits);
+    expect(find.text("Couldn't load suggestions."), findsOneWidget);
+    repo
+      ..failSuggestions = false
+      ..suggestionsHold = Completer<void>();
+    await tester.tap(find.byKey(const Key('suggest.retry')));
+    // One frame for the rebuild, then past the 200 ms cross-fade.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(find.byKey(const Key('suggest.placeholder.0')), findsOneWidget);
+    expect(find.text("Couldn't load suggestions."), findsNothing);
+    repo.suggestionsHold!.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('Tinolang manok + 1 cup rice'), findsOneWidget);
+  });
+
+  testWidgets('a failed refetch after Log plate shows the error line, not the old rows', (tester) async {
+    final repo = await _pump(tester, lunch: _fits);
+    await tester.tap(find.byKey(const Key('suggest.row.0')));
+    await tester.pumpAndSettle();
+    // UNKNOWN_ERROR: never retried, so the refetch fails at once.
+    repo.failSuggestions = true;
+    await tester.tap(find.byKey(const Key('logPlate.log')));
+    await tester.pumpAndSettle();
+    expect(find.text("Couldn't load suggestions."), findsOneWidget);
+    expect(find.text('Tinolang manok + 1 cup rice'), findsNothing);
+    expect(find.text('Logged to lunch'), findsOneWidget);
+
+    // Retry from there shows the placeholders, not the old rows, until the
+    // new answer comes.
+    repo
+      ..failSuggestions = false
+      ..suggestionsHold = Completer<void>();
+    await tester.tap(find.byKey(const Key('suggest.retry')));
+    // One frame for the rebuild, then past the 200 ms cross-fade.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(find.byKey(const Key('suggest.placeholder.0')), findsOneWidget);
+    expect(find.text('Tinolang manok + 1 cup rice'), findsNothing);
+    repo.suggestionsHold!.complete();
+    await tester.pumpAndSettle();
+    expect(find.text("Couldn't load suggestions."), findsNothing);
+    expect(find.byKey(const Key('suggest.row.0')), findsOneWidget);
+  });
+
   testWidgets('each row is one button saying the plate, with a Log hint', (tester) async {
     final semantics = tester.ensureSemantics();
     await _pump(tester, lunch: _fits);
@@ -317,6 +387,52 @@ void main() {
     // The dish saved the first time came back rather than being saved again.
     expect(repo.dayOf(_today).entries.where((e) => e.name == 'Tinolang manok'), hasLength(1));
     expect(repo.dayOf(_today).entries.where((e) => e.name == 'White rice'), hasLength(1));
+  });
+
+  testWidgets('dragged away mid-save, the plate still says Logged with Undo', (tester) async {
+    final repo = _HeldLog();
+    await _pump(tester, repo: repo, lunch: _fits);
+    await tester.tap(find.byKey(const Key('suggest.row.0')));
+    await tester.pumpAndSettle();
+    repo.logHold = Completer<void>();
+    await tester.tap(find.byKey(const Key('logPlate.log')));
+    // Not pumpAndSettle: the button's spinner keeps animating.
+    await tester.pump();
+    await tester.drag(find.byKey(const Key('sheet.handle')), const Offset(0, 600));
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byType(LogPlateSheet), findsNothing);
+
+    repo.logHold!.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('Logged to lunch'), findsOneWidget);
+    expect(find.text('Undo'), findsOneWidget);
+    expect(
+      repo.calls,
+      containsAllInOrder(['log $_today lunch Tinolang manok x1.0', 'log $_today lunch White rice x1.0']),
+    );
+  });
+
+  testWidgets('dragged away mid-save, a refused rice still says so', (tester) async {
+    final repo = _HeldLog();
+    await _pump(tester, repo: repo, lunch: _fits);
+    await tester.tap(find.byKey(const Key('suggest.row.0')));
+    await tester.pumpAndSettle();
+    repo
+      ..logHold = Completer<void>()
+      ..refuseRice = true;
+    await tester.tap(find.byKey(const Key('logPlate.log')));
+    await tester.pump();
+    await tester.drag(find.byKey(const Key('sheet.handle')), const Offset(0, 600));
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byType(LogPlateSheet), findsNothing);
+
+    repo.logHold!.complete();
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: find.byType(SnackBar), matching: find.textContaining("Couldn't log the plate.")),
+      findsOneWidget,
+    );
+    expect(find.text('Logged to lunch'), findsNothing);
   });
 
   testWidgets('the rows cross-fade over 200 ms', (tester) async {
