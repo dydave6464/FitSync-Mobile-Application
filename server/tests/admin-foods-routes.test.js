@@ -8,10 +8,11 @@ const { buildTestApp } = require('./helpers/test-app');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { createTestAdmin, TEST_JWT } = require('./helpers/admin');
 const { signToken } = require('../src/lib/tokens');
+const { seedFoods } = require('../src/db/seed-foods');
 
 const FOOD_KEYS = [
   'carbsG', 'category', 'fatG', 'fiberG', 'foodType', 'hidden', 'id', 'kcal', 'name', 'proteinG', 'servingDesc',
-  'sodiumMg', 'sugarG',
+  'sodiumMg', 'sugarG', 'suggestMeals', 'suggestWithRice',
 ];
 
 test('admin foods endpoints', async (t) => {
@@ -69,19 +70,20 @@ test('admin foods endpoints', async (t) => {
   await t.test("show=shown lists FitSync's own shown foods in the food list's order", async () => {
     const data = await list('?show=shown');
     assert.deepEqual(data.foods.map((f) => f.id), [adobo, sinigang, bibingka, turon]);
-    assert.deepEqual(data.counts, { shown: 4, hidden: 1 });
+    assert.deepEqual(data.counts, { shown: 4, hidden: 1, suggested: 0 });
     assert.deepEqual([data.page, data.limit, data.total], [1, 30, 4]);
     assert.deepEqual(Object.keys(data.foods[0]).sort(), FOOD_KEYS);
     assert.deepEqual(data.foods[0], {
       id: adobo, name: 'Chicken adobo', category: 'filipino', foodType: 'home', servingDesc: '1 cup',
       kcal: 300, proteinG: 20, carbsG: 10, fatG: 15, fiberG: 1.5, sugarG: 2, sodiumMg: 400, hidden: false,
+      suggestMeals: [], suggestWithRice: false,
     });
   });
 
   await t.test('show=hidden lists the hidden ones', async () => {
     const data = await list('?show=hidden');
     assert.deepEqual(data.foods.map((f) => [f.id, f.hidden]), [[kwekkwek, true]]);
-    assert.deepEqual(data.counts, { shown: 4, hidden: 1 });
+    assert.deepEqual(data.counts, { shown: 4, hidden: 1, suggested: 0 });
     assert.equal(data.total, 1);
   });
 
@@ -89,7 +91,7 @@ test('admin foods endpoints', async (t) => {
     const found = await list('?show=shown&q=ADOBO');
     assert.deepEqual(found.foods.map((f) => f.id), [adobo]);
     assert.equal(found.total, 1);
-    assert.deepEqual(found.counts, { shown: 4, hidden: 1 });
+    assert.deepEqual(found.counts, { shown: 4, hidden: 1, suggested: 0 });
     const page = await list('?show=shown&page=2&limit=3');
     assert.deepEqual(page.foods.map((f) => f.id), [turon]);
     assert.deepEqual([page.page, page.limit, page.total], [2, 3, 4]);
@@ -116,7 +118,7 @@ test('admin foods endpoints', async (t) => {
     assert.deepEqual({ ...food, id: 0 }, {
       id: 0, name: 'Ginataang bilo-bilo', category: 'filipino', foodType: 'snack_sweet', servingDesc: '1 bowl (250 g)',
       kcal: Math.round(4 * 4 + 4 * 50 + 9 * 12), proteinG: 4, carbsG: 50, fatG: 12, fiberG: 2, sugarG: 20, sodiumMg: 30,
-      hidden: false,
+      hidden: false, suggestMeals: [], suggestWithRice: false,
     });
     assert.equal((await foodRow(food.id)).added_by, adminId);
     // An added food has no place in the food list: it comes after the
@@ -185,6 +187,7 @@ test('admin foods endpoints', async (t) => {
     assert.deepEqual(res.body.data.food, {
       id: sinigang, name: 'Sinigang', category: 'international', foodType: 'home', servingDesc: '1 bowl',
       kcal: 300, proteinG: 20, carbsG: 10, fatG: 15, fiberG: 1.5, sugarG: 2, sodiumMg: 400, hidden: false,
+      suggestMeals: [], suggestWithRice: false,
     });
     assert.equal((await foodRow(sinigang)).added_by, adminId);
   });
@@ -256,4 +259,93 @@ test('admin foods endpoints', async (t) => {
     }
     assert.equal((await foodRow(copy)).hidden_at, null);
   });
+
+  let tortang;
+
+  await t.test('a food is suggested for the meals chosen, in meal order, with rice only beside a main meal', async () => {
+    const lunch = (await patch(`/foods/${adobo}`, { suggestMeals: ['dinner', 'lunch'], suggestWithRice: true })
+      .expect(200)).body.data.food;
+    assert.deepEqual([lunch.suggestMeals, lunch.suggestWithRice], [['lunch', 'dinner'], true]);
+    const [[row]] = await pool.query(
+      'SELECT suggest_meals, suggest_with_rice, added_by FROM foods WHERE food_id = ?', [adobo],
+    );
+    assert.deepEqual([row.suggest_meals, row.suggest_with_rice, row.added_by], ['lunch,dinner', 1, adminId]);
+
+    const snack = (await patch(`/foods/${turon}`, { suggestMeals: ['snack'], suggestWithRice: true })
+      .expect(200)).body.data.food;
+    assert.deepEqual([snack.suggestMeals, snack.suggestWithRice], [['snack'], false]);
+  });
+
+  await t.test("other edits keep a food's suggestions", async () => {
+    const food = (await patch(`/foods/${adobo}`, { servingDesc: '1 plate' }).expect(200)).body.data.food;
+    assert.deepEqual([food.suggestMeals, food.suggestWithRice], [['lunch', 'dinner'], true]);
+  });
+
+  await t.test('a food can be suggested as it is added', async () => {
+    const res = await post('/foods', {
+      ...NEW_FOOD, name: 'Tortang talong', foodType: 'home', suggestMeals: ['breakfast'], suggestWithRice: true,
+    }).expect(201);
+    tortang = res.body.data.food.id;
+    assert.deepEqual([res.body.data.food.suggestMeals, res.body.data.food.suggestWithRice], [['breakfast'], true]);
+  });
+
+  await t.test('a bad suggestion field is a 400 naming it, and changes nothing', async () => {
+    for (const [body, field] of [
+      [{ suggestMeals: 'lunch' }, 'suggestMeals'],
+      [{ suggestMeals: ['brunch'] }, 'suggestMeals'],
+      [{ suggestMeals: null }, 'suggestMeals'],
+      [{ suggestWithRice: 'yes' }, 'suggestWithRice'],
+      [{ suggestWithRice: null }, 'suggestWithRice'],
+    ]) {
+      const res = await patch(`/foods/${adobo}`, body).expect(400);
+      assert.equal(res.body.error.code, 'INVALID_ADMIN_FIELD', JSON.stringify(body));
+      assert.deepEqual(res.body.error.details, [{ field }], JSON.stringify(body));
+    }
+    const [[row]] = await pool.query('SELECT suggest_meals, suggest_with_rice FROM foods WHERE food_id = ?', [adobo]);
+    assert.deepEqual([row.suggest_meals, row.suggest_with_rice], ['lunch,dinner', 1]);
+  });
+
+  await t.test('show=suggested lists shown foods suggested for any meal, and counts them', async () => {
+    // A hidden food stays off the list, suggested or not.
+    await patch(`/foods/${kwekkwek}`, { suggestMeals: ['snack'] }).expect(200);
+    const data = await list('?show=suggested');
+    assert.deepEqual(data.foods.map((f) => f.id), [adobo, tortang, turon]);
+    assert.equal(data.total, 3);
+    assert.equal(data.counts.suggested, 3);
+    assert.equal(data.counts.hidden, 1);
+  });
+
+  await t.test('hiding a suggested food takes it off the suggested list', async () => {
+    await post(`/foods/${turon}/hide`).expect(200);
+    const data = await list('?show=suggested');
+    assert.deepEqual(data.foods.map((f) => f.id), [adobo, tortang]);
+    assert.equal(data.counts.suggested, 2);
+    await post(`/foods/${turon}/show`).expect(200);
+  });
+});
+
+// Suggestions are the seed's only on insert: an admin's choice survives a
+// re-seed (spec 2026-11-09, section 3).
+test("a re-seed keeps an admin's suggestion choices", async (t) => {
+  const pool = createPool(testDbConfig());
+  await dropAllTables(pool);
+  await migrate(testDbConfig());
+  t.after(async () => { await dropAllTables(pool); await pool.end(); });
+  await seedFoods(testDbConfig());
+  const app = buildTestApp({ pool });
+  const { auth } = await createTestAdmin(pool);
+  const idOf = async (name) => (await pool.query('SELECT food_id FROM foods WHERE name = ?', [name]))[0][0].food_id;
+  const tinola = await idOf('Tinolang manok');
+  const egg = await idOf('Hard-boiled egg');
+  await request(app).patch(`/api/v1/admin/foods/${tinola}`).set(auth).send({ suggestMeals: ['snack'] }).expect(200);
+  await request(app).patch(`/api/v1/admin/foods/${egg}`).set(auth).send({ suggestMeals: [] }).expect(200);
+
+  await seedFoods(testDbConfig());
+
+  const [rows] = await pool.query(
+    'SELECT food_id, suggest_meals, suggest_with_rice FROM foods WHERE food_id IN (?, ?)', [tinola, egg],
+  );
+  const got = Object.fromEntries(rows.map((r) => [r.food_id, [r.suggest_meals, r.suggest_with_rice]]));
+  assert.deepEqual(got[tinola], ['snack', 0]);
+  assert.deepEqual(got[egg], ['', 0]);
 });

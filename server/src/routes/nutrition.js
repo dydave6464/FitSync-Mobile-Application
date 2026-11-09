@@ -8,6 +8,8 @@ const {
   invalid, checkDate, checkServings, checkClientId, checkManual, perServingOf, scaled, round1,
 } = require('../lib/nutrition-input');
 const { resolveFood } = require('../lib/resolve-food');
+const { pickSuggestions } = require('../lib/meal-suggestions');
+const { readSuggestionPool, readRice } = require('../db/meal-suggestions');
 const {
   MEALS, insertEntry, insertEntryOnce, findEntryIdByClientId, getEntry, getStoredEntry, updateEntry, deleteEntry,
   listDayEntries, targetProfile,
@@ -39,6 +41,28 @@ module.exports = function buildNutritionRouter(deps) {
       const { target, missing } = dailyTarget(profile, manilaDay());
       const meals = Object.fromEntries(MEALS.map((m) => [m, entries.filter((e) => e.mealType === m)]));
       res.json({ data: { day: { date, target, targetMissing: missing, totals: totalsOf(entries), meals } } });
+    } catch (err) { next(err); }
+  });
+
+  // View Local Filipino Meal Suggestions (spec 2026-11-09): up to three
+  // dishes for [meal] that fit what is left of today. Always today in Manila,
+  // whatever else is asked: a suggestion is for the next thing eaten.
+  router.get('/suggestions', auth, async (req, res, next) => {
+    try {
+      const { meal } = req.query;
+      if (typeof meal !== 'string' || !MEALS.includes(meal)) {
+        throw AppError.badRequest('INVALID_MEAL', `meal must be one of: ${MEALS.join(', ')}.`, [{ field: 'meal' }]);
+      }
+      const date = manilaDay();
+      const userId = req.user.userId;
+      const [entries, profile, dishes, rice] = await Promise.all([
+        listDayEntries(pool, userId, date), targetProfile(pool, userId), readSuggestionPool(pool), readRice(pool),
+      ]);
+      const { target } = dailyTarget(profile, date);
+      const picked = pickSuggestions({
+        meal, date, target, totals: totalsOf(entries), entries, pool: dishes, rice,
+      });
+      res.json({ data: { date, meal, ...picked } });
     } catch (err) { next(err); }
   });
 
