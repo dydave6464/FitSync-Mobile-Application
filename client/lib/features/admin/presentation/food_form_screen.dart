@@ -4,7 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
-import '../../nutrition/domain/nutrition.dart' show manualKcal;
+import '../../nutrition/domain/nutrition.dart'
+    show manualKcal, mealLabel, mealTypes;
 import '../../nutrition/presentation/widgets/number_box.dart';
 import '../../nutrition/presentation/widgets/text_limits.dart';
 import '../../onboarding/presentation/edit_scaffold.dart';
@@ -71,6 +72,20 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
   late bool _hidden = widget.food?.hidden ?? false;
   bool _toggling = false;
 
+  /// The meals it is suggested for as a local meal (the prototype's "Add
+  /// local meal"), and whether with 1 cup of rice.
+  late final Set<String> _suggest = {...?widget.food?.suggestMeals};
+  late bool _withRice = widget.food?.suggestWithRice ?? false;
+
+  /// Rice is offered beside a main meal only: a snack never comes with it.
+  bool get _mainMealChosen => _suggest.any((meal) => meal != 'snack');
+
+  /// The chosen meals in meal order, as the server keeps them.
+  List<String> get _suggestMeals => [
+    for (final meal in mealTypes)
+      if (_suggest.contains(meal)) meal,
+  ];
+
   bool get _editing => widget.food != null;
 
   @override
@@ -110,6 +125,8 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
     _category,
     _type,
     for (final (key, _) in _numbers) _boxes[key]!.text.trim(),
+    _suggestMeals.join(','),
+    '${_withRice && _mainMealChosen}',
   ].join('\u0000');
 
   /// Blank is null; anything unreadable is NaN, which fails every check.
@@ -171,6 +188,8 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
     fiberG: _number('fiber'),
     sugarG: _number('sugar'),
     sodiumMg: _number('sodium'),
+    suggestMeals: _suggestMeals,
+    suggestWithRice: _withRice && _mainMealChosen,
   );
 
   Future<void> _save() async {
@@ -242,6 +261,8 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
     'fiberG',
     'sugarG',
     'sodiumMg',
+    'suggestMeals',
+    'suggestWithRice',
   };
 
   Future<void> _hide(AdminFood food) async {
@@ -469,6 +490,49 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
             number('sugar', 'sugarG', 'Sugar (g) · optional'),
             number('sodium', 'sodiumMg', 'Sodium (mg) · optional', hint: 'mg'),
           ),
+          const SizedBox(height: 24),
+          Semantics(
+            header: true,
+            child: const FsEyebrow('Suggest as a local meal'),
+          ),
+          const SizedBox(height: 6),
+          FsTapRoom(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final meal in mealTypes)
+                  FsChip(
+                    key: Key('admin.food.suggest.$meal'),
+                    label: mealLabel(meal),
+                    showCheck: true,
+                    selected: _suggest.contains(meal),
+                    onTap: () => setState(() {
+                      if (!_suggest.remove(meal)) _suggest.add(meal);
+                      _fieldErrors.remove('suggestMeals');
+                      _error = null;
+                    }),
+                  ),
+              ],
+            ),
+          ),
+          ?fieldError('suggestMeals'),
+          if (_mainMealChosen)
+            SwitchListTile(
+              key: const Key('admin.food.suggest.rice'),
+              contentPadding: EdgeInsets.zero,
+              title: Text(
+                'Served with 1 cup rice',
+                style: TextStyle(fontSize: 13.5, color: t.text),
+              ),
+              value: _withRice,
+              onChanged: (on) => setState(() {
+                _withRice = on;
+                _fieldErrors.remove('suggestWithRice');
+                _error = null;
+              }),
+            ),
+          ?fieldError('suggestWithRice'),
           if (food != null) ...[
             const SizedBox(height: 24),
             if (_hidden)

@@ -231,6 +231,8 @@ void main() {
       'fiberG': null,
       'sugarG': null,
       'sodiumMg': 870.5,
+      'suggestMeals': <String>[],
+      'suggestWithRice': false,
     });
     expect(find.byType(FoodFormScreen), findsNothing);
     expect(find.text('Food added.'), findsOneWidget);
@@ -642,4 +644,127 @@ void main() {
       Brightness.dark,
     );
   });
+
+  testWidgets(
+    'local-meal chips, and the rice switch once a main meal is chosen',
+    (tester) async {
+      await _pump(tester, FakeAdminRepository());
+      await tester.ensureVisible(find.text('SUGGEST AS A LOCAL MEAL'));
+      for (final meal in ['Breakfast', 'Lunch', 'Dinner', 'Snack']) {
+        expect(find.text(meal), findsOneWidget, reason: meal);
+      }
+      expect(find.byKey(const Key('admin.food.suggest.rice')), findsNothing);
+      await _tap(tester, find.byKey(const Key('admin.food.suggest.snack')));
+      expect(
+        find.byKey(const Key('admin.food.suggest.rice')),
+        findsNothing,
+        reason: 'a snack never comes with rice',
+      );
+      await _tap(tester, find.byKey(const Key('admin.food.suggest.lunch')));
+      expect(find.text('Served with 1 cup rice'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Save sends the chosen meals in meal order, and the rice switch',
+    (tester) async {
+      final repo = FakeAdminRepository();
+      await _pump(tester, repo);
+      await _fillRequired(tester);
+      await _tap(tester, find.byKey(const Key('admin.food.suggest.dinner')));
+      await _tap(tester, find.byKey(const Key('admin.food.suggest.breakfast')));
+      await _tap(tester, find.byKey(const Key('admin.food.suggest.rice')));
+      await _pressSave(tester);
+      final sent = repo.createFoodCalls.single;
+      expect(sent.suggestMeals, ['breakfast', 'dinner']);
+      expect(sent.suggestWithRice, isTrue);
+    },
+  );
+
+  testWidgets('rice is not sent once no main meal is chosen', (tester) async {
+    final repo = FakeAdminRepository();
+    await _pump(tester, repo);
+    await _fillRequired(tester);
+    await _tap(tester, find.byKey(const Key('admin.food.suggest.lunch')));
+    await _tap(tester, find.byKey(const Key('admin.food.suggest.rice')));
+    await _tap(tester, find.byKey(const Key('admin.food.suggest.lunch')));
+    await _tap(tester, find.byKey(const Key('admin.food.suggest.snack')));
+    await _pressSave(tester);
+    expect(repo.createFoodCalls.single.suggestMeals, ['snack']);
+    expect(repo.createFoodCalls.single.suggestWithRice, isFalse);
+  });
+
+  testWidgets("an edit opens on the food's suggestions and sends them back", (
+    tester,
+  ) async {
+    final repo = FakeAdminRepository();
+    await _pump(
+      tester,
+      repo,
+      food: sampleFood(
+        suggestMeals: const ['lunch', 'dinner'],
+        suggestWithRice: true,
+      ),
+    );
+    await tester.ensureVisible(
+      find.byKey(const Key('admin.food.suggest.rice')),
+    );
+    expect(
+      tester
+          .widget<FsChip>(find.byKey(const Key('admin.food.suggest.lunch')))
+          .selected,
+      isTrue,
+    );
+    expect(
+      tester
+          .widget<FsChip>(find.byKey(const Key('admin.food.suggest.snack')))
+          .selected,
+      isFalse,
+    );
+    expect(
+      tester
+          .widget<SwitchListTile>(
+            find.byKey(const Key('admin.food.suggest.rice')),
+          )
+          .value,
+      isTrue,
+    );
+    await _type(tester, 'fat', '20');
+    await _pressSave(tester);
+    final sent = repo.updateFoodCalls.single.input;
+    expect(
+      [sent.suggestMeals, sent.suggestWithRice],
+      [
+        ['lunch', 'dinner'],
+        true,
+      ],
+    );
+  });
+
+  for (final dark in [false, true]) {
+    testWidgets(
+      'the local-meal choices fit a 320 dp phone at 2x text (${dark ? 'dark' : 'light'})',
+      (tester) async {
+        tester.view.devicePixelRatio = 1.0;
+        tester.view.physicalSize = const Size(320, 640);
+        addTearDown(tester.view.reset);
+        await _pump(
+          tester,
+          FakeAdminRepository(),
+          food: sampleFood(
+            suggestMeals: const ['breakfast', 'lunch', 'dinner', 'snack'],
+            suggestWithRice: true,
+          ),
+          textScale: 2.0,
+          dark: dark,
+        );
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('admin.food.suggest.rice')),
+          200,
+          scrollable: find.byType(Scrollable).first,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 }
