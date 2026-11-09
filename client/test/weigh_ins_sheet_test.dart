@@ -7,11 +7,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/units.dart';
+import 'package:fitsync/features/nutrition/presentation/providers.dart';
 import 'package:fitsync/features/profile/data/profile_repository.dart';
 import 'package:fitsync/features/profile/domain/body_weight.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/profile/presentation/widgets/weigh_ins_sheet.dart';
+
+import 'nutrition_controller_test.dart' show FakeNutritionRepository;
 
 const _profile = Profile(
   userId: 1,
@@ -75,6 +78,7 @@ Future<void> _pump(
   WeightUnit unit = WeightUnit.kg,
   _Fetches? fetches,
   bool onPushedPage = false,
+  FakeNutritionRepository? nutrition,
 }) async {
   final opener = Scaffold(
     body: Consumer(
@@ -84,6 +88,10 @@ Future<void> _pump(
         // even once the sheet is gone.
         ref.watch(profileProvider);
         ref.watch(bodyWeightProvider('month'));
+        if (nutrition != null) {
+          ref.watch(nutritionDayProvider);
+          ref.watch(mealSuggestionsProvider('lunch'));
+        }
         return ElevatedButton(
           onPressed: () => showWeighInsSheet(context),
           child: const Text('open'),
@@ -97,6 +105,7 @@ Future<void> _pump(
         bodyWeightClockProvider.overrideWithValue(() => _noonNov6),
         profileRepositoryProvider.overrideWithValue(repo),
         weightUnitProvider.overrideWithValue(unit),
+        if (nutrition != null) nutritionRepositoryProvider.overrideWithValue(nutrition),
         bodyWeightProvider.overrideWith((ref, period) async {
           fetches?.periods.add(period);
           return BodyWeightSeries(
@@ -446,6 +455,22 @@ void main() {
       expect(find.text('open'), findsOneWidget);
       expect(find.text(userMessage(repo.deleteError!)), findsOneWidget);
     });
+  });
+
+  // Deleting the newest moves the profile weight back, and today's target
+  // with it: the ring and the suggestions follow.
+  testWidgets("a delete refreshes today's target and the meal suggestions", (tester) async {
+    final nutrition = FakeNutritionRepository();
+    await _pump(tester, repo: _FakeProfileRepository(), nutrition: nutrition);
+    int days() => nutrition.calls.where((c) => c.startsWith('get ')).length;
+    expect((days(), nutrition.suggestionCalls.length), (1, 1));
+
+    await tester.tap(_deleteButton('2026-11-06'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('weighIn.delete.confirm')));
+    await tester.pumpAndSettle();
+
+    expect((days(), nutrition.suggestionCalls.length), (2, 2));
   });
 
   testWidgets('fits a 320 dp screen at 2x text', (tester) async {

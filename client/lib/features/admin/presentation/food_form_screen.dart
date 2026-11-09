@@ -533,6 +533,14 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
               }),
             ),
           ?fieldError('suggestWithRice'),
+          if (food != null && _hidden) ...[
+            const SizedBox(height: 6),
+            Text(
+              "Hidden foods aren't suggested until shown again.",
+              key: const Key('admin.food.suggest.hiddenNote'),
+              style: TextStyle(fontSize: 12, height: 1.4, color: t.text2),
+            ),
+          ],
           if (food != null) ...[
             const SizedBox(height: 24),
             if (_hidden)

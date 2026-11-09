@@ -15,6 +15,7 @@ import 'package:fitsync/features/nutrition/domain/nutrition.dart';
 import 'package:fitsync/features/nutrition/presentation/log_food_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/meal_photo/meal_photo_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/meal_photo/providers.dart';
+import 'package:fitsync/features/nutrition/presentation/meal_photo/snap_meal.dart';
 import 'package:fitsync/features/nutrition/presentation/nutrition_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/providers.dart';
 import 'package:fitsync/features/pro/presentation/providers.dart';
@@ -387,5 +388,38 @@ void main() {
     await tester.pumpAndSettle();
     expect(h.picker.sources, [PhotoSource.library]);
     expect(find.text('White rice'), findsOneWidget);
+  });
+
+  group('SnapMealCard while the tab is busy', () {
+    Future<void> pumpCard(WidgetTester tester, {required VoidCallback? onTap, bool reduceMotion = false}) async {
+      await tester.pumpWidget(MaterialApp(
+        theme: fsLightTheme(),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: reduceMotion),
+          child: child!,
+        ),
+        home: Scaffold(body: SnapMealCard(onTap: onTap)),
+      ));
+    }
+
+    AnimatedOpacity fade(WidgetTester tester) => tester.widget<AnimatedOpacity>(
+      find.ancestor(of: find.byKey(const Key('snap.card')), matching: find.byType(AnimatedOpacity)),
+    );
+
+    testWidgets('fades to the disabled 0.45 over 150 ms when it cannot be tapped', (tester) async {
+      await pumpCard(tester, onTap: null);
+      expect(fade(tester).opacity, 0.45);
+      expect(fade(tester).duration, const Duration(milliseconds: 150));
+    });
+
+    testWidgets('is whole when it can be tapped', (tester) async {
+      await pumpCard(tester, onTap: () {});
+      expect(fade(tester).opacity, 1.0);
+    });
+
+    testWidgets('with reduced motion it fades at once', (tester) async {
+      await pumpCard(tester, onTap: null, reduceMotion: true);
+      expect(fade(tester).duration, Duration.zero);
+    });
   });
 }

@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
+import 'package:fitsync/features/nutrition/presentation/providers.dart';
 import 'package:fitsync/features/profile/data/profile_repository.dart';
 import 'package:fitsync/features/profile/domain/body_weight.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
@@ -13,6 +14,7 @@ import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/profile/presentation/widgets/log_body_weight_sheet.dart';
 
 import 'helpers/a11y.dart' show contrast;
+import 'nutrition_controller_test.dart' show FakeNutritionRepository;
 
 const _profile = Profile(
   userId: 1,
@@ -269,6 +271,47 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(fetches, {'week': 2, 'month': 2});
+  });
+
+  // The server moves users.weight_kg to the newest weigh-in, and today's
+  // target is worked out from it: the ring and the suggestions follow.
+  testWidgets("a save refreshes today's target and the meal suggestions", (tester) async {
+    final nutrition = FakeNutritionRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          bodyWeightClockProvider.overrideWithValue(() => _noonNov6),
+          profileRepositoryProvider.overrideWithValue(FakeProfileRepository()),
+          nutritionRepositoryProvider.overrideWithValue(nutrition),
+        ],
+        child: MaterialApp(
+          theme: fsLightTheme(),
+          home: Scaffold(
+            body: Consumer(
+              builder: (context, ref, _) {
+                ref.watch(nutritionDayProvider);
+                ref.watch(mealSuggestionsProvider('lunch'));
+                return ElevatedButton(
+                  onPressed: () => showLogBodyWeightSheet(context),
+                  child: const Text('open'),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    int days() => nutrition.calls.where((c) => c.startsWith('get ')).length;
+    expect((days(), nutrition.suggestionCalls.length), (1, 1));
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('bodyWeight.field')), '72.5');
+    await tester.tap(find.byKey(const Key('bodyWeight.save')));
+    await tester.pumpAndSettle();
+
+    expect((days(), nutrition.suggestionCalls.length), (2, 2));
   });
 
   // L-85: a weight the sheet turns down is flagged on its card too, as the

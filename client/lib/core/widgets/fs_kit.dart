@@ -37,6 +37,10 @@ List<BoxShadow> fsAccentGlow(FsTokens t) => [
   ),
 ];
 
+/// How faint a control is while it cannot be used: FsButton's disabled
+/// look, shared so a disabled card or row matches it.
+const double fsDisabledOpacity = 0.45;
+
 enum FsButtonKind { primary, secondary, ghost }
 
 /// `.btn` — 52px, full-pill, 15/700. The primary variant carries the accent
@@ -102,7 +106,7 @@ class FsButton extends StatelessWidget {
       enabled: small ? null : enabled,
       label: busy ? '$label, loading' : null,
       child: Opacity(
-        opacity: enabled ? 1 : 0.45,
+        opacity: enabled ? 1 : fsDisabledOpacity,
         child: DecoratedBox(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(FsRadius.pill),

@@ -7,6 +7,8 @@ import '../../../../core/manila_day.dart';
 import '../../../../core/theme.dart';
 import '../../../../core/units.dart';
 import '../../../../core/widgets/fs_kit.dart';
+import '../../../nutrition/presentation/providers.dart'
+    show mealSuggestionsProvider, nutritionDayProvider;
 import '../providers.dart'
     show
         bodyWeightClockProvider,
@@ -169,6 +171,10 @@ class _LogBodyWeightSheetState extends ConsumerState<_LogBodyWeightSheet> {
     // would otherwise keep showing the pre-save weight for the rest of the
     // session, disagreeing with the log this sheet just wrote to.
     ref.invalidate(profileProvider);
+    // Today's calorie target is worked out from that same weight, and the
+    // meal suggestions are fitted to it.
+    ref.invalidate(nutritionDayProvider);
+    ref.invalidate(mealSuggestionsProvider);
     Navigator.of(context).pop();
   }
 

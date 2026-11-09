@@ -174,12 +174,16 @@ String suggestionHeading(MealSuggestions s) => switch (s.state) {
 /// "Tinolang manok + 1 cup rice", or the dish alone.
 String plateTitle(MealSuggestion p) => p.rice == null ? p.food.name : '${p.food.name} + 1 cup rice';
 
+/// A plate's protein in whole grams: the one figure the row, its spoken
+/// label and Log to Lunch's plate total all show, so they never disagree.
+int plateProteinG(MealSuggestion p) => p.total.proteinG.round();
+
 /// A row's second line, in two parts so the protein figure can take the
 /// Protein bar's colour: ("1 bowl + 1 cup · 466 kcal", "29 g protein").
 ({String lead, String protein}) plateMeta(MealSuggestion p) => (
   lead: '${shortServing(p.food.servingDesc)}${p.rice == null ? '' : ' + 1 cup'} · '
       '${groupThousands(p.total.kcal.toDouble())} kcal',
-  protein: '${p.total.proteinG.round()} g protein',
+  protein: '${plateProteinG(p)} g protein',
 );
 
 /// A row as a screen reader says it: "Tinolang manok with 1 cup rice, 466
@@ -187,6 +191,6 @@ String plateTitle(MealSuggestion p) => p.rice == null ? p.food.name : '${p.food.
 String plateSpoken(MealSuggestion p) => [
   p.rice == null ? p.food.name : '${p.food.name} with 1 cup rice',
   '${p.total.kcal} kilocalories',
-  '${p.total.proteinG.round()} grams protein',
+  '${plateProteinG(p)} grams protein',
   if (p.highProtein) 'high protein',
 ].join(', ');

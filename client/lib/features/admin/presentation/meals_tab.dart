@@ -78,12 +78,16 @@ class _FoodRow extends StatelessWidget {
     final t = context.fs;
     final subtitle = _subtitle(food);
     final type = foodTypeLabels[food.foodType];
+    // The server never suggests a hidden food, and the Suggested chip lists
+    // shown ones only, so a hidden food is not tagged Suggested; its meals
+    // stay stored for when it is shown again.
+    final suggested = food.suggested && !food.hidden;
     final spoken = [
       food.name,
       subtitle,
       ?type,
       if (food.hidden) 'Hidden',
-      if (food.suggested) 'Suggested',
+      if (suggested) 'Suggested',
     ].join(', ');
 
     return ConstrainedBox(
@@ -117,7 +121,7 @@ class _FoodRow extends StatelessWidget {
                         type,
                         style: TextStyle(fontSize: 11, color: t.text3),
                       ),
-                    if (food.suggested)
+                    if (suggested)
                       const Padding(
                         padding: EdgeInsets.only(top: 4),
                         child: StatusTag('Suggested'),

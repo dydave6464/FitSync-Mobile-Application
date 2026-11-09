@@ -13,6 +13,7 @@ import 'package:fitsync/features/nutrition/presentation/meal_photo/snap_meal.dar
 import 'package:fitsync/features/nutrition/presentation/nutrition_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/providers.dart';
 import 'package:fitsync/features/nutrition/presentation/widgets/log_plate_sheet.dart';
+import 'package:fitsync/features/nutrition/presentation/widgets/meal_suggestions_section.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 
@@ -145,6 +146,15 @@ Future<FakeNutritionRepository> _pump(
   ));
   await tester.pumpAndSettle();
   return r;
+}
+
+/// Drags the sheet a little past half its height and lets go: it closes,
+/// its route popping at once, but stays on screen for the rest of its exit.
+Future<void> _dragHalfAway(WidgetTester tester) async {
+  final height = tester.getSize(find.byType(LogPlateSheet)).height;
+  await tester.drag(find.byKey(const Key('sheet.handle')), Offset(0, height * 0.55));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 20));
 }
 
 Finder _inSheet(String text) => find.descendant(of: find.byType(LogPlateSheet), matching: find.text(text));
@@ -337,6 +347,29 @@ void main() {
     }
   });
 
+  testWidgets('one protein figure for one plate: the total is in whole grams, as the row is', (tester) async {
+    final adobo = _plate(_food(14, 'Adobong manok', '1 serving (150 g)', 260, 26.3, 8, 14));
+    await _pump(tester, lunch: _answer('fits', [adobo], share: {'kcal': 650, 'proteinG': 40}));
+    expect(find.text('1 serving + 1 cup · 466 kcal · 29 g protein'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('suggest.row.0')));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('logPlate.total')),
+        matching: find.text('Protein 29 g · Carbs 53 g · Fat 14 g'),
+      ),
+      findsOneWidget,
+    );
+    // The dish's own line keeps its decimal, as Log food does.
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('logPlate.item.14')),
+        matching: find.text('Protein 26.3 g · Carbs 8 g · Fat 14 g'),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('Log plate logs the dish and its rice, each with its own key, then offers Undo', (tester) async {
     final repo = await _pump(tester, lunch: _fits);
     final asked = repo.suggestionCalls.length;
@@ -435,6 +468,51 @@ void main() {
     expect(find.text('Logged to lunch'), findsNothing);
   });
 
+  // The sheet stays mounted for its exit animation after a drag, while its
+  // route is already popping: a save landing then must not pop the screen
+  // under it.
+  testWidgets('a save landing while the dragged sheet slides away keeps the Nutrition screen', (tester) async {
+    final repo = _HeldLog();
+    await _pump(tester, repo: repo, lunch: _fits);
+    await tester.tap(find.byKey(const Key('suggest.row.0')));
+    await tester.pumpAndSettle();
+    repo.logHold = Completer<void>();
+    await tester.tap(find.byKey(const Key('logPlate.log')));
+    await tester.pump();
+    await _dragHalfAway(tester);
+    expect(find.byType(LogPlateSheet), findsOneWidget, reason: 'still sliding away');
+
+    repo.logHold!.complete();
+    await tester.pumpAndSettle();
+    expect(find.byType(NutritionScreen), findsOneWidget);
+    expect(find.byType(LogPlateSheet), findsNothing);
+    expect(find.text('Logged to lunch'), findsOneWidget);
+    expect(find.text('Undo'), findsOneWidget);
+  });
+
+  testWidgets('a refused rice landing while the dragged sheet slides away still says so', (tester) async {
+    final repo = _HeldLog();
+    await _pump(tester, repo: repo, lunch: _fits);
+    await tester.tap(find.byKey(const Key('suggest.row.0')));
+    await tester.pumpAndSettle();
+    repo
+      ..logHold = Completer<void>()
+      ..refuseRice = true;
+    await tester.tap(find.byKey(const Key('logPlate.log')));
+    await tester.pump();
+    await _dragHalfAway(tester);
+    expect(find.byType(LogPlateSheet), findsOneWidget, reason: 'still sliding away');
+
+    repo.logHold!.complete();
+    await tester.pumpAndSettle();
+    expect(find.byType(NutritionScreen), findsOneWidget);
+    expect(
+      find.descendant(of: find.byType(SnackBar), matching: find.textContaining("Couldn't log the plate.")),
+      findsOneWidget,
+    );
+    expect(find.text('Logged to lunch'), findsNothing);
+  });
+
   testWidgets('the rows cross-fade over 200 ms', (tester) async {
     await _pump(tester, lunch: _fits);
     final switcher = tester.widget<AnimatedSwitcher>(
@@ -449,6 +527,52 @@ void main() {
       find.descendant(of: find.byKey(const Key('suggest.section')), matching: find.byType(AnimatedSwitcher)),
       findsNothing,
     );
+  });
+
+  group('while the tab loads a day', () {
+    /// The section alone, [enabled] or not, its rows already loaded.
+    Future<void> pumpSection(WidgetTester tester, {required bool enabled, bool reduceMotion = false}) async {
+      final r = FakeNutritionRepository()..suggestionsByMeal['lunch'] = _fits;
+      await tester.pumpWidget(ProviderScope(
+        overrides: [nutritionRepositoryProvider.overrideWithValue(r)],
+        child: MaterialApp(
+          theme: fsLightTheme(),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(disableAnimations: reduceMotion),
+            child: child!,
+          ),
+          home: Scaffold(
+            body: ListView(children: [MealSuggestionsSection(meal: 'lunch', enabled: enabled)]),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+    }
+
+    AnimatedOpacity fade(WidgetTester tester, int i) => tester.widget<AnimatedOpacity>(
+      find.descendant(of: find.byKey(Key('suggest.row.$i')), matching: find.byType(AnimatedOpacity)),
+    );
+
+    testWidgets('the rows fade to the disabled 0.45, over 150 ms', (tester) async {
+      await pumpSection(tester, enabled: false);
+      for (var i = 0; i < 3; i++) {
+        expect(fade(tester, i).opacity, 0.45);
+        expect(fade(tester, i).duration, const Duration(milliseconds: 150));
+      }
+    });
+
+    testWidgets('enabled, the rows are whole', (tester) async {
+      await pumpSection(tester, enabled: true);
+      for (var i = 0; i < 3; i++) {
+        expect(fade(tester, i).opacity, 1.0);
+      }
+    });
+
+    testWidgets('with reduced motion the rows fade at once', (tester) async {
+      await pumpSection(tester, enabled: false, reduceMotion: true);
+      expect(fade(tester, 0).opacity, 0.45);
+      expect(fade(tester, 0).duration, Duration.zero);
+    });
   });
 
   for (final dark in [false, true]) {
