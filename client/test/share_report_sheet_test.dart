@@ -12,7 +12,14 @@ import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/pro/presentation/pro_screen.dart';
 import 'package:fitsync/features/pro/presentation/providers.dart';
+import 'package:fitsync/features/sessions/presentation/widgets/share_preview_card.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/share_report_sheet.dart';
+import 'package:fitsync/features/profile/domain/body_weight.dart';
+import 'package:fitsync/features/sessions/domain/session_history.dart';
+import 'package:fitsync/features/sessions/domain/share_preview.dart';
+import 'package:fitsync/features/sessions/domain/training_analytics.dart';
+import 'package:fitsync/features/sessions/domain/volume_labels.dart';
+import 'package:fitsync/features/sessions/presentation/share_actions.dart';
 
 import 'helpers/fake_pro_repository.dart';
 import 'helpers/sheet_insets.dart';
@@ -22,12 +29,14 @@ class _FakeRepo implements SessionRepository {
 
   final Object? error;
   Map<String, bool>? asked;
+  int calls = 0;
 
   @override
   Future<SharedReport> shareReport({
     required String period,
     required Map<String, bool> include,
   }) async {
+    calls++;
     if (error != null) throw error!;
     asked = include;
     return SharedReport(
@@ -47,10 +56,13 @@ class _FakeRepo implements SessionRepository {
 /// The sheet reads isPremium to decide whether the Pro section can be
 /// switched on at all, so every test here has to say which kind of account
 /// is looking at it.
+///
+/// Reads [_Account] on every build, so a test can change the entitlement and
+/// invalidate profileProvider the way refreshProLocks does after a purchase.
 class _StubProfileNotifier extends ProfileNotifier {
-  _StubProfileNotifier({required this.premium});
+  _StubProfileNotifier(this.account);
 
-  final bool premium;
+  final _Account account;
 
   @override
   Future<Profile> build() async => Profile(
@@ -58,7 +70,7 @@ class _StubProfileNotifier extends ProfileNotifier {
     email: 'juan@example.com',
     fullName: 'Juan Dela Cruz',
     onboardingCompleted: true,
-    isPremium: premium,
+    isPremium: account.premium,
     notificationsEnabled: true,
     equipment: const [],
     injuries: const [],
@@ -83,19 +95,99 @@ void _stubClipboard(WidgetTester tester) {
   );
 }
 
-Future<_FakeRepo> _open(
+/// Scrolls [finder] into view, then taps it. The sheet is taller than the
+/// default 800x600 test surface now that it opens with the preview card, so
+/// its buttons start below the fold, as they would on a short phone.
+Future<void> _tap(WidgetTester tester, Finder finder) async {
+  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
+  await tester.tap(finder);
+}
+
+class _FakeShare {
+  final shared = <String>[];
+  final opened = <Uri>[];
+  bool menuOpens = true;
+
+  ShareActions get actions => ShareActions(
+    share: (text) async {
+      shared.add(text);
+      return menuOpens;
+    },
+    open: (url) async {
+      opened.add(url);
+      return true;
+    },
+  );
+}
+
+/// The account's entitlement, which a test may change mid-sheet.
+class _Account {
+  _Account({required this.premium});
+
+  bool premium;
+}
+
+/// Changes the account's entitlement while the sheet is open, then refetches
+/// the profile the way refreshProLocks does once a purchase lands.
+Future<void> _becomePremium(
+  WidgetTester tester,
+  _Account account,
+  bool premium,
+) async {
+  account.premium = premium;
+  ProviderScope.containerOf(tester.element(find.byType(SharePreviewCard)))
+      .invalidate(profileProvider);
+  await tester.pumpAndSettle();
+}
+
+Future<(_FakeRepo, _FakeShare)> _open(
   WidgetTester tester, {
   Object? error,
   bool premium = true,
+  bool menuOpens = true,
+  _Account? account,
 }) async {
   final repo = _FakeRepo(error: error);
+  final stubAccount = account ?? _Account(premium: premium);
+  final share = _FakeShare()..menuOpens = menuOpens;
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         sessionRepositoryProvider.overrideWithValue(repo),
         proRepositoryProvider.overrideWithValue(FakeProRepository()),
-        profileProvider.overrideWith(
-          () => _StubProfileNotifier(premium: premium),
+        profileProvider.overrideWith(() => _StubProfileNotifier(stubAccount)),
+        shareActionsProvider.overrideWithValue(share.actions),
+        trainingSummaryProvider.overrideWith(
+          (ref) async => const TrainingSummary(
+            sessionCount: 13,
+            setCount: 75,
+            totalVolumeKg: 31243.5,
+          ),
+        ),
+        trainingAnalyticsProvider('week').overrideWith(
+          (ref) async => const TrainingAnalytics(
+            period: 'week',
+            volume: [],
+            change: VolumeChange(
+              totalKg: 31243.5,
+              previousKg: 25800,
+              changePct: 21,
+            ),
+            adherence: Adherence(done: 13, target: 13, weeks: 1),
+            muscles: [],
+          ),
+        ),
+        bodyWeightProvider('week').overrideWith(
+          (ref) async => const BodyWeightSeries(
+            widened: false,
+            points: [
+              BodyWeightPoint(loggedOn: '2026-10-16', weightKg: 76.4),
+              BodyWeightPoint(loggedOn: '2026-11-06', weightKg: 75.2),
+            ],
+            reference: null,
+            unit: 'kg',
+          ),
         ),
       ],
       child: MaterialApp(
@@ -113,7 +205,7 @@ Future<_FakeRepo> _open(
   );
   await tester.tap(find.text('open'));
   await tester.pumpAndSettle();
-  return repo;
+  return (repo, share);
 }
 
 void main() {
@@ -136,7 +228,7 @@ void main() {
 
     await tester.tap(find.byTooltip('Close'));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('share.create')), findsNothing);
+    expect(find.byKey(const Key('share.copy')), findsNothing);
   });
 
   testWidgets('names the period it shares in plain words', (tester) async {
@@ -151,10 +243,23 @@ void main() {
   ) async {
     await _open(tester);
 
-    expect(find.text('Training volume'), findsOneWidget);
-    expect(find.text('Body weight'), findsOneWidget);
-    expect(find.text('Muscle balance'), findsOneWidget);
-    expect(find.text('Recent sessions'), findsOneWidget);
+    // Looked for inside each switch row: 'Body weight' is also the label of
+    // a tile in the preview card above them.
+    for (final (key, label) in const [
+      ('volume', 'Training volume'),
+      ('bodyWeight', 'Body weight'),
+      ('muscles', 'Muscle balance'),
+      ('sessions', 'Recent sessions'),
+    ]) {
+      expect(
+        find.descendant(
+          of: find.byKey(Key('share.toggle.$key')),
+          matching: find.text(label),
+        ),
+        findsOneWidget,
+        reason: label,
+      );
+    }
   });
 
   // Muscle balance is the Pro section, and the sheet says so rather than
@@ -181,20 +286,18 @@ void main() {
       ),
     );
 
-    final repo = await _open(tester);
+    final (repo, _) = await _open(tester);
 
-    await tester.tap(find.byKey(const Key('share.toggle.bodyWeight')));
+    await _tap(tester, find.byKey(const Key('share.toggle.bodyWeight')));
     await tester.pump();
-    await tester.tap(find.byKey(const Key('share.create')));
+    await _tap(tester, find.byKey(const Key('share.copy')));
     await tester.pumpAndSettle();
 
     expect(repo.asked!['bodyWeight'], isFalse);
     expect(repo.asked!['volume'], isTrue);
   });
 
-  testWidgets('creating a report puts its link on the clipboard', (
-    tester,
-  ) async {
+  testWidgets('Copy link puts the link on the clipboard', (tester) async {
     final copied = <String>[];
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
       SystemChannels.platform,
@@ -213,36 +316,11 @@ void main() {
     );
 
     await _open(tester);
-    await tester.tap(find.byKey(const Key('share.create')));
+    await _tap(tester, find.byKey(const Key('share.copy')));
     await tester.pumpAndSettle();
 
     expect(copied, ['https://fitsync.test/api/v1/reports/abc']);
-  });
-
-  // The sheet used to say "It works for 30 days" -- a fourth copy of a
-  // constant only the server decides, next to an expiresAt it parsed and
-  // threw away. It names the real date now.
-  testWidgets('the snackbar names the real expiry date', (tester) async {
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (call) async => null,
-    );
-    addTearDown(
-      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        null,
-      ),
-    );
-
-    await _open(tester);
-    await tester.tap(find.byKey(const Key('share.create')));
-    await tester.pumpAndSettle();
-
-    expect(
-      find.text('Link copied. It works until October 19, 2026.'),
-      findsOneWidget,
-    );
-    expect(find.textContaining('30 days'), findsNothing);
+    expect(find.text('Link copied.'), findsOneWidget);
   });
 
   // Built from the DateTime's fields rather than a formatting package, so it
@@ -271,7 +349,7 @@ void main() {
     );
 
     await _open(tester, error: Exception('offline'));
-    await tester.tap(find.byKey(const Key('share.create')));
+    await _tap(tester, find.byKey(const Key('share.copy')));
     await tester.pumpAndSettle();
 
     expect(copied, isEmpty);
@@ -284,6 +362,9 @@ void main() {
       ),
       findsOneWidget,
     );
+    final retry = tester.widget<FsButton>(find.byKey(const Key('share.share')));
+    expect(retry.onPressed, isNotNull);
+    expect(find.byKey(const Key('share.ready')), findsNothing);
   });
 
   testWidgets('the sheet paints its own surface', (tester) async {
@@ -300,6 +381,147 @@ void main() {
     );
 
     expect(behind.color, t.surface);
+  });
+
+  testWidgets('the preview names the window and the page’s numbers', (
+    tester,
+  ) async {
+    await _open(tester);
+
+    final preview = find.byKey(const Key('share.preview'));
+    expect(preview, findsOneWidget);
+    expect(
+      find.descendant(
+        of: preview,
+        // FsEyebrow draws its text in capitals, as the prototype's
+        // eyebrows are.
+        matching: find.text(
+          'Week · ${shareWindowLabel('week', volumeToday())}'.toUpperCase(),
+        ),
+      ),
+      findsOneWidget,
+    );
+    for (final text in [
+      '31.2k kg',
+      '+21% vs previous week',
+      '13',
+      'of 13 planned',
+      '75',
+      '−1.2 kg',
+      '76.4 → 75.2',
+    ]) {
+      expect(
+        find.descendant(of: preview, matching: find.text(text)),
+        findsOneWidget,
+        reason: text,
+      );
+    }
+  });
+
+  testWidgets('says the summary is always included', (tester) async {
+    await _open(tester);
+    expect(find.text('Summary is always included.'), findsOneWidget);
+  });
+
+  testWidgets('Share report makes one link and opens the share menu', (
+    tester,
+  ) async {
+    final (repo, share) = await _open(tester);
+
+    await _tap(tester, find.byKey(const Key('share.share')));
+    await tester.pumpAndSettle();
+
+    expect(repo.calls, 1);
+    expect(share.shared, [
+      'My FitSync training report, ${shareWindowLabel('week', volumeToday())}: '
+          'https://fitsync.test/api/v1/reports/abc',
+    ]);
+    // The sheet stays open on Link ready.
+    expect(find.text('Share with coach'), findsOneWidget);
+    expect(find.byKey(const Key('share.ready')), findsOneWidget);
+  });
+
+  testWidgets('Link ready names the real expiry date', (tester) async {
+    await _open(tester);
+    await _tap(tester, find.byKey(const Key('share.share')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Works until October 19, 2026'), findsOneWidget);
+    expect(find.textContaining('30 days'), findsNothing);
+  });
+
+  testWidgets('every action after the first reuses the same link', (
+    tester,
+  ) async {
+    _stubClipboard(tester);
+    final (repo, share) = await _open(tester);
+
+    await _tap(tester, find.byKey(const Key('share.share')));
+    await tester.pumpAndSettle();
+    await _tap(tester, find.byKey(const Key('share.copy')));
+    await tester.pumpAndSettle();
+    await _tap(tester, find.byKey(const Key('share.share')));
+    await tester.pumpAndSettle();
+
+    expect(repo.calls, 1);
+    expect(share.shared.length, 2);
+  });
+
+  testWidgets('the switches lock once the link exists', (tester) async {
+    await _open(tester);
+    await _tap(tester, find.byKey(const Key('share.share')));
+    await tester.pumpAndSettle();
+
+    final toggle = tester.widget<SwitchListTile>(
+      find.byKey(const Key('share.toggle.volume')),
+    );
+    expect(toggle.onChanged, isNull);
+  });
+
+  testWidgets('a share menu that cannot open copies the link instead', (
+    tester,
+  ) async {
+    final copied = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied.add((call.arguments as Map)['text'] as String);
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+
+    await _open(tester, menuOpens: false);
+    await _tap(tester, find.byKey(const Key('share.share')));
+    await tester.pumpAndSettle();
+
+    expect(copied, ['https://fitsync.test/api/v1/reports/abc']);
+    expect(
+      find.text(
+        "Couldn't open the share menu, so the link was copied instead.",
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('See what your coach sees opens the page', (tester) async {
+    final (_, share) = await _open(tester);
+    await _tap(tester, find.byKey(const Key('share.share')));
+    await tester.pumpAndSettle();
+
+    await _tap(tester, find.byKey(const Key('share.open')));
+    await tester.pumpAndSettle();
+
+    expect(share.opened, [
+      Uri.parse('https://fitsync.test/api/v1/reports/abc'),
+    ]);
   });
 
   group('the Pro section on a free account', () {
@@ -320,7 +542,7 @@ void main() {
     testWidgets('is a way through to Pro', (tester) async {
       await _open(tester, premium: false);
 
-      await tester.tap(find.byKey(const Key('share.locked.muscles')));
+      await _tap(tester, find.byKey(const Key('share.locked.muscles')));
       await tester.pumpAndSettle();
 
       // The sheet is the moment a user is thinking about what their coach
@@ -330,9 +552,9 @@ void main() {
 
     testWidgets('is not sent with the report', (tester) async {
       _stubClipboard(tester);
-      final repo = await _open(tester, premium: false);
+      final (repo, _) = await _open(tester, premium: false);
 
-      await tester.tap(find.byKey(const Key('share.create')));
+      await _tap(tester, find.byKey(const Key('share.copy')));
       await tester.pumpAndSettle();
 
       // buildReportSnapshot answers null for muscles without Pro however it
@@ -340,6 +562,50 @@ void main() {
       // report cannot contain.
       expect(repo.asked!['muscles'], isFalse);
       expect(repo.asked!['volume'], isTrue);
+    });
+  });
+
+  group('once the link exists, the rows show what it carries', () {
+    testWidgets('a free account that buys Pro sees muscles off', (
+      tester,
+    ) async {
+      _stubClipboard(tester);
+      final account = _Account(premium: false);
+      final (repo, _) = await _open(tester, account: account);
+      await _tap(tester, find.byKey(const Key('share.copy')));
+      await tester.pumpAndSettle();
+      expect(repo.asked!['muscles'], isFalse);
+
+      await _becomePremium(tester, account, true);
+
+      // The link has no muscle section, so the sheet must not say it has.
+      final toggle = tester.widget<SwitchListTile>(
+        find.byKey(const Key('share.toggle.muscles')),
+      );
+      expect(toggle.value, isFalse);
+      expect(toggle.onChanged, isNull);
+    });
+
+    testWidgets('a Pro account that lapses still sees muscles on', (
+      tester,
+    ) async {
+      _stubClipboard(tester);
+      final account = _Account(premium: true);
+      final (repo, _) = await _open(tester, account: account);
+      await _tap(tester, find.byKey(const Key('share.copy')));
+      await tester.pumpAndSettle();
+      expect(repo.asked!['muscles'], isTrue);
+
+      await _becomePremium(tester, account, false);
+
+      // The frozen link still carries muscles: a locked "Unlock with Pro"
+      // row would say it does not.
+      expect(find.byKey(const Key('share.locked.muscles')), findsNothing);
+      final toggle = tester.widget<SwitchListTile>(
+        find.byKey(const Key('share.toggle.muscles')),
+      );
+      expect(toggle.value, isTrue);
+      expect(toggle.onChanged, isNull);
     });
   });
 
@@ -374,6 +640,12 @@ void main() {
 
             expect(tester.takeException(), isNull);
             expect(find.text('Muscle balance'), findsOneWidget);
+            await tester.ensureVisible(find.byKey(const Key('share.share')));
+            await _tap(tester, find.byKey(const Key('share.share')));
+            await tester.pumpAndSettle();
+            expect(tester.takeException(), isNull);
+            await tester.ensureVisible(find.byKey(const Key('share.open')));
+            expect(find.byKey(const Key('share.open')), findsOneWidget);
           },
         );
       }

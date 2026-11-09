@@ -2165,6 +2165,7 @@ class FsSheetHeader extends StatelessWidget {
     required this.title,
     this.onClose,
     this.closeKey = defaultCloseKey,
+    this.leading,
   });
 
   /// The ×'s key on any sheet that does not name its own.
@@ -2180,6 +2181,10 @@ class FsSheetHeader extends StatelessWidget {
   final VoidCallback? onClose;
   final Key closeKey;
 
+  /// Drawn before the title, e.g. the share sheet's share icon. Optional:
+  /// every other sheet keeps a bare title.
+  final Widget? leading;
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
@@ -2194,6 +2199,7 @@ class FsSheetHeader extends StatelessWidget {
         ),
         Row(
           children: [
+            if (leading != null) ...[leading!, const SizedBox(width: 9)],
             // Expanded, so at 2x text a long question wraps instead of
             // pushing the close button off the sheet.
             Expanded(
