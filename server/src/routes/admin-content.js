@@ -66,7 +66,7 @@ function buildAdminContentRouter({ pool, storage = null }) {
     try {
       const { show } = req.query;
       if (typeof show !== 'string' || !Object.hasOwn(SHOW, show)) {
-        throw invalidAdminField('show', 'show must be shown or hidden.');
+        throw invalidAdminField('show', 'show must be shown, hidden or suggested.');
       }
       const q = searchParam(req.query.q);
       const { page, limit } = pagingParams(req.query);
