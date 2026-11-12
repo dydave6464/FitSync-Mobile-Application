@@ -342,6 +342,19 @@ test('POST /nutrition/recognize', async (t) => {
     assert.equal(mlCalls.length, before);
   });
 
+  await t.test('classifier foods missing from the menu are logged once per menu load, by name', async () => {
+    const u = await freshUser({ pro: true });
+    answer = async () => ({ items: [] });
+    await u.recognize(PHOTO).expect(200);
+    await u.recognize(PHOTO).expect(200);
+    const lines = captured.text().split('\n').filter((l) => l.includes('dish classifier foods missing from the photo menu'));
+    // Earlier tests already loaded this app's menu; it is kept for 10 minutes.
+    assert.equal(lines.length, 1, 'once per menu load, not once per photo');
+    const { missing } = JSON.parse(lines[0]);
+    assert.ok(missing.includes('Bulalo') && missing.includes('Beef tapa'), lines[0]);
+    assert.ok(!missing.includes('Tinolang manok') && !missing.includes('Sinigang na baboy'), 'foods on the menu are not named');
+  });
+
   await t.test('the photo is never stored or logged', async () => {
     const u = await freshUser({ pro: true });
     answer = async () => ({ items: [{ menu: 'White rice', name: 'White rice', quantity: 1, unit: 'cup', grams: 160, confidence: 0.9, alternatives: [] }], provider: 'cloudflare',
