@@ -1,5 +1,5 @@
 'use strict';
-const { DISH_FOODS, DISH_OF_NAME } = require('./dish-foods');
+const { DISH_FOODS, DISH_OF_NAME, isSide } = require('./dish-foods');
 const { MAX_ALTERNATIVES } = require('../../lib/photo-match');
 const { servingGrams, toHalf } = require('../../lib/photo-portion');
 
@@ -10,9 +10,11 @@ const isProbability = (n) => typeof n === 'number' && Number.isFinite(n) && n >=
 /// model was trained on: a dish dropped for too few photos is not among them.
 function usable(opinion) {
   const top = Array.isArray(opinion?.dishes) ? opinion.dishes[0] : undefined;
-  const { classes } = opinion ?? {};
+  const { classes, outsideSwapAt } = opinion ?? {};
   return typeof top?.dish === 'string' && isProbability(top.probability)
     && isProbability(opinion.swapAt) && isProbability(opinion.choiceAt) && opinion.choiceAt <= opinion.swapAt
+    // Round 2's very-sure bar is optional; when sent it must be a probability at or above swapAt.
+    && (outsideSwapAt == null || (isProbability(outsideSwapAt) && outsideSwapAt >= opinion.swapAt))
     && Array.isArray(classes) && classes.length > 0 && classes.every((c) => typeof c === 'string');
 }
 
@@ -40,13 +42,45 @@ function sameAmount(servings, from, to) {
   return was && now ? toHalf((servings * was) / now) : servings;
 }
 
+/// Round 2 (spec 2026-11-12, section 3): the AI named none of the 12. The
+/// AI's dish is its first card that is no side; a very sure classifier
+/// (outsideSwapAt) replaces it, a fairly sure one (choiceAt) adds a choice.
+/// Never adds or removes a card, so what counts toward the daily limit is
+/// unchanged. A round-1 answer has no outsideSwapAt and changes nothing.
+/// A card of the 12 the model was not trained on means the AI did name one
+/// of the 12, so that answer stays as round 1 left it.
+function outside(items, opinion, menuByName) {
+  const skipped = { items, outcome: 'skipped' };
+  if (items.some((it) => dishOf(it.food))) return skipped;
+  const { dish, probability } = opinion.dishes[0];
+  if (opinion.outsideSwapAt == null || !Object.hasOwn(DISH_FOODS, dish) || !opinion.classes.includes(dish)) {
+    return skipped;
+  }
+  if (probability < opinion.choiceAt) return skipped;
+  const at = items.findIndex((it) => !isSide(it.food));
+  if (at === -1) return skipped;
+  const food = foodFor(dish, items, menuByName);
+  if (!food) return skipped;
+  const main = items[at];
+  const replaced = (card) => items.map((it, i) => (i === at ? card : it));
+  if (probability >= opinion.outsideSwapAt) {
+    const alternatives = [main.food, ...main.alternatives.filter((f) => f.foodId !== food.foodId)]
+      .slice(0, MAX_ALTERNATIVES);
+    const servings = sameAmount(main.servings, main.food, food);
+    return { items: replaced({ ...main, food, servings, alternatives }), outcome: 'swapped outside' };
+  }
+  if (main.alternatives.some((f) => f.foodId === food.foodId)) return skipped;
+  const alternatives = [food, ...main.alternatives].slice(0, MAX_ALTERNATIVES);
+  return { items: replaced({ ...main, alternatives }), outcome: 'added choice outside' };
+}
+
 /// The dish classifier's second opinion on the main dish (spec
 /// 2026-11-05-food-classifier, section 3). [items] are matchItems' cards,
 /// [opinion] the ML service's answer (null when it had none), [menuByName]
 /// a lower-case menu name -> food map. Returns the cards to answer with and
 /// one word for the log. Only the first card that is one of the 12 dishes
 /// and one of the model's classes can change, and only to another of both:
-/// the classifier knows nothing else, so for any other food it is ignored. A
+/// when the AI named none of the 12, `outside` decides (round 2). A
 /// dish dropped from training is never the main dish, or a right AI answer
 /// would always look like a disagreement. The amount and confidence
 /// stay the AI's: a swap rescales the servings to the new food's serving.
@@ -55,7 +89,7 @@ function secondOpinion(items, opinion, menuByName) {
   if (!usable(opinion)) return { items, outcome: 'unavailable' };
   const known = new Set(opinion.classes);
   const at = items.findIndex((it) => known.has(dishOf(it.food)));
-  if (at === -1) return { items, outcome: 'skipped' };
+  if (at === -1) return outside(items, opinion, menuByName);
   const main = items[at];
   const { dish, probability } = opinion.dishes[0];
   if (!Object.hasOwn(DISH_FOODS, dish) || !known.has(dish)) return { items, outcome: 'skipped' };
