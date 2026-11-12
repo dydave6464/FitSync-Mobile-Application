@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/domain/exercise.dart';
-import '../../exercises/presentation/equipment_icon.dart';
+import '../../exercises/presentation/exercise_thumb.dart';
 import '../../exercises/presentation/exercise_list_screen.dart'
     show ExerciseListScreen, describeError;
 import '../../exercises/presentation/providers.dart';
@@ -16,6 +16,7 @@ import 'open_workout_summary.dart';
 import 'providers.dart';
 import 'session_logger_screen.dart';
 import 'workout_draft.dart';
+import '../../exercises/domain/exercise_labels.dart';
 
 /// The name the library's route carries while a workout is being picked.
 ///
@@ -328,7 +329,7 @@ class _WorkoutReviewScreenState extends ConsumerState<WorkoutReviewScreen> {
     final messenger = ScaffoldMessenger.of(context)..hideCurrentSnackBar();
     final controller = messenger.showSnackBar(
       SnackBar(
-        content: Text('Removed ${exercise.name}'),
+        content: Text('Removed ${exerciseDisplayName(exercise.name)}'),
         // A SnackBar with an action stays up until dismissed by default,
         // which here would sit over the Start button indefinitely. A screen
         // reader is the exception: reaching Undo by swiping takes longer than
@@ -515,7 +516,7 @@ class _WorkoutReviewScreenState extends ConsumerState<WorkoutReviewScreen> {
   }
 }
 
-/// "3 exercises · quadriceps, pectorals".
+/// "3 exercises · Quads, Chest".
 ///
 /// The muscle groups are de-duplicated in the order they appear, so the line
 /// reads as what the workout covers rather than as one word per row.
@@ -523,9 +524,8 @@ String _summarise(List<ExerciseSummary> draft) {
   final count = draft.length == 1 ? '1 exercise' : '${draft.length} exercises';
   final groups = <String>[];
   for (final exercise in draft) {
-    if (!groups.contains(exercise.muscleGroup)) {
-      groups.add(exercise.muscleGroup);
-    }
+    final group = muscleLabel(exercise.muscleGroup);
+    if (!groups.contains(group)) groups.add(group);
   }
   return '$count · ${groups.join(', ')}';
 }
@@ -598,6 +598,10 @@ class _ReviewRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
+    // At large text the thumbnail's 46 dp go to the name instead: the name
+    // is what tells two similar exercises apart, the picture rarely is.
+    final showThumb = MediaQuery.textScalerOf(context).scale(14) <= 18;
+    final name = exerciseDisplayName(exercise.name);
 
     return ListTile(
       // The handle's touch area is 48 wide but its icon still 20, so the
@@ -605,7 +609,7 @@ class _ReviewRow extends StatelessWidget {
       // where it always did, and only the reach around it grew.
       contentPadding: const EdgeInsetsDirectional.only(start: 2, end: 8),
       leading: SizedBox(
-        width: 94,
+        width: showThumb ? 94 : 48,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -620,7 +624,7 @@ class _ReviewRow extends StatelessWidget {
               // alone; the list's Move up/down actions sit on the row.
               child: Semantics(
                 container: true,
-                label: 'Reorder ${exercise.name}',
+                label: 'Reorder $name',
                 // Painted, if invisibly, so the whole 48 dp box catches the
                 // touch: the listener defers to its child, and an empty
                 // SizedBox would leave only the 20 dp glyph to land on.
@@ -640,34 +644,31 @@ class _ReviewRow extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(width: 2),
-            SizedBox(
-              width: 44,
-              height: 44,
-              child: exercise.thumbnailUrl == null
-                  ? _ThumbPlaceholder(equipment: exercise.equipment)
-                  : Image.network(
-                      '$baseUrl${exercise.thumbnailUrl}',
-                      fit: BoxFit.cover,
-                      // One unreachable thumbnail must not take the row down.
-                      errorBuilder: (_, _, _) =>
-                          _ThumbPlaceholder(equipment: exercise.equipment),
-                    ),
-            ),
+            if (showThumb) ...[
+              const SizedBox(width: 2),
+              ExerciseThumb(
+                size: 44,
+                baseUrl: baseUrl,
+                thumbnailUrl: exercise.thumbnailUrl,
+                equipment: exercise.equipment,
+              ),
+            ],
           ],
         ),
       ),
+      // Two lines: similar exercises differ at the end of their names, and
+      // this is where the workout's order is set.
       title: Text(
-        exercise.name,
-        maxLines: 1,
+        name,
+        maxLines: 2,
         overflow: TextOverflow.ellipsis,
         style: const TextStyle(fontSize: 14),
       ),
       subtitle: Text(
         [
           '$position',
-          exercise.muscleGroup,
-          if (exercise.equipment != null) exercise.equipment!,
+          muscleLabel(exercise.muscleGroup),
+          if (exercise.equipment != null) equipmentLabel(exercise.equipment!),
         ].join(' · '),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
@@ -682,7 +683,7 @@ class _ReviewRow extends StatelessWidget {
         children: [
           IconButton(
             key: Key('review.remove.${exercise.exerciseId}'),
-            tooltip: 'Remove ${exercise.name}',
+            tooltip: 'Remove $name',
             constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
             icon: const Icon(Icons.close),
             onPressed: onRemove,
@@ -690,7 +691,7 @@ class _ReviewRow extends StatelessWidget {
           PopupMenuButton<_RowAction>(
             key: Key('review.more.${exercise.exerciseId}'),
             icon: const Icon(Icons.more_vert),
-            tooltip: 'More options for ${exercise.name}',
+            tooltip: 'More options for $name',
             onSelected: onAction,
             itemBuilder: (context) => [
               PopupMenuItem(
@@ -711,16 +712,4 @@ class _ReviewRow extends StatelessWidget {
       ),
     );
   }
-}
-
-class _ThumbPlaceholder extends StatelessWidget {
-  const _ThumbPlaceholder({this.equipment});
-
-  final String? equipment;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-    child: Icon(equipmentIcon(equipment), size: 18),
-  );
 }

@@ -9,6 +9,7 @@ import '../../streaks/presentation/providers.dart' show streakProvider;
 import '../data/session_repository.dart';
 import '../data/training_settings_repository.dart';
 import '../domain/active_session.dart';
+import '../domain/session_detail.dart';
 import '../domain/session_history.dart';
 import '../domain/session_outcome.dart';
 import '../domain/training_analytics.dart';
@@ -50,10 +51,13 @@ final restSecondsProvider = AsyncNotifierProvider<RestSecondsController, int>(
 /// could not be read -- the 90 seconds the logger always used.
 const defaultRestSeconds = 90;
 
-/// The clock the rest timer reads. A provider so widget tests can hand it the
-/// binding's fake clock, which advances with every pump; everywhere else it
-/// is the phone's.
-final restNowProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+/// The clock the logger reads: the rest timer and the workout's elapsed time.
+/// One clock, so the two can never disagree. A provider so widget tests can
+/// hand it the binding's fake clock, which advances with every pump;
+/// everywhere else it is the phone's.
+final loggerClockProvider = Provider<DateTime Function()>(
+  (ref) => DateTime.now,
+);
 
 /// The session being logged right now, or null.
 ///
@@ -204,6 +208,57 @@ final sessionHistoryProvider = FutureProvider<SessionHistoryPage>(
   (ref) => ref.watch(sessionRepositoryProvider).history(),
   retry: apiRetryPolicy,
 );
+
+/// How many pages of the history list the Progress tab shows: the first,
+/// plus one more per "Show older workouts".
+///
+/// Back to one whenever the first page is fetched again. A newly finished
+/// workout pushes every older one a row down, so pages fetched before it
+/// would repeat a workout at each page edge.
+class HistoryPagesNotifier extends Notifier<int> {
+  @override
+  int build() {
+    ref.watch(sessionHistoryProvider);
+    return 1;
+  }
+
+  void showMore() => state = state + 1;
+}
+
+final historyPagesProvider = NotifierProvider<HistoryPagesNotifier, int>(
+  HistoryPagesNotifier.new,
+);
+
+/// Page [page] (2 and on) of the same list as [sessionHistoryProvider],
+/// refetched along with it for the reason [HistoryPagesNotifier] resets.
+///
+/// Kept, not autoDispose: the list sits inside the Progress tab's ListView,
+/// which drops it once it is scrolled far away, and coming back must not
+/// fetch the pages already read again. The keys are page numbers, bounded by
+/// how far a person has read, and each is fetched afresh after page 1 is.
+/// While that refetch runs the page still carries its old rows (and, after
+/// a sign-out, the last account's), so readers treat loading as loading and
+/// never show [AsyncValue.value] then.
+final olderHistoryProvider = FutureProvider.family<SessionHistoryPage, int>((
+  ref,
+  page,
+) {
+  ref.watch(sessionHistoryProvider);
+  return ref.watch(sessionRepositoryProvider).history(page: page);
+}, retry: apiRetryPolicy);
+
+/// One finished workout, opened from History. Disposed when its screen
+/// closes: a past workout does not change, and nothing else reads it.
+///
+/// [apiRetryPolicy] like its neighbours: a refusal such as
+/// `SESSION_NOT_FOUND` shows at once instead of after Riverpod's ten
+/// default retries, and a network blip is retried at most twice.
+final sessionDetailProvider = FutureProvider.autoDispose
+    .family<SessionDetail, int>(
+      (ref, sessionId) =>
+          ref.watch(sessionRepositoryProvider).detail(sessionId),
+      retry: apiRetryPolicy,
+    );
 
 /// The workout the "+" sheet offers to repeat, or null when there is none.
 final lastWorkoutProvider = FutureProvider<LastWorkout?>(

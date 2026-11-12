@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme.dart';
+import '../../../../core/widgets/fs_kit.dart';
 import '../../../exercises/domain/exercise_cues.dart';
 import '../../../exercises/presentation/providers.dart';
 import '../../../exercises/presentation/widgets/coach_panel.dart';
@@ -70,14 +71,18 @@ class ExerciseDemoStage extends ConsumerWidget {
 
     return detail.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      // A demo that will not load must not block the workout behind it.
+      // A demo that will not load must not block the workout behind it. The
+      // failure is cached for the session (the provider is not autoDispose),
+      // so it needs its own way to ask again.
       error: (_, _) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            'Could not load this exercise. You can still log your sets.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12.5, color: t.text2),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: FsRetry(
+            buttonKey: const Key('logger.demo.retry'),
+            message:
+                'Could not load this exercise. You can still log your sets.',
+            onRetry: () =>
+                ref.invalidate(exerciseDetailProvider(exercise.exerciseId)),
           ),
         ),
       ),

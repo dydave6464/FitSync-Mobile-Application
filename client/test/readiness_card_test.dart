@@ -6,6 +6,8 @@ import 'package:fitsync/core/widgets/fs_charts.dart' show FsRing;
 import 'package:fitsync/features/home/presentation/widgets/readiness_card.dart';
 import 'package:fitsync/features/recovery/domain/recovery.dart';
 
+import 'helpers/a11y.dart' show contrast;
+
 const _today = MorningCheckin(
   checkinId: 1,
   checkinDate: '2026-09-24',
@@ -26,11 +28,12 @@ Future<({List<String> taps})> _pump(
   WidgetTester tester, {
   InjuryRiskEstimate? estimate,
   MorningCheckin? todayCheckin,
+  bool dark = false,
 }) async {
   final taps = <String>[];
   await tester.pumpWidget(
     MaterialApp(
-      theme: fsLightTheme(),
+      theme: dark ? fsDarkTheme() : fsLightTheme(),
       home: Scaffold(
         body: ReadinessCard(
           estimate: estimate,
@@ -294,4 +297,41 @@ void main() {
 
     expect(r.taps, ['checkin', 'card']);
   });
+
+  for (final dark in [false, true]) {
+    testWidgets('secondary text reads at 4.5:1 where the card\'s tint is '
+        'strongest (${dark ? 'dark' : 'light'})', (tester) async {
+      final t = dark ? FsTokens.dark : FsTokens.light;
+      final strongest = Color.alphaBlend(
+        t.accent.withValues(alpha: 0.16),
+        t.bg,
+      );
+      void expectReadable(Finder text) => expect(
+        contrast(tester.widget<Text>(text).style!.color!, strongest),
+        greaterThanOrEqualTo(4.5),
+        reason: '${tester.widget<Text>(text).data}',
+      );
+
+      // An earlier day's estimate: "READY" under the ring, and "From ...".
+      await _pump(
+        tester,
+        estimate: _scored('low', 18).copyWithDate('2026-09-20'),
+        dark: dark,
+      );
+      expectReadable(find.text('READY'));
+      expectReadable(find.textContaining('From '));
+
+      // Scored without a number: the dash in the ring.
+      await _pump(tester, estimate: _scored('low', null), dark: dark);
+      expectReadable(find.text('–'));
+    });
+  }
+}
+
+extension on InjuryRiskEstimate {
+  InjuryRiskEstimate copyWithDate(String date) => InjuryRiskEstimate(
+    riskLevel: riskLevel,
+    trainingLoadScore: trainingLoadScore,
+    checkinDate: date,
+  );
 }

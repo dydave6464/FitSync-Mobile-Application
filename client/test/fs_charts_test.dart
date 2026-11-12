@@ -68,6 +68,25 @@ void main() {
       expect(heights, [0, 2400, 0, 3100, 0, 2800, 0]);
     });
 
+    testWidgets('one bar can be drawn in its own colour', (tester) async {
+      await _pump(
+        tester,
+        const FsBarChart(
+          label: 'Steps this week',
+          bars: _week,
+          color: Colors.grey,
+          highlightIndex: 6,
+          highlightColor: Colors.blue,
+        ),
+      );
+
+      final colors = [
+        for (final group in _barData(tester).barGroups)
+          group.barRods.single.color,
+      ];
+      expect(colors, [...List.filled(6, Colors.grey), Colors.blue]);
+    });
+
     testWidgets('every bar with a label shows it', (tester) async {
       // A week thinned to every other day hid the days trained.
       await _pump(
@@ -110,6 +129,17 @@ void main() {
         0,
       );
       expect(item!.text, 'Thu, Oct 15 · 3,100 kg');
+    });
+
+    testWidgets('bars fill in the data green by default', (tester) async {
+      // The light brand green is 2.45:1 on surface2: the bars are the data.
+      await _pump(
+        tester,
+        const FsBarChart(label: 'Training volume', bars: _week),
+      );
+      for (final group in _barData(tester).barGroups) {
+        expect(group.barRods.single.color, FsTokens.light.accentFill);
+      }
     });
 
     testWidgets('a screen reader hears every bar, in words it can say', (
@@ -300,6 +330,92 @@ void main() {
     });
   });
 
+  group('FsStackedBarChart', () {
+    // It shares FsBarChart's touch, tooltip and label sizing; these pin
+    // that it still behaves the same.
+    List<FsStackedBar> months(String prefix) => [
+      for (final m in ['Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov'])
+        FsStackedBar(
+          values: const [1200, 800],
+          label: m,
+          total: '₱2,000',
+          tooltip: '$prefix$m · ₱2,000',
+        ),
+    ];
+
+    FsStackedBarChart chart(String prefix) => FsStackedBarChart(
+      label: 'Revenue',
+      bars: months(prefix),
+      colors: const [Colors.green, Colors.blue],
+    );
+
+    Offset barAt(WidgetTester tester, int i) {
+      final rect = tester.getRect(find.byType(BarChart));
+      return Offset(rect.left + (i + 0.5) * rect.width / 6, rect.top + 60);
+    }
+
+    List<int> showing(WidgetTester tester) => [
+      for (final (i, group) in _barData(tester).barGroups.indexed)
+        if (group.showingTooltipIndicators.isNotEmpty) i,
+    ];
+
+    testWidgets('a tapped bar keeps its tooltip until the next tap', (
+      tester,
+    ) async {
+      await _pump(tester, chart(''));
+      expect(_barData(tester).barTouchData.handleBuiltInTouches, isFalse);
+
+      await tester.tapAt(barAt(tester, 2));
+      await tester.pump(const Duration(seconds: 5));
+      expect(showing(tester), [2]);
+
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pump();
+      expect(showing(tester), isEmpty);
+    });
+
+    testWidgets('new numbers put an old tooltip away', (tester) async {
+      await _pump(tester, chart(''));
+      await tester.tapAt(barAt(tester, 2));
+      await tester.pump();
+      expect(showing(tester), [2]);
+
+      await _pump(tester, chart('Last year: '));
+      expect(showing(tester), isEmpty);
+    });
+
+    testWidgets('a bar can be touched anywhere in its column', (tester) async {
+      await _pump(tester, chart(''));
+      final touch = _barData(tester).barTouchData;
+      expect(touch.allowTouchBarBackDraw, isTrue);
+      expect(touch.touchExtraThreshold.horizontal, greaterThan(0));
+    });
+
+    testWidgets('large text keeps every month one size', (tester) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await _pump(tester, chart(''));
+
+      final names = ['Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov'];
+      final sizes = {
+        for (final m in names) tester.widget<Text>(find.text(m)).style!.fontSize,
+      };
+      expect(sizes, hasLength(1), reason: 'one size for every label');
+      expect(sizes.single, lessThan(22), reason: 'shrunk to fit its slot');
+    });
+  });
+
+  testWidgets('a bar row fills in the data green by default', (tester) async {
+    await _pump(tester, const FsBarRow(label: 'Chest', fraction: 0.6));
+    final bar = tester.widget<LinearProgressIndicator>(
+      find.byType(LinearProgressIndicator),
+    );
+    expect(bar.color, FsTokens.light.accentFill);
+  });
+
   group('FsLineChart', () {
     final weighIns = [
       const FsPoint(
@@ -327,6 +443,24 @@ void main() {
         referenceLabel: 'Goal 70 kg',
       ),
     );
+
+    // L-11: the brand green is 2.87:1 on a light card, under the 3:1 a line
+    // read as data needs.
+    testWidgets('the line and its dots are in the data green by default', (
+      tester,
+    ) async {
+      await pumpWeights(tester);
+
+      final bar = _lineData(tester).lineBarsData.single;
+      expect(bar.color, FsTokens.light.accentFill);
+      final dot = bar.dotData.getDotPainter(
+        bar.spots.first,
+        0,
+        bar,
+        0,
+      ) as FlDotCirclePainter;
+      expect(dot.color, FsTokens.light.accentFill);
+    });
 
     testWidgets('every weigh-in is a dot on the line', (tester) async {
       await pumpWeights(tester);

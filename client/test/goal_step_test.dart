@@ -1,4 +1,7 @@
+import 'dart:ui' show CheckedState;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show SemanticsData;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/widgets/fs_kit.dart';
@@ -57,6 +60,14 @@ Profile _profileWithGoals(List<String> goals, {String? mainGoal}) => Profile(
   goals: goals,
   mainGoal: mainGoal,
 );
+
+/// The semantics a single-choice chip reports (P-1a): one of a group where
+/// picking one unpicks the rest, checked or not checked.
+SemanticsData _chipData(WidgetTester tester, Key key) => tester
+    .getSemantics(
+      find.descendant(of: find.byKey(key), matching: find.byType(Text)),
+    )
+    .getSemanticsData();
 
 void main() {
   group('GoalAnswers.fromProfile', () {
@@ -315,5 +326,23 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(current().mainGoal, 'lose_weight');
+  });
+
+  // P-1a: there is one main focus, so its chips are a radio group.
+  testWidgets('the main focus chips are one single choice', (tester) async {
+    final handle = tester.ensureSemantics();
+    await _pumpLive(tester);
+    await _tap(tester, 'goal.build_muscle');
+    await _tap(tester, 'goal.lose_weight');
+
+    for (final (value, on) in [
+      ('build_muscle', CheckedState.isTrue),
+      ('lose_weight', CheckedState.isFalse),
+    ]) {
+      final data = _chipData(tester, Key('focus.$value'));
+      expect(data.flagsCollection.isInMutuallyExclusiveGroup, isTrue);
+      expect(data.flagsCollection.isChecked, on);
+    }
+    handle.dispose();
   });
 }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show CheckedState;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
@@ -204,10 +205,14 @@ Future<void> _search(WidgetTester tester, String term) async {
   await tester.pumpAndSettle();
 }
 
-/// Whether the button announces itself as the chosen one.
+/// Whether the button announces itself as the chosen one. One area at a
+/// time, so the buttons are a radio group: the chosen one is checked.
 bool _isSelected(WidgetTester tester, Finder chip) {
   final node = tester.getSemantics(chip);
-  return isSemantics(isSelected: true).matches(node, {});
+  return isSemantics(
+    isChecked: true,
+    isInMutuallyExclusiveGroup: true,
+  ).matches(node, {});
 }
 
 void main() {
@@ -312,6 +317,26 @@ void main() {
       expect(container.read(selectedFiltersProvider).region, isNull);
       expect(exercises.lastMuscleGroups, isEmpty);
       expect(_isSelected(tester, _region('all')), isTrue);
+    });
+
+    // One area at a time: a screen reader hears a radio group, so the
+    // buttons that are off say "not checked" rather than nothing at all.
+    testWidgets('the buttons are announced as one radio group', (tester) async {
+      await _pump(tester, _container());
+
+      for (final name in ['all', ...MuscleRegion.values.map((r) => r.name)]) {
+        final data = tester.getSemantics(_region(name)).getSemanticsData();
+        expect(
+          data.flagsCollection.isInMutuallyExclusiveGroup,
+          isTrue,
+          reason: name,
+        );
+        expect(
+          data.flagsCollection.isChecked,
+          name == 'all' ? CheckedState.isTrue : CheckedState.isFalse,
+          reason: name,
+        );
+      }
     });
 
     testWidgets('every button is a full-size tap target', (tester) async {

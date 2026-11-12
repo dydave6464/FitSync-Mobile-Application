@@ -6,7 +6,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/units.dart';
 import 'package:fitsync/core/widgets/fs_charts.dart' show FsRing, FsBarChart;
-import 'package:fitsync/core/widgets/fs_kit.dart' show FsCard;
+import 'package:fitsync/core/api_exception.dart';
+
+import 'dart:async';
+
+import 'package:fitsync/core/widgets/fs_kit.dart'
+    show FsButton, FsCard, FsRetry, FsSheetHandle, FsSheetHeightCap;
+import 'package:fitsync/features/recovery/data/recovery_repository.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart'
     show weightUnitProvider;
 import 'package:fitsync/features/recovery/domain/recovery.dart';
@@ -124,7 +130,92 @@ Future<void> _pump(
   await tester.pumpAndSettle();
 }
 
+/// Serves [overviews] in turn (the last one again once they run out) and
+/// counts the calls, so a test can tell the tab was fetched again.
+class _RetryRepo implements RecoveryRepository {
+  _RetryRepo(this._overviews);
+
+  final List<RecoveryOverview> _overviews;
+  int overviews = 0;
+  int retries = 0;
+  Future<InjuryRiskEstimate> Function()? retry;
+
+  @override
+  Future<RecoveryOverview> overview() async =>
+      _overviews[(overviews++).clamp(0, _overviews.length - 1)];
+
+  @override
+  Future<InjuryRiskEstimate> retryEstimate() {
+    retries++;
+    return retry?.call() ??
+        Future.value(
+          const InjuryRiskEstimate(
+            riskLevel: 'moderate',
+            trainingLoadScore: 42.5,
+            checkinDate: '2026-09-20',
+          ),
+        );
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation i) =>
+      throw UnimplementedError('${i.memberName} is not used here');
+}
+
+/// The real overview provider over [repo].
+Future<void> _pumpRepo(WidgetTester tester, _RetryRepo repo) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        recoveryRepositoryProvider.overrideWithValue(repo),
+        weightUnitProvider.overrideWithValue(WeightUnit.kg),
+      ],
+      child: MaterialApp(
+        theme: fsLightTheme(),
+        home: const Scaffold(body: RecoveryScreen()),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
 void main() {
+  testWidgets('a failed load says why over the kit retry, which loads again', (
+    tester,
+  ) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          recoveryOverviewProvider.overrideWith((ref) async {
+            if (calls++ == 0) {
+              // Not a network error, which the provider retries itself.
+              throw const ApiException('SERVER_ERROR', 'Recovery is down.');
+            }
+            return const RecoveryOverview(
+              todayCheckin: null,
+              latestEstimate: null,
+              load: [],
+            );
+          }),
+          weightUnitProvider.overrideWithValue(WeightUnit.kg),
+        ],
+        child: MaterialApp(
+          theme: fsLightTheme(),
+          home: const Scaffold(body: RecoveryScreen()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(FsRetry), findsOneWidget);
+    expect(find.text('Recovery is down.'), findsOneWidget);
+    await tester.tap(find.text('Try again'));
+    await tester.pumpAndSettle();
+    expect(calls, 2);
+    expect(find.byKey(const Key('recovery.empty')), findsOneWidget);
+  });
+
   testWidgets('an account that has never checked in is invited to', (
     tester,
   ) async {
@@ -177,8 +268,17 @@ void main() {
 
       expect(find.text('Today\'s estimate is unavailable'), findsOneWidget);
       expect(find.textContaining('September 18'), findsOneWidget);
-      // The same way forward as with no older estimate at all.
-      expect(find.text('Tap Update below to try again.'), findsOneWidget);
+      // The same way forward as with no older estimate at all: a retry in
+      // the box, and Update still there for changing the answers.
+      expect(find.text('Tap Update below to try again.'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('recovery.box')),
+          matching: find.widgetWithText(FsButton, 'Try again'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('recovery.retry')), findsOneWidget);
       expect(find.byKey(const Key('recovery.update')), findsOneWidget);
     },
   );
@@ -195,6 +295,8 @@ void main() {
       ),
     );
     expect(find.textContaining('try again'), findsNothing);
+    expect(find.byKey(const Key('recovery.retry')), findsNothing);
+    expect(find.text('Try again'), findsNothing);
   });
 
   testWidgets(
@@ -656,6 +758,31 @@ void main() {
       semantics.dispose();
     });
 
+    testWidgets("an earlier day's ring says so to a screen reader", (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await _pump(
+        tester,
+        const RecoveryOverview(
+          todayCheckin: null,
+          latestEstimate: _estimate,
+          load: [],
+        ),
+      );
+
+      // Its grey is the only sign on the ring itself; the date comes two
+      // nodes later, so the ring names it too.
+      expect(
+        find.bySemanticsLabel(
+          "Injury risk: Moderate, from September 18, 2026. "
+          "Not today's estimate.",
+        ),
+        findsOneWidget,
+      );
+      semantics.dispose();
+    });
+
     testWidgets('the ⓘ control is named, big enough and opens the guide', (
       tester,
     ) async {
@@ -783,12 +910,173 @@ void main() {
         findsNothing,
       );
       expect(
-        find.text(
-          'Your check-in is saved, but no estimate came back. '
-          'Tap Update below to try again.',
-        ),
+        find.text('Your check-in is saved, but no estimate came back.'),
         findsOneWidget,
       );
+      expect(find.textContaining('Tap Update below'), findsNothing);
+      expect(find.widgetWithText(FsButton, 'Try again'), findsOneWidget);
+    });
+
+    testWidgets('no check-in yet offers no retry', (tester) async {
+      await _pump(
+        tester,
+        const RecoveryOverview(
+          todayCheckin: null,
+          latestEstimate: null,
+          load: [],
+        ),
+      );
+      expect(find.byKey(const Key('recovery.retry')), findsNothing);
+      expect(find.text('Try again'), findsNothing);
+    });
+  });
+
+  group('retrying the estimate', () {
+    const savedNoEstimate = RecoveryOverview(
+      todayCheckin: _checkin,
+      latestEstimate: null,
+      load: [],
+    );
+    const estimated = RecoveryOverview(
+      todayCheckin: _checkin,
+      latestEstimate: InjuryRiskEstimate(
+        riskLevel: 'moderate',
+        trainingLoadScore: 42.5,
+        checkinDate: '2026-09-20',
+      ),
+      load: [],
+    );
+
+    FsButton retryButton(WidgetTester tester) =>
+        tester.widget<FsButton>(find.byKey(const Key('recovery.retry')));
+
+    testWidgets('Try again works the estimate out again and shows it', (
+      tester,
+    ) async {
+      final repo = _RetryRepo([savedNoEstimate, estimated]);
+      await _pumpRepo(tester, repo);
+
+      expect(find.byType(FsRing), findsNothing);
+      await tester.tap(find.byKey(const Key('recovery.retry')));
+      await tester.pumpAndSettle();
+
+      expect(repo.retries, 1);
+      expect(repo.overviews, 2);
+      expect(find.byType(FsRing), findsOneWidget);
+      expect(find.text('Moderate'), findsOneWidget);
+      expect(find.byKey(const Key('recovery.retry')), findsNothing);
+    });
+
+    testWidgets('the button is disabled while the retry runs', (tester) async {
+      final pending = Completer<InjuryRiskEstimate>();
+      final repo = _RetryRepo([savedNoEstimate, estimated])
+        ..retry = () => pending.future;
+      await _pumpRepo(tester, repo);
+
+      await tester.tap(find.byKey(const Key('recovery.retry')));
+      await tester.pump();
+      expect(retryButton(tester).busy, isTrue);
+      await tester.tap(find.byKey(const Key('recovery.retry')));
+      await tester.pump();
+      expect(repo.retries, 1);
+
+      pending.complete(estimated.latestEstimate!);
+      await tester.pumpAndSettle();
+      expect(find.byType(FsRing), findsOneWidget);
+    });
+
+    testWidgets(
+      "a failed retry says the server's reason and can be tried again",
+      (tester) async {
+        const unavailable =
+            "Couldn't work out your estimate right now. Your check-in is "
+            'saved, so try again in a few minutes.';
+        final repo = _RetryRepo([savedNoEstimate])
+          ..retry = () async =>
+              throw const ApiException('ESTIMATE_UNAVAILABLE', unavailable);
+        await _pumpRepo(tester, repo);
+
+        await tester.tap(find.byKey(const Key('recovery.retry')));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.descendant(
+            of: find.byType(SnackBar),
+            matching: find.text(unavailable),
+          ),
+          findsOneWidget,
+        );
+        expect(repo.overviews, 1);
+        expect(retryButton(tester).busy, isFalse);
+        expect(retryButton(tester).onPressed, isNotNull);
+
+        await tester.tap(find.byKey(const Key('recovery.retry')));
+        await tester.pumpAndSettle();
+        expect(repo.retries, 2);
+      },
+    );
+
+    testWidgets('with no check-in today any more, the tab asks for one', (
+      tester,
+    ) async {
+      final repo =
+          _RetryRepo([
+              savedNoEstimate,
+              const RecoveryOverview(
+                todayCheckin: null,
+                latestEstimate: null,
+                load: [],
+              ),
+            ])
+            ..retry = () async => throw const ApiException(
+              'NO_CHECKIN_TODAY',
+              "There's no check-in for today yet. Check in first to get today's "
+                  'estimate.',
+            );
+      await _pumpRepo(tester, repo);
+
+      await tester.tap(find.byKey(const Key('recovery.retry')));
+      await tester.pumpAndSettle();
+
+      expect(repo.overviews, 2);
+      expect(
+        find.text('Check in this morning to get your first estimate.'),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('recovery.checkin')), findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing);
+    });
+
+    testWidgets('fits a 320 dp phone at 2x text', (tester) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            recoveryOverviewProvider.overrideWith(
+              (ref) async => const RecoveryOverview(
+                todayCheckin: _checkin,
+                latestEstimate: _estimate,
+                load: [],
+              ),
+            ),
+            weightUnitProvider.overrideWithValue(WeightUnit.kg),
+          ],
+          child: MaterialApp(
+            theme: fsDarkTheme(),
+            home: const MediaQuery(
+              data: MediaQueryData(textScaler: TextScaler.linear(2)),
+              child: Scaffold(body: RecoveryScreen()),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      // A small button answers taps across a 48 dp band of its own.
+      final band = tester.getSize(find.widgetWithText(FsButton, 'Try again'));
+      expect(band.height, greaterThanOrEqualTo(48));
     });
   });
 
@@ -836,6 +1124,56 @@ void main() {
     expect(chart.bars.last.tooltip, 'Today · 1,323 lb');
     expect(chart.bars.last.value, closeTo(1322.77, 0.01));
     expect(chart.label, '7-day training load');
+  });
+
+  testWidgets('Check in and Update are full-size tap targets', (tester) async {
+    final semantics = tester.ensureSemantics();
+    for (final (overview, key) in [
+      (
+        const RecoveryOverview(
+          todayCheckin: null,
+          latestEstimate: null,
+          load: [],
+        ),
+        'recovery.checkin',
+      ),
+      (_withToday(_todays()), 'recovery.update'),
+    ]) {
+      await _pump(tester, overview);
+      // The guideline skips a node clipped off screen, so the button must be
+      // there, and wholly in view, for the check to mean anything.
+      final button = find.byKey(Key(key));
+      expect(button, findsOneWidget);
+      await tester.ensureVisible(button);
+      await tester.pumpAndSettle();
+      final screen =
+          Offset.zero & tester.view.physicalSize / tester.view.devicePixelRatio;
+      expect(screen.intersect(tester.getRect(button)), tester.getRect(button));
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+    }
+    semantics.dispose();
+  });
+
+  testWidgets('a week of no workouts says what fills the load card', (
+    tester,
+  ) async {
+    // What GET /recovery sends for a rest week: seven zero-filled days.
+    final load = [
+      for (var i = 0; i < 7; i++)
+        VolumeBucket(label: '-${6 - i}d', volumeKg: 0),
+    ];
+    await _pump(tester, _withToday(_todays(), load: load));
+    final line = find.text(
+      'No workouts in the last 7 days. Finished workouts show here as '
+      'training load.',
+    );
+    await tester.scrollUntilVisible(line, 200);
+    await tester.pumpAndSettle();
+
+    expect(find.text('7-DAY TRAINING LOAD'), findsOneWidget);
+    expect(line, findsOneWidget);
+    // Not a bare baseline under seven weekday labels.
+    expect(find.byType(FsBarChart), findsNothing);
   });
 
   group('320 dp at 2x text', () {
@@ -893,6 +1231,50 @@ void main() {
           tester.getBottomLeft(find.text('Morning check-in')).dy,
         ),
       );
+    });
+
+    // P-23: How to read had its own copy of the 0.9 cap and a hand-drawn
+    // handle. With no discard guard it takes the theme's chrome: Material's
+    // handle, surface and corners, under the kit's cap -- the whole sheet
+    // within 0.9 of the screen, handle included.
+    testWidgets('the guide takes the theme chrome under the kit cap', (
+      tester,
+    ) async {
+      await narrow(tester);
+      await _pump(tester, _withToday(_todays()));
+      await tester.tap(find.byKey(const Key('recovery.howToRead')));
+      await tester.pumpAndSettle();
+
+      final bottomSheet = tester.widget<BottomSheet>(find.byType(BottomSheet));
+      expect(bottomSheet.showDragHandle, isTrue);
+      expect(find.byType(FsSheetHandle), findsNothing);
+      expect(
+        find.byWidgetPredicate(
+          (w) =>
+              w is Container &&
+              w.constraints ==
+                  const BoxConstraints.tightFor(width: 38, height: 4),
+        ),
+        findsOneWidget,
+        reason: "only Material's handle, none hand-drawn beside it",
+      );
+      expect(find.byType(FsSheetHeightCap), findsOneWidget);
+      final material = find
+          .descendant(
+            of: find.byType(BottomSheet),
+            matching: find.byType(Material),
+          )
+          .first;
+      expect(tester.widget<Material>(material).color, FsTokens.light.surface);
+      expect(
+        tester.widget<Material>(material).shape,
+        const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(FsRadius.card),
+          ),
+        ),
+      );
+      expect(tester.getSize(material).height, lessThanOrEqualTo(640 * 0.9));
     });
 
     testWidgets('the guide does not overflow and scrolls to its end', (

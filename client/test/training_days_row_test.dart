@@ -11,6 +11,7 @@ Future<void> _pump(
   WidgetTester tester, {
   List<int> selected = const [],
   int? busyWeekday,
+  int? savedWeekday,
   bool enabled = true,
   required ValueChanged<List<int>> onChanged,
 }) async {
@@ -21,6 +22,7 @@ Future<void> _pump(
         body: TrainingDaysRow(
           selected: selected,
           busyWeekday: busyWeekday,
+          savedWeekday: savedWeekday,
           enabled: enabled,
           onChanged: onChanged,
         ),
@@ -282,5 +284,48 @@ void main() {
 
       expect(tester.takeException(), isNull);
     });
+  });
+
+  testWidgets('the weekday just saved says so, and only that one (PT-16)', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(
+      tester,
+      selected: const [1, 3],
+      savedWeekday: 3,
+      onChanged: (_) {},
+    );
+
+    String value(int weekday) => tester
+        .getSemantics(find.byKey(Key('weekday.$weekday')))
+        .getSemanticsData()
+        .value;
+    expect(value(3), 'Saved');
+    expect(value(1), '');
+    expect(value(2), '');
+    handle.dispose();
+  });
+
+  testWidgets('a write in flight reads Saving, not Saved (PT-16)', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(
+      tester,
+      selected: const [1, 3],
+      busyWeekday: 3,
+      savedWeekday: 3,
+      onChanged: (_) {},
+    );
+
+    expect(
+      tester
+          .getSemantics(find.byKey(const Key('weekday.3')))
+          .getSemanticsData()
+          .value,
+      'Saving',
+    );
+    handle.dispose();
   });
 }

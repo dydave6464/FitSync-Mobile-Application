@@ -205,6 +205,24 @@ async function deactivateHabit(pool, userId, habitId) {
   return res.affectedRows > 0;
 }
 
+/// Undo for [deactivateHabit]: the habit, its weekdays and its ticks were
+/// never removed, so bringing it back is one flag. Idempotent -- an active
+/// habit comes back unchanged, so a second Undo tap or a retry after a lost
+/// response cannot fail. Null when the habit is missing or someone else's.
+///
+/// The result is re-read rather than inferred from affectedRows: with
+/// mysql2's FOUND_ROWS flag an already-active row and a changed one are hard
+/// to tell apart, and the read answers the only question that matters.
+/// No time limit: Undo's lifetime is the client's to decide, and a snackbar
+/// that persists for a screen reader must still work when finally tapped.
+async function reactivateHabit(pool, userId, habitId) {
+  await pool.query(
+    'UPDATE routine_habits SET is_active = TRUE WHERE habit_id = ? AND user_id = ?',
+    [habitId, userId],
+  );
+  return readHabit(pool, userId, habitId);
+}
+
 /// Ticks or unticks [date]. Both directions are idempotent: the UNIQUE key
 /// absorbs a second tick, and a second untick deletes nothing.
 ///
@@ -245,6 +263,7 @@ async function setCheck(pool, userId, habitId, done, date = null, requestedDate 
 }
 
 module.exports = {
-  readDay, readHabit, listHabits, createHabit, updateHabit, deactivateHabit, setCheck,
+  readDay, readHabit, listHabits, createHabit, updateHabit, deactivateHabit, reactivateHabit,
+  setCheck,
   weekdaysFor, hhmm,
 };

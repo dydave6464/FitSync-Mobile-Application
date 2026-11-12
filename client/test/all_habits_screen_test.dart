@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/features/routine/data/routine_repository.dart';
 import 'package:fitsync/features/routine/domain/routine.dart';
@@ -75,9 +76,20 @@ class _FakeRepo implements RoutineRepository {
     return h;
   }
 
+  final _deleted = <int, Habit>{};
+
   @override
-  Future<void> remove(int habitId) async =>
-      habits.removeWhere((x) => x.habitId == habitId);
+  Future<void> remove(int habitId) async {
+    _deleted[habitId] = habits.firstWhere((x) => x.habitId == habitId);
+    habits.removeWhere((x) => x.habitId == habitId);
+  }
+
+  @override
+  Future<Habit> restore(int habitId) async {
+    final h = _deleted.remove(habitId)!;
+    habits.add(h);
+    return h;
+  }
 
   @override
   Future<void> check(int habitId, {String? date}) async {}
@@ -160,6 +172,23 @@ void main() {
 
     expect(find.byKey(const Key('allHabits.habit.4')), findsNothing);
     expect(find.byKey(const Key('allHabits.habit.5')), findsOneWidget);
+    expect(find.text('Habit deleted'), findsOneWidget);
+  });
+
+  testWidgets('Undo puts a deleted habit back in the list (PT-11)', (
+    tester,
+  ) async {
+    await _pump(tester, [_stretch, _walk]);
+
+    await tester.tap(find.byKey(const Key('allHabits.habit.4')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('habit.delete')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(SnackBarAction, 'Undo'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('allHabits.habit.4')), findsOneWidget);
+    expect(find.byKey(const Key('allHabits.habit.5')), findsOneWidget);
   });
 
   testWidgets('with no habits it says so and offers to add one', (
@@ -186,7 +215,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Something broke.'), findsOneWidget);
+    expect(find.widgetWithText(FsRetry, 'Something broke.'), findsOneWidget);
+    expect(find.text('Try again'), findsOneWidget);
     await tester.tap(find.byKey(const Key('allHabits.retry')));
     await tester.pumpAndSettle();
 

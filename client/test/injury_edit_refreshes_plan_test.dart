@@ -9,6 +9,7 @@ import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/sessions/data/session_repository.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
+import 'package:fitsync/features/sessions/domain/training_analytics.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 
 Profile _profile({List<SelectedInjury> injuries = const []}) => Profile(
@@ -33,6 +34,9 @@ class _FakeProfileRepo implements ProfileRepository {
     current = _profile(injuries: injuries);
     return current;
   }
+
+  @override
+  Future<Profile> setTrainingDays(List<int> weekdays) async => current;
 
   @override
   dynamic noSuchMethod(Invocation i) =>
@@ -60,6 +64,19 @@ class _FakePlanRepo implements PlanRepository {
 /// the in-progress session, and its `coaching` tags go stale the same way.
 class _FakeSessionRepo implements SessionRepository {
   int fetchCount = 0;
+  int analyticsCount = 0;
+
+  @override
+  Future<TrainingAnalytics> analytics(String period) async {
+    analyticsCount += 1;
+    return TrainingAnalytics.fromJson({
+      'period': period,
+      'volume': const [],
+      'change': const {'totalKg': 0, 'previousKg': 0, 'changePct': null},
+      'adherence': const {'done': 0, 'target': 3, 'weeks': 1},
+      'muscles': const [],
+    });
+  }
 
   @override
   Future<ActiveSession?> active() async {
@@ -107,5 +124,46 @@ void main() {
     // fresh fetch can carry the new one.
     expect(planRepo.fetchCount, 2);
     expect(sessionRepo.fetchCount, 2);
+  });
+
+  // PT-18: the server derives the plan's days a week from the chosen days,
+  // and the Progress adherence target from the same count, so both refetch.
+  test('choosing training days refetches the active plan and the analytics, '
+      'every period', () async {
+    final profileRepo = _FakeProfileRepo();
+    final planRepo = _FakePlanRepo();
+    final sessionRepo = _FakeSessionRepo();
+    final container = ProviderContainer(
+      overrides: [
+        profileRepositoryProvider.overrideWithValue(profileRepo),
+        planRepositoryProvider.overrideWithValue(planRepo),
+        sessionRepositoryProvider.overrideWithValue(sessionRepo),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    // Listened, so a refetch can only come from an invalidation.
+    container.listen(activePlanProvider, (_, _) {});
+    container.listen(trainingAnalyticsProvider('week'), (_, _) {});
+    container.listen(trainingAnalyticsProvider('month'), (_, _) {});
+    await container.read(profileProvider.future);
+    await container.read(activePlanProvider.future);
+    await container.read(trainingAnalyticsProvider('week').future);
+    await container.read(trainingAnalyticsProvider('month').future);
+    expect(planRepo.fetchCount, 1);
+    expect(sessionRepo.analyticsCount, 2);
+
+    await container.read(profileProvider.notifier).setTrainingDays(const [
+      1,
+      3,
+      5,
+      6,
+    ]);
+    await container.read(activePlanProvider.future);
+    await container.read(trainingAnalyticsProvider('week').future);
+    await container.read(trainingAnalyticsProvider('month').future);
+
+    expect(planRepo.fetchCount, 2);
+    expect(sessionRepo.analyticsCount, 4);
   });
 }

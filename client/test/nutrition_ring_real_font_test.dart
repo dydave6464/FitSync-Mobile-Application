@@ -142,9 +142,13 @@ void main() {
         }
         // And still big enough to read, as drawn: the label stays near the
         // prototype's 8 px, and a four-digit total eases but stays large.
+        // At larger text the ring and its words grow with it, up to 1.6x
+        // (NU-2): before, they stayed this size at any text scale.
+        final k = scale.clamp(1.0, 1.6);
         if (target != 0) {
-          expect(_drawnSize(tester, label), greaterThanOrEqualTo(7.5));
+          expect(_drawnSize(tester, label), greaterThanOrEqualTo(7.5 * k));
         }
+        expect(_drawnSize(tester, eatenText), greaterThanOrEqualTo(15 * k));
         if (scale == 1.0 && shown.length >= 5) {
           expect(_drawnSize(tester, eatenText), greaterThanOrEqualTo(16));
         }

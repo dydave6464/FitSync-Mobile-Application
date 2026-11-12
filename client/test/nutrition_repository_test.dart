@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:fitsync/core/api_client.dart';
 import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/features/nutrition/data/nutrition_repository.dart';
+import 'package:fitsync/features/nutrition/domain/meal_suggestion.dart';
 import 'package:fitsync/features/nutrition/domain/nutrition.dart';
 
 NutritionRepository _repo(MockClient client) => NutritionRepository(
@@ -64,6 +65,37 @@ void main() {
     }));
     final entry = await repo.logEntry(date: '2026-10-14', mealType: 'snack', servings: 1.5, food: Food.fromJson(_food));
     expect(entry.id, 9);
+  });
+
+  // NU-4: a repeat of the same clientId gets the entry already saved (200).
+  test('logEntry sends the clientId it is given, and a 200 reads like a 201', () async {
+    final repo = _repo(MockClient((r) async {
+      expect(jsonDecode(r.body), {
+        'date': '2026-10-14', 'mealType': 'snack', 'servings': 1.5,
+        'food': {'source': 'fatsecret', 'externalId': 'fs-1'},
+        'clientId': '3f1c2b9e-8d4a-4c1e-9b7a-2e5d6f708192',
+      });
+      return _ok({'entry': {
+        'id': 9, 'mealType': 'snack', 'name': 'Mango Shake', 'servingDesc': '1 glass', 'servings': 1.5,
+        'kcal': 375, 'proteinG': 6, 'carbsG': 75, 'fatG': 5.25, 'source': 'fatsecret', 'foodId': 4, 'externalId': 'fs-1',
+      }}, 200);
+    }));
+    final entry = await repo.logEntry(
+      date: '2026-10-14', mealType: 'snack', servings: 1.5, food: Food.fromJson(_food),
+      clientId: '3f1c2b9e-8d4a-4c1e-9b7a-2e5d6f708192',
+    );
+    expect(entry.id, 9);
+  });
+
+  test('logEntry with a null clientId sends no key at all', () async {
+    final repo = _repo(MockClient((r) async {
+      expect((jsonDecode(r.body) as Map).containsKey('clientId'), isFalse);
+      return _ok({'entry': {
+        'id': 9, 'mealType': 'snack', 'name': 'Mango Shake', 'servingDesc': '1 glass', 'servings': 1.5,
+        'kcal': 375, 'proteinG': 6, 'carbsG': 75, 'fatG': 5.25, 'source': 'fatsecret', 'foodId': 4, 'externalId': 'fs-1',
+      }}, 201);
+    }));
+    await repo.logEntry(date: '2026-10-14', mealType: 'snack', servings: 1.5, food: Food.fromJson(_food), clientId: null);
   });
 
   test('updateEntry PATCHes meal and servings by id, with no food when the numbers stand', () async {
@@ -193,5 +225,29 @@ void main() {
     expect(food.servingDesc, '1 thigh');
     expect(food.kcal, 107);
     expect(food.isFatsecret, isTrue);
+  });
+
+  test('suggestions asks for one meal and reads the plates', () async {
+    final repo = _repo(MockClient((r) async {
+      expect(r.method, 'GET');
+      expect(r.url.path, '/api/v1/nutrition/suggestions');
+      expect(r.url.queryParameters, {'meal': 'dinner'});
+      return _ok({
+        'date': '2026-10-14', 'meal': 'dinner', 'state': 'reached', 'share': null,
+        'suggestions': [{
+          'food': {
+            'foodId': 13, 'name': 'Hard-boiled egg', 'servingDesc': '1 large', 'kcal': 78, 'proteinG': 6.3,
+            'carbsG': 0.6, 'fatG': 5.3,
+          },
+          'rice': null,
+          'total': {'kcal': 78, 'proteinG': 6.3, 'carbsG': 0.6, 'fatG': 5.3},
+          'highProtein': true,
+        }],
+      });
+    }));
+    final s = await repo.suggestions('dinner');
+    expect(s.state, SuggestionState.reached);
+    expect(s.suggestions.single.food.name, 'Hard-boiled egg');
+    expect(s.suggestions.single.rice, isNull);
   });
 }

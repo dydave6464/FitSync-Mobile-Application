@@ -57,6 +57,8 @@ function createApp({
   // encoded, past the 1 MB every other route allows. Parsed here first, so
   // the general parser below leaves it alone (a parsed body is skipped).
   app.use('/api/v1/nutrition/recognize', express.json({ limit: '2mb' }));
+  // An ad's image arrives the same way, under the same 1.5 MB rule.
+  app.use('/api/v1/admin/ads', express.json({ limit: '2mb' }));
   app.use(express.json({ limit: '1mb' }));
 
   app.use((req, _res, next) => {

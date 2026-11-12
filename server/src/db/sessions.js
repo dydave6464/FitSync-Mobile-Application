@@ -619,6 +619,99 @@ async function listHistory(pool, userId, { page = 1, limit = 20 } = {}) {
   };
 }
 
+/// One finished session, read-only: what was trained, set by set.
+///
+/// Null when the id does not exist, is someone else's, or is not completed --
+/// the route answers all of them with the same 404, so nothing leaks about
+/// which ids exist. An open session is read through getActiveSession, and an
+/// abandoned one is not a training record.
+///
+/// The exercises are the ones with a completed set, in the order they were
+/// first logged (the lowest set_log_id). That one rule serves both kinds of
+/// session, and still holds after a swap has rewritten the plan's rows. An
+/// exercise demoted since is listed all the same: this is what was trained.
+///
+/// muscleGroups follows the History rule (see withMuscleGroups), so the app
+/// names the session exactly as its History row does.
+async function getCompletedSessionDetail(pool, userId, sessionId) {
+  if (!Number.isInteger(sessionId)) return null;
+  const [rows] = await pool.query(
+    `SELECT s.session_id, s.plan_id, s.plan_day_no, s.session_date, s.duration_min,
+            s.total_volume_kg, UNIX_TIMESTAMP(s.started_at) AS started_at_epoch,
+            p.name AS plan_name
+       FROM workout_sessions s
+       LEFT JOIN workout_plans p ON p.plan_id = s.plan_id
+      WHERE s.session_id = ? AND s.user_id = ? AND s.status = 'completed'`,
+    [sessionId, userId],
+  );
+  if (rows.length === 0) return null;
+  const [row] = await withMuscleGroups(pool, rows);
+
+  // Every set in one query, grouped below -- never a query per exercise. The
+  // equipment COALESCE is loadSessionExercises', so the name matches the
+  // logger's.
+  const [sets] = await pool.query(
+    `SELECT sl.exercise_id, sl.set_number, sl.weight_kg, sl.reps,
+            x.name, x.muscle_group, x.thumbnail_url,
+            COALESCE(parent.display_name, eq.display_name, eq.name) AS equipment
+       FROM set_logs sl
+       JOIN exercises x ON x.exercise_id = sl.exercise_id
+       LEFT JOIN equipment eq ON eq.equipment_id = x.equipment_id
+       LEFT JOIN equipment parent ON parent.equipment_id = eq.parent_equipment_id
+      WHERE sl.session_id = ? AND sl.is_completed = TRUE
+      ORDER BY sl.set_log_id`,
+    [row.session_id],
+  );
+
+  // A Map keeps insertion order, and the rows arrive by set_log_id, so each
+  // exercise lands where its first logged set put it.
+  const byExercise = new Map();
+  for (const set of sets) {
+    if (!byExercise.has(set.exercise_id)) {
+      byExercise.set(set.exercise_id, {
+        exerciseId: set.exercise_id,
+        name: set.name,
+        muscleGroup: set.muscle_group,
+        equipment: set.equipment ?? null,
+        // The stored key; the route turns it into a URL.
+        thumbnailUrl: set.thumbnail_url,
+        sets: [],
+      });
+    }
+    byExercise.get(set.exercise_id).sets.push({
+      setNumber: set.set_number,
+      weightKg: toNumber(set.weight_kg),
+      reps: set.reps,
+    });
+  }
+
+  const exercises = [...byExercise.values()].map((e) => {
+    const done = [...e.sets].sort((a, b) => a.setNumber - b.setNumber);
+    // Null, not 0, when no set carries both numbers: a bodyweight exercise
+    // has no volume to show, which is different from lifting nothing.
+    const weighed = done.filter((s) => s.weightKg !== null && s.reps !== null);
+    const volumeKg = weighed.length === 0
+      ? null
+      : Math.round(weighed.reduce((sum, s) => sum + s.weightKg * s.reps, 0) * 100) / 100;
+    return { ...e, volumeKg, sets: done };
+  });
+
+  return {
+    sessionId: row.session_id,
+    sessionDate: formatDate(row.session_date),
+    startedAt: row.started_at_epoch
+      ? new Date(Number(row.started_at_epoch) * 1000).toISOString()
+      : null,
+    durationMin: row.duration_min,
+    totalVolumeKg: toNumber(row.total_volume_kg),
+    setCount: sets.length,
+    planName: row.plan_name ?? null,
+    planDayNo: row.plan_day_no,
+    muscleGroups: row.muscle_groups,
+    exercises,
+  };
+}
+
 /// Completed sessions INSIDE [period]'s window, newest first.
 ///
 /// A period-aware twin of listHistory rather than an option bolted onto it:
@@ -769,6 +862,7 @@ async function completedThisWeek(pool, userId) {
 module.exports = {
   formatDate,
   toNumber,
+  withMuscleGroups,
   getSessionById,
   getActiveSession,
   startSession,
@@ -780,6 +874,7 @@ module.exports = {
   completedThisWeek,
   listHistory,
   listHistoryInWindow,
+  getCompletedSessionDetail,
   summariseHistory,
   lastCompletedWorkout,
   SUMMARY_WINDOWS,

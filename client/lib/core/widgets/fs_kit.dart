@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -12,6 +13,16 @@ import '../units.dart';
 ///
 /// Screens compose these instead of styling Material widgets inline, which is
 /// what keeps the look consistent and the screens readable.
+///
+/// Field labels follow one rule, so a form does not mix four styles:
+///
+/// * In the app, a field's name is an eyebrow above it, given as
+///   `FsField(label:)`, wherever the prototype draws an eyebrow there.
+/// * The auth forms (sign in, check email, forgot password) use
+///   [FsLabeledField]: a sentence-case name above, helper or error below.
+/// * [FsStatField] carries its own name, the dim label in its card.
+/// * NumberBox (the nutrition forms' macro boxes) carries its own name too:
+///   the prototype's small dim label above each box, not an eyebrow.
 
 /// `box-shadow: 0 10px 24px -10px` in the accent — the glow the design puts
 /// under anything raised and accent-coloured. `.btn.primary` and the nav's
@@ -25,6 +36,10 @@ List<BoxShadow> fsAccentGlow(FsTokens t) => [
     spreadRadius: -10,
   ),
 ];
+
+/// How faint a control is while it cannot be used: FsButton's disabled
+/// look, shared so a disabled card or row matches it.
+const double fsDisabledOpacity = 0.45;
 
 enum FsButtonKind { primary, secondary, ghost }
 
@@ -79,13 +94,19 @@ class FsButton extends StatelessWidget {
     // One node that says "button", whether it can be pressed, and its label.
     // While busy the label is replaced on screen by a spinner, so the node
     // carries it instead, with "loading" so the wait is announced too.
-    return Semantics(
-      container: true,
-      button: true,
-      enabled: enabled,
+    //
+    // A small button is drawn 42 dp tall but answers a thumb across 48, in a
+    // 48 dp box of its own (below). Its band is then the node, so this
+    // Semantics folds into the band's rather than framing the pill alone.
+    final button = Semantics(
+      container: !small,
+      // On a small button the band says these; said here as well, they
+      // would split off a second node the size of the pill.
+      button: small ? null : true,
+      enabled: small ? null : enabled,
       label: busy ? '$label, loading' : null,
       child: Opacity(
-        opacity: enabled ? 1 : 0.45,
+        opacity: enabled ? 1 : fsDisabledOpacity,
         child: DecoratedBox(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(FsRadius.pill),
@@ -183,6 +204,28 @@ class FsButton extends StatelessWidget {
         ),
       ),
     );
+    if (!small) return button;
+    // The 48 dp is laid out, not only hit-tested: a band that reached past
+    // the button's own box would be cut off by any Column, Row or Wrap whose
+    // edge is flush with it -- the last button in a card, a button filling
+    // its run of a Wrap -- since a parent never asks a child about a point
+    // outside its own box. So the pill sits centred in a box at least 48 dp
+    // tall, 3 dp of transparent room above and below a 42 dp pill, and the
+    // band fills that box exactly. A wrapped label already taller than 48
+    // gets no extra room. Widths are the pill's own.
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: _minTapTarget),
+      child: Center(
+        widthFactor: 1,
+        heightFactor: 1,
+        child: _TapReach(
+          minSize: const Size(0, _minTapTarget),
+          button: true,
+          enabled: enabled,
+          child: button,
+        ),
+      ),
+    );
   }
 }
 
@@ -266,10 +309,25 @@ class FsChip extends StatelessWidget {
     required this.onTap,
     this.small = false,
     this.showCheck = false,
+    this.toggle = true,
+    this.exclusive = false,
   });
 
   final String label;
   final bool selected;
+
+  /// True for a chip in a single-choice row (a meal, a reminder's lead
+  /// time), where picking one unpicks the rest. The chip then reports itself
+  /// as Flutter's own radio does on each platform: TalkBack says "radio
+  /// button, checked" or "not checked"; VoiceOver, which has no radio role,
+  /// says "Selected" on the one that is on and "Not selected" on the rest.
+  ///
+  /// Ignored on an action chip (`toggle: false`), which is no choice at all.
+  final bool exclusive;
+
+  /// False for an action chip ("Add"), one that does something when pressed
+  /// rather than standing for a choice that is on or off.
+  final bool toggle;
 
   /// Null leaves the chip inert and announced as disabled.
   final VoidCallback? onTap;
@@ -287,61 +345,85 @@ class FsChip extends StatelessWidget {
     // Drawn about 30 dp tall; answers a thumb across 48 wherever its parent
     // has that room. A one-row Wrap or Row is only as tall as the chip, so a
     // row of them sits in an [FsTapRoom] for the band to reach past it.
+    // A single-choice chip follows RawRadio. The group flag on its own
+    // changes nothing a screen reader says: Android reads it only on a node
+    // with a checked state (RadioButton rather than CheckBox), and iOS only
+    // to keep a checked node from becoming a switch. So on Android the chip
+    // is checked or not checked, with no "selected" said twice; on iOS it
+    // keeps the Selected trait, and an unpicked one says "Not selected".
+    final radio = exclusive && toggle;
+    final apple =
+        defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS;
+
     return _TapReach(
       button: true,
       enabled: onTap != null,
-      selected: selected,
-      child: Material(
-        color: selected ? t.accent : t.surface2,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(FsRadius.pill),
-          side: BorderSide(color: selected ? Colors.transparent : t.line),
-        ),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(FsRadius.pill),
-          child: Padding(
-            padding: small
-                ? const EdgeInsets.symmetric(horizontal: 10, vertical: 5)
-                : const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // The slot is reserved whenever the chip can show a check, not
-                // only while it does. Building it on selection alone made the
-                // chip 18px wider the moment it was ticked, which reflowed the
-                // enclosing Wrap and shunted its neighbours onto another line.
-                if (showCheck) ...[
-                  SizedBox(
-                    width: small ? 11 : 13,
-                    height: small ? 11 : 13,
-                    child: selected
-                        ? Icon(
-                            Icons.check,
-                            size: small ? 11 : 13,
-                            color: t.onAccent,
-                          )
-                        : null,
-                  ),
-                  const SizedBox(width: 5),
-                ],
-                Flexible(
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: small ? 11 : 12.5,
-                      fontWeight: FontWeight.w600,
-                      color: selected ? t.onAccent : t.text2,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+      // An action chip is pressed, not switched on, so it reports no selected
+      // state at all rather than a permanent "not selected".
+      selected: toggle && (!radio || apple) ? selected : null,
+      // Folds into the band's node, as FsSegmented's does. Always present,
+      // so flipping `exclusive` or `selected` never remounts the chip.
+      child: Semantics(
+        inMutuallyExclusiveGroup: radio ? true : null,
+        checked: radio ? selected : null,
+        hint: radio && apple && !selected
+            ? WidgetsLocalizations.of(context).radioButtonUnselectedLabel
+            : null,
+        child: _chip(t),
       ),
     );
   }
+
+  Widget _chip(FsTokens t) => Material(
+    color: selected ? t.accent : t.surface2,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(FsRadius.pill),
+      side: BorderSide(color: selected ? Colors.transparent : t.line),
+    ),
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(FsRadius.pill),
+      child: Padding(
+        padding: small
+            ? const EdgeInsets.symmetric(horizontal: 10, vertical: 5)
+            : const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // The slot is reserved whenever the chip can show a check, not
+            // only while it does. Building it on selection alone made the
+            // chip 18px wider the moment it was ticked, which reflowed the
+            // enclosing Wrap and shunted its neighbours onto another line.
+            if (showCheck) ...[
+              SizedBox(
+                width: small ? 11 : 13,
+                height: small ? 11 : 13,
+                child: selected
+                    ? Icon(
+                        Icons.check,
+                        size: small ? 11 : 13,
+                        color: t.onAccent,
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 5),
+            ],
+            Flexible(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: small ? 11 : 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: selected ? t.onAccent : t.text2,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 /// `.field` — 52px, 16px radius, surface, accent border on focus.
@@ -363,7 +445,25 @@ class FsField extends StatelessWidget {
     this.maxLines = 1,
     this.inputFormatters,
     this.autofillHints,
+    this.label,
+    this.errorText,
   });
+
+  /// What is wrong with the value, or null. Draws the border in `t.red` and
+  /// gives the message to the field as its spoken hint, so a screen reader
+  /// hears it with the field's name. The visible message is the caller's to
+  /// draw (an [FsErrorLine] under the field), so it is not drawn twice.
+  final String? errorText;
+
+  /// The field's name, drawn as an eyebrow above it and given to the field
+  /// as its spoken label. [hint] stays the placeholder, which vanishes as
+  /// soon as the user types and takes the name with it. The app's way of
+  /// naming a field; see the label rule at the top of this file.
+  ///
+  /// With a label the eyebrow and field stretch to the width they are
+  /// given, so it needs a bounded one: in a Row, wrap it in Expanded or a
+  /// SizedBox. Unbounded, layout fails.
+  final String? label;
 
   /// Applied to the inner [TextField] rather than to this wrapper, so
   /// `tester.enterText` can find the editable it needs.
@@ -402,8 +502,9 @@ class FsField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
+    final hasError = errorText != null;
 
-    return TextField(
+    Widget field = TextField(
       key: fieldKey,
       controller: controller,
       obscureText: obscure,
@@ -437,13 +538,94 @@ class FsField extends StatelessWidget {
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(FsRadius.md),
-          borderSide: BorderSide(color: t.line),
+          borderSide: BorderSide(color: hasError ? t.red : t.line),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(FsRadius.md),
-          borderSide: BorderSide(color: t.accentLine),
+          borderSide: BorderSide(color: hasError ? t.red : t.accentLine),
         ),
       ),
+    );
+    // Always wrapped, even with no error (a null hint adds nothing): a
+    // wrapper added only with an error would remount the field as the error
+    // comes and goes, dropping its focus and closing the keyboard mid-typing.
+    field = Semantics(hint: errorText, child: field);
+    if (label == null) return field;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Said once, by the field below, rather than again as its own node.
+        ExcludeSemantics(child: FsEyebrow(label!)),
+        const SizedBox(height: 6),
+        Semantics(label: label, child: field),
+      ],
+    );
+  }
+}
+
+/// A field with its name above it and its helper or error text below.
+///
+/// The placeholder alone vanishes as soon as the user types, taking the
+/// field's name with it. The visible texts are hidden from screen readers and
+/// given to the field as its label and hint instead, so the field is announced
+/// with its name and any message about it. Not [MergeSemantics]: that would
+/// also swallow the eye button inside the password field, leaving it
+/// unreachable by TalkBack and VoiceOver.
+///
+/// For the auth forms only; everywhere else a field is named with
+/// `FsField(label:)` (the label rule at the top of this file).
+class FsLabeledField extends StatelessWidget {
+  const FsLabeledField({
+    super.key,
+    required this.label,
+    required this.field,
+    this.helper,
+    this.error,
+  });
+
+  final String label;
+  final Widget field;
+  final String? helper;
+  final String? error;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+
+    final hint = [error, helper].nonNulls.join('. ');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ExcludeSemantics(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: t.text2,
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Semantics(label: label, hint: hint.isEmpty ? null : hint, child: field),
+        if (helper != null) ...[
+          const SizedBox(height: 6),
+          ExcludeSemantics(
+            child: Text(
+              helper!,
+              style: TextStyle(fontSize: 12, color: t.text2),
+            ),
+          ),
+        ],
+        if (error != null) ...[
+          const SizedBox(height: 6),
+          ExcludeSemantics(
+            child: Text(error!, style: TextStyle(fontSize: 12.5, color: t.red)),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -473,71 +655,134 @@ class FsSegmented extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fs;
 
-    return Material(
-      color: t.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(FsRadius.pill),
-        side: BorderSide(color: t.line),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(4),
-        child: Row(
-          children: [
-            for (final (index, option) in options.indexed) ...[
-              if (option != options.first) const SizedBox(width: 2),
-              Expanded(
-                // Each segment is its own button in a single-choice group,
-                // with its place in the set, so a screen reader can say
-                // "Female, selected, 2 of 2" rather than just the word.
-                child: Semantics(
-                  container: true,
-                  button: true,
-                  enabled: true,
-                  selected: selected == option.value,
-                  inMutuallyExclusiveGroup: true,
-                  hint: '${index + 1} of ${options.length}',
-                  child: InkWell(
-                    key: Key('segment.${option.value}'),
-                    onTap: () => onSelected(option.value),
-                    borderRadius: BorderRadius.circular(FsRadius.pill),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: selected == option.value
-                            ? t.accent
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(FsRadius.pill),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Text(
-                          option.label,
-                          textAlign: TextAlign.center,
-                          // A label that fits in one line renders at exactly
-                          // that height (unchanged from before); one that
-                          // doesn't wraps to a second line rather than
-                          // ellipsizing — "New to training" at 320dp is the
-                          // case this guards, and a label is a binding
-                          // constraint that must never be shortened.
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w600,
-                            color: selected == option.value
-                                ? t.onAccent
-                                : t.text2,
+    // The track and its pills are drawn at the design's size, `.seg > div {
+    // padding: 8px 0 }`, about 34 dp tall. The 48 dp a thumb needs is laid
+    // out around them instead, as transparent room above and below the
+    // track, so a Column ending flush with the control still holds all of
+    // it. Any tap in that box, room or track padding alike, goes to the
+    // segment in line with it.
+    return _SegmentColumns(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: _minTapTarget),
+        child: Center(
+          heightFactor: 1,
+          child: Material(
+            color: t.surface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(FsRadius.pill),
+              side: BorderSide(color: t.line),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              // Every segment as tall as the tallest: a label that wraps to a
+              // second line no longer leaves its neighbours a smaller pill
+              // than itself.
+              child: IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (final (index, option) in options.indexed) ...[
+                      if (option != options.first) const SizedBox(width: 2),
+                      Expanded(
+                        // Each segment is its own button, with its place in
+                        // the set, so a screen reader can say "Female,
+                        // selected, 2 of 2" rather than just the word. No
+                        // group flag: without a checked state it says
+                        // nothing on either platform (see FsChip). The band
+                        // carries the node, so it frames the 48 dp a thumb
+                        // can hit, not the pill.
+                        child: _TapReach(
+                          minSize: const Size(0, _minTapTarget),
+                          button: true,
+                          enabled: true,
+                          selected: selected == option.value,
+                          child: Semantics(
+                            hint: '${index + 1} of ${options.length}',
+                            child: InkWell(
+                              key: Key('segment.${option.value}'),
+                              onTap: () => onSelected(option.value),
+                              borderRadius: BorderRadius.circular(
+                                FsRadius.pill,
+                              ),
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: selected == option.value
+                                      ? t.accent
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(
+                                    FsRadius.pill,
+                                  ),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 8,
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      option.label,
+                                      textAlign: TextAlign.center,
+                                      // A label too long for one line wraps
+                                      // to a second rather than ellipsizing
+                                      // -- "New to training" at 320dp is the
+                                      // case this guards, and a label is a
+                                      // binding constraint that must never
+                                      // be shortened.
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: selected == option.value
+                                            ? t.onAccent
+                                            : t.text2,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ),
+                    ],
+                  ],
                 ),
               ),
-            ],
-          ],
+            ),
+          ),
         ),
       ),
     );
+  }
+}
+
+/// Hands every tap in [FsSegmented]'s box to its child on the box's middle
+/// line, at the same x, where the segment in line with the tap is drawn.
+///
+/// The track is centred in the box, so the middle line runs through every
+/// pill. A tap in the room above or below the track, or in the track's own
+/// padding, which the track's Material would otherwise swallow, still picks
+/// the segment under the thumb.
+class _SegmentColumns extends SingleChildRenderObjectWidget {
+  const _SegmentColumns({required Widget super.child});
+
+  @override
+  RenderProxyBox createRenderObject(BuildContext context) =>
+      _RenderSegmentColumns();
+}
+
+class _RenderSegmentColumns extends RenderProxyBox {
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    if (!size.contains(position)) return false;
+    final onto = Offset(position.dx, size.height / 2);
+    final hit = result.addWithRawTransform(
+      transform: MatrixUtils.forceToPoint(onto),
+      position: onto,
+      hitTest: (result, _) => hitTestChildren(result, position: onto),
+    );
+    if (hit) result.add(BoxHitTestEntry(this, position));
+    return hit;
   }
 }
 
@@ -565,10 +810,15 @@ class FsStatField extends StatelessWidget {
     this.accent = false,
     this.unitControl,
     this.focusNode,
+    this.error = false,
   });
 
   final String label;
   final String unit;
+
+  /// Whether the number needs checking: a `t.red` border, over [accent]'s,
+  /// so the card says so as well as the message its screen puts under it.
+  final bool error;
 
   /// Lets the screen move the cursor here -- e.g. into a card the user has
   /// just asked for -- even while another field still has focus.
@@ -587,6 +837,15 @@ class FsStatField extends StatelessWidget {
   /// Accent border and accent digits, which the design gives goal weight.
   final bool accent;
 
+  /// The number, typed or the empty dashes: one style for both, so the
+  /// dashes sit and space exactly as a number would.
+  static const _numberStyle = TextStyle(
+    fontFamily: fsMonoFamily,
+    fontSize: 22,
+    fontWeight: FontWeight.w600,
+    letterSpacing: -0.22,
+  );
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
@@ -596,7 +855,13 @@ class FsStatField extends StatelessWidget {
       decoration: BoxDecoration(
         color: t.surface,
         borderRadius: BorderRadius.circular(FsRadius.sm),
-        border: Border.all(color: accent ? t.accentLine : t.line),
+        border: Border.all(
+          color: error
+              ? t.red
+              : accent
+              ? t.accentLine
+              : t.line,
+        ),
       ),
       // The card's 14 dp of padding past the switch is the rest of lb's band,
       // and its padding below is the bottom of both units' bands; both lie
@@ -608,7 +873,9 @@ class FsStatField extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            FsEyebrow(label),
+            // The field says the label and unit itself (below), so the
+            // visible texts are not read a second time as separate nodes.
+            ExcludeSemantics(child: FsEyebrow(label)),
             // The room above the row is the label's, which takes no taps, so
             // a thumb landing just over the switch still finds it. The
             // switch answers the row's whole height, so with 10 above and
@@ -621,40 +888,45 @@ class FsStatField extends StatelessWidget {
                 textBaseline: TextBaseline.alphabetic,
                 children: [
                   Expanded(
-                    child: TextField(
-                      key: fieldKey,
-                      controller: controller,
-                      focusNode: focusNode,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      inputFormatters: [
-                        TextInputFormatter.withFunction(
-                          (previous, next) => _measurement.hasMatch(next.text)
-                              ? next
-                              : previous,
+                    // Named here, not by the eyebrow beside it: a screen
+                    // reader otherwise hears three alike number fields as
+                    // "--, edit box", with no name and no unit.
+                    child: Semantics(
+                      label: label,
+                      hint: unit,
+                      child: TextField(
+                        key: fieldKey,
+                        controller: controller,
+                        focusNode: focusNode,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
                         ),
-                      ],
-                      style: TextStyle(
-                        fontFamily: fsMonoFamily,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: -0.22,
-                        color: accent ? t.accentText : t.text,
-                      ),
-                      cursorColor: t.accent,
-                      decoration: InputDecoration(
-                        isDense: true,
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        contentPadding: EdgeInsets.zero,
-                        hintText: '--',
-                        hintStyle: TextStyle(
-                          fontFamily: fsMonoFamily,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w600,
-                          color: t.text3,
+                        inputFormatters: [
+                          TextInputFormatter.withFunction(
+                            (previous, next) => _measurement.hasMatch(next.text)
+                                ? next
+                                : previous,
+                          ),
+                        ],
+                        style: _numberStyle.copyWith(
+                          color: accent ? t.accentText : t.text,
+                        ),
+                        cursorColor: t.accent,
+                        decoration: InputDecoration(
+                          isDense: true,
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          contentPadding: EdgeInsets.zero,
+                          // Drawn, not said: as hintText the dashes were read
+                          // into the field's name, "Height, dash dash, cm".
+                          // An empty field already says it is empty.
+                          hint: ExcludeSemantics(
+                            child: Text(
+                              '--',
+                              style: _numberStyle.copyWith(color: t.text3),
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -663,7 +935,12 @@ class FsStatField extends StatelessWidget {
                   if (unitControl case final control?)
                     _NoReachBack(child: control)
                   else
-                    Text(unit, style: TextStyle(fontSize: 11, color: t.text3)),
+                    ExcludeSemantics(
+                      child: Text(
+                        unit,
+                        style: TextStyle(fontSize: 11, color: t.text3),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -784,10 +1061,14 @@ class FsTag extends StatelessWidget {
 
 /// One destination in [FsNav].
 class FsNavItem {
-  const FsNavItem({required this.icon, required this.label});
+  const FsNavItem({required this.icon, required this.label, this.activeIcon});
 
   final IconData icon;
   final String label;
+
+  /// The filled form of [icon], shown while this tab is current, so the
+  /// current tab is told by its shape as well as its colour.
+  final IconData? activeIcon;
 }
 
 /// `.botnav` — the bottom bar. Stateless on purpose: it reports a tap and
@@ -799,6 +1080,7 @@ class FsNav extends StatelessWidget {
     required this.onSelect,
     required this.items,
     this.onFabTap,
+    this.fabLabel = 'Start a workout',
   });
 
   final int currentIndex;
@@ -812,6 +1094,9 @@ class FsNav extends StatelessWidget {
   /// to 3 and Profile from 3 to 4 — renumbering every `nav.$index` key the
   /// shell's tests tap.
   final VoidCallback? onFabTap;
+
+  /// What a screen reader calls the fab, and its tooltip on a long press.
+  final String fabLabel;
 
   static const double _barHeight = 58;
 
@@ -847,29 +1132,47 @@ class FsNav extends StatelessWidget {
                   child: Center(child: _fab(t)),
                 ),
               Expanded(
-                child: InkWell(
-                  key: Key('nav.$index'),
-                  onTap: () => onSelect(index),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        item.icon,
-                        size: _tabIconSize,
-                        color: index == currentIndex ? t.accentText : t.text3,
-                      ),
-                      const SizedBox(height: _tabGap),
-                      Text(
-                        item.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
+                // One node per tab: "Profile, selected, tab 4 of 4", so the
+                // current tab is said and not only coloured. No group flag:
+                // a tab is not a radio button, and without a checked state
+                // the flag says nothing anyway.
+                child: Semantics(
+                  container: true,
+                  button: true,
+                  enabled: true,
+                  selected: index == currentIndex,
+                  hint: 'Tab ${index + 1} of ${items.length}',
+                  child: InkWell(
+                    key: Key('nav.$index'),
+                    onTap: () => onSelect(index),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          // The current tab is filled as well as tinted:
+                          // the accent alone barely sets it apart in light
+                          // theme.
+                          index == currentIndex
+                              ? item.activeIcon ?? item.icon
+                              : item.icon,
+                          size: _tabIconSize,
                           color: index == currentIndex ? t.accentText : t.text3,
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: _tabGap),
+                        Text(
+                          item.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: index == currentIndex
+                                ? t.accentText
+                                : t.text3,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -889,26 +1192,39 @@ class FsNav extends StatelessWidget {
   /// bar's own box, so all of it is hit-testable — the property a raised cap
   /// had to be positioned carefully to keep, and a `Transform.translate`
   /// would have lost outright.
-  Widget _fab(FsTokens t) => DecoratedBox(
-    // Circle, not the default rectangle: the glow has to follow the
-    // shape it falls from. Painted outside the Material rather than
-    // through its `elevation`, so it is the design's accent glow and
-    // not Material's own grey ambient shadow.
-    decoration: BoxDecoration(
-      shape: BoxShape.circle,
-      boxShadow: fsAccentGlow(t),
-    ),
-    child: Material(
-      color: t.accent,
-      shape: const CircleBorder(),
-      child: InkWell(
-        key: const Key('nav.fab'),
-        customBorder: const CircleBorder(),
-        onTap: onFabTap,
-        child: SizedBox(
-          width: _fabSize,
-          height: _fabSize,
-          child: Icon(Icons.add, size: 26, color: t.onAccent),
+  ///
+  /// A bare "+" says nothing to a screen reader, so the circle carries
+  /// [fabLabel] as its name, and a long press shows it too. The tooltip stays
+  /// out of the semantics tree, or the name would be read twice.
+  Widget _fab(FsTokens t) => Tooltip(
+    message: fabLabel,
+    excludeFromSemantics: true,
+    child: Semantics(
+      container: true,
+      button: true,
+      label: fabLabel,
+      child: DecoratedBox(
+        // Circle, not the default rectangle: the glow has to follow the
+        // shape it falls from. Painted outside the Material rather than
+        // through its `elevation`, so it is the design's accent glow and
+        // not Material's own grey ambient shadow.
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          boxShadow: fsAccentGlow(t),
+        ),
+        child: Material(
+          color: t.accent,
+          shape: const CircleBorder(),
+          child: InkWell(
+            key: const Key('nav.fab'),
+            customBorder: const CircleBorder(),
+            onTap: onFabTap,
+            child: SizedBox(
+              width: _fabSize,
+              height: _fabSize,
+              child: Icon(Icons.add, size: 26, color: t.onAccent),
+            ),
+          ),
         ),
       ),
     ),
@@ -962,7 +1278,7 @@ class FsRadioDot extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: selected ? t.accent : Colors.transparent,
-        border: Border.all(color: selected ? t.accent : t.line2, width: 2),
+        border: Border.all(color: selected ? t.accent : t.control, width: 2),
       ),
       child: selected ? Icon(Icons.check, size: 13, color: t.onAccent) : null,
     );
@@ -1011,17 +1327,27 @@ class FsIconTile extends StatelessWidget {
 /// but the server builds a plan in a single call and reports no progress, so
 /// a filled fraction would be a number we invented.
 class FsRing extends StatelessWidget {
-  const FsRing({super.key, this.size = 120, this.stroke = 10, this.child});
+  const FsRing({
+    super.key,
+    this.size = 120,
+    this.stroke = 10,
+    this.child,
+    this.semanticLabel,
+  });
 
   final double size;
   final double stroke;
   final Widget? child;
 
+  /// When given, the ring is one node a screen reader hears as this, in
+  /// place of whatever its [child] says piece by piece.
+  final String? semanticLabel;
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
 
-    return SizedBox(
+    final ring = SizedBox(
       width: size,
       height: size,
       child: Stack(
@@ -1040,8 +1366,22 @@ class FsRing extends StatelessWidget {
         ],
       ),
     );
+    return fsSpokenAs(semanticLabel, ring);
   }
 }
+
+/// [child] as one node a screen reader hears as [label], in place of what
+/// its parts say one by one -- a ring's "1,160 of 2,050 kcal eaten" rather
+/// than its bare figures. Null leaves [child] as it reads already. Shared by
+/// both rings, this one and fs_charts'.
+Widget fsSpokenAs(String? label, Widget child) => label == null
+    ? child
+    : Semantics(
+        container: true,
+        label: label,
+        excludeSemantics: true,
+        child: child,
+      );
 
 /// A compact kg / lb switch, sized to sit inside a table's column header.
 ///
@@ -1426,5 +1766,466 @@ class _RenderTapRoom extends RenderProxyBox {
     );
     if (hit) result.add(BoxHitTestEntry(this, position));
     return hit;
+  }
+}
+
+/// A failure shown in place, under or above the control it is about.
+///
+/// Red icon and red text: `t.red` reads at 4.5:1 or better on the page in
+/// both themes (theme_contrast_test). A live region, so a screen reader
+/// says the message when it appears, without the screen announcing it
+/// separately -- doing both would say it twice.
+class FsErrorLine extends StatelessWidget {
+  const FsErrorLine(this.message, {super.key});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: Icon(Icons.error_outline, size: 16, color: t.red),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(fontSize: 13, height: 1.4, color: t.red),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// What a screen or section shows when its data could not load: the reason
+/// in plain words (see `userMessage`) over a small secondary "Try again".
+///
+/// [fullScreen] is for a Scaffold body with nothing else on it: centred in
+/// the safe area, and scrollable so large text never overflows. Given no
+/// height to fill (inside a list, say), it is drawn inline instead.
+/// [secondary] is an optional way out under the button, such as Sign out.
+///
+/// The message is a live region, so a screen reader says the load failed
+/// when this replaces a spinner.
+class FsRetry extends StatelessWidget {
+  const FsRetry({
+    super.key,
+    required this.message,
+    required this.onRetry,
+    this.buttonKey,
+    this.fullScreen = false,
+    this.secondary,
+  });
+
+  final String message;
+  final VoidCallback onRetry;
+
+  /// A stable finder for the button itself. Keying the whole widget would
+  /// make a tap land wherever its centre falls -- on the message, say.
+  final Key? buttonKey;
+
+  final bool fullScreen;
+  final Widget? secondary;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+
+    final body = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Semantics(
+          container: true,
+          liveRegion: true,
+          child: Text(
+            message,
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13, height: 1.45, color: t.text2),
+          ),
+        ),
+        const SizedBox(height: 12),
+        FsButton(
+          key: buttonKey,
+          label: 'Try again',
+          small: true,
+          kind: FsButtonKind.secondary,
+          onPressed: onRetry,
+        ),
+        if (secondary != null) ...[const SizedBox(height: 4), secondary!],
+      ],
+    );
+
+    final inline = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: body,
+    );
+    if (!fullScreen) return inline;
+    return LayoutBuilder(
+      builder: (context, outer) {
+        // A scroll view inside something that scrolls the same way has no
+        // height to centre in; the inline layout fits anywhere.
+        if (!outer.hasBoundedHeight) return inline;
+        return SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minWidth: math.max(0, constraints.maxWidth - 48),
+                  minHeight: math.max(0, constraints.maxHeight - 48),
+                ),
+                child: Center(child: body),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Asks before throwing away unsaved input. True means discard.
+///
+/// Dismissing the dialog any other way (the barrier, back) keeps editing:
+/// losing work must take a deliberate tap. Discard is in `t.red`, as the
+/// app's other destructive dialogs are. [title] is the question, "Discard
+/// your changes?" unless the screen has its own words for what is lost
+/// ("Leave without logging?"). [message] says what discarding costs on this
+/// screen, when there is more to say than the title.
+Future<bool> confirmDiscard(
+  BuildContext context, {
+  String? title,
+  String? message,
+}) async {
+  final answer = await showDialog<bool>(
+    context: context,
+    builder: (dialog) => AlertDialog(
+      title: Text(title ?? 'Discard your changes?'),
+      content: message == null ? null : Text(message),
+      actions: [
+        TextButton(
+          key: const Key('discard.keep'),
+          onPressed: () => Navigator.of(dialog).pop(false),
+          child: const Text('Keep editing'),
+        ),
+        TextButton(
+          key: const Key('discard.confirm'),
+          style: TextButton.styleFrom(foregroundColor: dialog.fs.red),
+          onPressed: () => Navigator.of(dialog).pop(true),
+          child: const Text('Discard'),
+        ),
+      ],
+    ),
+  );
+  return answer ?? false;
+}
+
+/// Asks before a step one stray tap should not take (Sign out, deleting
+/// health answers, deleting the account): [cancel] and [action] in `t.red`,
+/// keyed `<keyPrefix>.cancel` and `<keyPrefix>.confirm`. True only for a tap
+/// on [action]; the barrier or back is a no. [cancel] is "Cancel" unless the
+/// safe choice reads better named for what it keeps ("Keep account").
+Future<bool> confirmDestructive(
+  BuildContext context, {
+  required String keyPrefix,
+  required String title,
+  required String message,
+  required String action,
+  String cancel = 'Cancel',
+}) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialog) => AlertDialog(
+      title: Text(title),
+      content: Text(message),
+      actions: [
+        TextButton(
+          key: Key('$keyPrefix.cancel'),
+          onPressed: () => Navigator.of(dialog).pop(false),
+          child: Text(cancel),
+        ),
+        TextButton(
+          key: Key('$keyPrefix.confirm'),
+          style: TextButton.styleFrom(foregroundColor: dialog.fs.red),
+          onPressed: () => Navigator.of(dialog).pop(true),
+          child: Text(action),
+        ),
+      ],
+    ),
+  );
+  return confirmed ?? false;
+}
+
+/// Makes back ask [confirmDiscard] first while [dirty], and leave as usual
+/// otherwise.
+///
+/// While dirty the app bar's back and Android's back show the dialog; the
+/// iOS back swipe does not ask, because Flutter turns the swipe off for a
+/// route that cannot pop. The route reports itself as not poppable while
+/// dirty, which is also what stops a tapped reminder from closing it (see
+/// `NavShell`).
+class FsDiscardGuard extends StatelessWidget {
+  const FsDiscardGuard({
+    super.key,
+    required this.dirty,
+    required this.child,
+    this.title,
+    this.message,
+  });
+
+  final bool dirty;
+  final Widget child;
+
+  /// Passed to [confirmDiscard].
+  final String? title;
+
+  /// Passed to [confirmDiscard].
+  final String? message;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope<Object?>(
+      canPop: !dirty,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final discard = await confirmDiscard(
+          context,
+          title: title,
+          message: message,
+        );
+        if (discard && context.mounted) Navigator.of(context).pop(result);
+      },
+      child: child,
+    );
+  }
+}
+
+/// The prototype's sheet handle: a 38 x 4 pill in line2. The theme draws
+/// the same one above any sheet that keeps Material's handle
+/// (`bottomSheetTheme`); this is for a sheet that draws its own -- one that
+/// holds back a drag or back while something would be lost, which Material's
+/// handle, outside the sheet's child, would close it past.
+class FsSheetHandle extends StatelessWidget {
+  const FsSheetHandle({super.key});
+
+  static const size = Size(38, 4);
+
+  @override
+  Widget build(BuildContext context) => SizedBox.fromSize(
+    size: size,
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        color: context.fs.line2,
+        borderRadius: BorderRadius.circular(FsRadius.pill),
+      ),
+    ),
+  );
+}
+
+/// [FsDiscardGuard] for a bottom sheet: back, a tap on the scrim and a
+/// swipe down all ask before throwing away what is [dirty].
+///
+/// FsDiscardGuard covers back and the scrim, which ask the route to pop. A
+/// drag down never asks: the bottom sheet pops its route itself once the
+/// drag ends. So while dirty the drag is claimed here first -- the innermost
+/// vertical-drag recognizer wins the arena -- and a clear pull down asks the
+/// route to pop, which the guard turns into the question. A sheet that uses
+/// this draws its own [FsSheetHandle] inside it (`showDragHandle: false`):
+/// Material's handle sits outside the sheet's child, past this claim.
+///
+/// One copy for the check-in and habit sheets, which each held their own.
+class FsSheetDiscardGuard extends StatefulWidget {
+  const FsSheetDiscardGuard({
+    super.key,
+    required this.dirty,
+    required this.child,
+    this.title,
+    this.message,
+  });
+
+  final bool dirty;
+  final Widget child;
+
+  /// Passed to [confirmDiscard].
+  final String? title;
+
+  /// Passed to [confirmDiscard].
+  final String? message;
+
+  /// How far down a drag must pull, or how fast it must fling, to ask.
+  static const minPull = 48.0;
+  static const minFlingVelocity = 700.0;
+
+  @override
+  State<FsSheetDiscardGuard> createState() => _FsSheetDiscardGuardState();
+}
+
+class _FsSheetDiscardGuardState extends State<FsSheetDiscardGuard> {
+  /// How far the current drag has pulled the sheet down.
+  double _dragDown = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final dirty = widget.dirty;
+    return FsDiscardGuard(
+      dirty: dirty,
+      title: widget.title,
+      message: widget.message,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        // Kept out of semantics: otherwise a dirty sheet tells a screen
+        // reader it scrolls, and a scroll gesture runs these callbacks into
+        // the discard question. Screen readers close the sheet through back,
+        // escape or the scrim, which the guard already covers.
+        excludeFromSemantics: true,
+        onVerticalDragStart: dirty ? (_) => _dragDown = 0 : null,
+        onVerticalDragUpdate: dirty
+            ? (details) => _dragDown += details.primaryDelta ?? 0
+            : null,
+        onVerticalDragEnd: dirty
+            ? (details) {
+                final velocity = details.primaryVelocity ?? 0;
+                if (_dragDown > FsSheetDiscardGuard.minPull ||
+                    velocity > FsSheetDiscardGuard.minFlingVelocity) {
+                  Navigator.of(context).maybePop();
+                }
+              }
+            : null,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+/// The tallest a scroll-controlled sheet grows: 0.9 of the screen, so a
+/// strip of the screen behind stays in view above it (it reads as a sheet,
+/// not a new screen) and its top never slides under the status bar.
+///
+/// The theme cannot say this (`bottomSheetTheme.constraints` takes sizes,
+/// not a share of the screen), so a sheet opened with
+/// `isScrollControlled: true` wraps its contents in this.
+///
+/// The cap is on the whole sheet. Under the theme's drag handle Material
+/// sets the contents [kMinInteractiveDimension] down, so the contents get
+/// that much less; a sheet that draws its own handle inside (one with a
+/// discard guard) gets the full 0.9.
+class FsSheetHeightCap extends StatelessWidget {
+  const FsSheetHeightCap({super.key, required this.child});
+
+  static const maxHeightFraction = 0.9;
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final sheet = context.findAncestorWidgetOfExactType<BottomSheet>();
+    // A modal sheet passes the resolved value; a bare BottomSheet may leave
+    // it to the theme, as Material itself then does.
+    final themeHandle =
+        sheet != null &&
+        (sheet.showDragHandle ??
+            (sheet.enableDrag &&
+                (Theme.of(context).bottomSheetTheme.showDragHandle ?? false)));
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight:
+            MediaQuery.sizeOf(context).height * maxHeightFraction -
+            (themeHandle ? kMinInteractiveDimension : 0),
+      ),
+      child: child,
+    );
+  }
+}
+
+/// The top of a bottom sheet, as the prototype draws every sheet
+/// (ScreenStartSheet, ScreenShareProgress): a 38 x 4 handle, the title, and
+/// an × that closes it.
+///
+/// One header for the jump, rest, share, pain-question and equipment sheets,
+/// which had grown five different tops -- two with no visible way to close
+/// but a swipe. The same shape as the start-workout sheet's own header.
+///
+/// [onClose] defaults to popping the sheet with no result, which every
+/// caller reads as "dismissed". [closeKey] keys the × ([defaultCloseKey]
+/// unless given).
+///
+/// It sits inside the sheet's content padding of [sideInset] on both sides,
+/// as the start-workout sheet's header does: the title starts where the
+/// content starts, and the ×'s 48 dp button ends where the content ends.
+/// So the × is in one place on every sheet.
+class FsSheetHeader extends StatelessWidget {
+  const FsSheetHeader({
+    super.key,
+    required this.title,
+    this.onClose,
+    this.closeKey = defaultCloseKey,
+    this.leading,
+  });
+
+  /// The ×'s key on any sheet that does not name its own.
+  static const defaultCloseKey = Key('sheet.close');
+
+  /// The side inset of every sheet's content, and so of this header: the
+  /// prototype's sheets pad 18 px at the sides (screens-training.jsx, the
+  /// start and share sheets, `padding: '10px 18px ...'`). One number, so
+  /// the × is in the same place on every sheet.
+  static const sideInset = 18.0;
+
+  final String title;
+  final VoidCallback? onClose;
+  final Key closeKey;
+
+  /// Drawn before the title, e.g. the share sheet's share icon. Optional:
+  /// every other sheet keeps a bare title.
+  final Widget? leading;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: const Center(child: FsSheetHandle(key: Key('sheet.handle'))),
+        ),
+        Row(
+          children: [
+            if (leading != null) ...[leading!, const SizedBox(width: 9)],
+            // Expanded, so at 2x text a long question wraps instead of
+            // pushing the close button off the sheet.
+            Expanded(
+              child: Semantics(
+                header: true,
+                child: Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleLarge
+                      ?.copyWith(color: t.text),
+                ),
+              ),
+            ),
+            IconButton(
+              key: closeKey,
+              tooltip: 'Close',
+              icon: const Icon(Icons.close, size: 18),
+              color: t.text2,
+              onPressed: onClose ?? () => Navigator.of(context).maybePop(),
+            ),
+          ],
+        ),
+      ],
+    );
   }
 }

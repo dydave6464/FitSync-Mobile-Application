@@ -117,6 +117,35 @@ class PhotoRecognition {
 
   /// No food spotted at all.
   bool get isEmpty => items.isEmpty && unlisted.isEmpty;
+
+  /// How many foods the photo found: matched and unlisted.
+  int get foodCount => items.length + unlisted.length;
+}
+
+/// Today's photos, asked before the next one: how many are left, and the
+/// newest recognised photo if it was not logged, so it can be finished.
+class PhotoToday {
+  const PhotoToday({
+    required this.limit,
+    required this.remainingToday,
+    this.unlogged,
+    this.unloggedAt,
+  });
+
+  factory PhotoToday.fromJson(Map<String, dynamic> j) {
+    final u = j['unlogged'] as Map<String, dynamic>?;
+    return PhotoToday(
+      limit: j['limit'] as int,
+      remainingToday: j['remainingToday'] as int,
+      unlogged: u == null ? null : PhotoRecognition.fromJson(u),
+      unloggedAt: u == null ? null : DateTime.parse(u['createdAt'] as String),
+    );
+  }
+
+  final int limit;
+  final int remainingToday;
+  final PhotoRecognition? unlogged;
+  final DateTime? unloggedAt;
 }
 
 /// One food sent to the log route.
@@ -161,14 +190,14 @@ String searchNameOf(String name) {
 /// One card on the confirm screen: a food to log, or an item the AI named
 /// that isn't in FitSync's list (no [food]) until the user picks one.
 class DraftCard {
-  DraftCard.suggested(PhotoSuggestion s)
+  DraftCard.suggested(PhotoSuggestion s, {required this.id})
     : itemId = s.itemId,
       unlistedName = null,
       food = s.food,
       servings = s.servings,
       alternatives = List.of(s.alternatives);
 
-  DraftCard.unlisted(PhotoUnlisted u)
+  DraftCard.unlisted(PhotoUnlisted u, {required this.id})
     : itemId = u.itemId,
       unlistedName = u.name,
       food = null,
@@ -176,11 +205,16 @@ class DraftCard {
       alternatives = [];
 
   /// A food the user added with "+ Add an item".
-  DraftCard.added(Food this.food)
+  DraftCard.added(Food this.food, {required this.id})
     : itemId = null,
       unlistedName = null,
       servings = 1,
       alternatives = [];
+
+  /// The card's own number on the screen, given once in the order cards
+  /// are made. Its parts are keyed by it, not by where the card sits, so
+  /// they stay put when a card above is removed or put back.
+  final int id;
 
   final int? itemId;
   final String? unlistedName;

@@ -11,6 +11,7 @@ import '../../../plans/domain/workout_plan.dart';
 import '../../domain/active_session.dart';
 import 'set_drafts.dart';
 import 'set_row.dart';
+import '../../../exercises/domain/exercise_labels.dart';
 
 /// The most rows one exercise's set table grows to with "+ Add set".
 ///
@@ -154,6 +155,9 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
       _weightAdded ||
       widget.last?.weightKg != null;
 
+  /// "+ weight": the finger's tap and the screen reader's are one action.
+  void _addWeight() => setState(() => _weightAdded = true);
+
   /// The logger rebuilds this panel in place as the workout moves, so the
   /// reveal has to be dropped explicitly -- left standing, one exercise's dip
   /// belt would follow the user onto the next exercise's push-ups.
@@ -204,6 +208,8 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
   Widget build(BuildContext context) {
     final t = context.fs;
     final exercise = widget.exercise;
+    // Once per build, not once per set row below.
+    final name = exerciseDisplayName(exercise.name);
     final showWeight = _showWeight;
     final rows = widget.setCount ?? exercise.targetSets;
     // Only the last row, and only one added past the target that has not
@@ -248,7 +254,7 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                       container: true,
                       button: true,
                       enabled: widget.onOpenDemo != null,
-                      label: 'Watch how to do ${exercise.name}',
+                      label: 'Watch how to do $name',
                       child: InkWell(
                         key: Key('logpanel.demo.${exercise.exerciseId}'),
                         onTap: widget.onOpenDemo,
@@ -296,9 +302,11 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          // Two lines: a name cut mid-word can be mistaken
+                          // for its neighbour in the workout.
                           Text(
-                            exercise.name,
-                            maxLines: 1,
+                            name,
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 15,
@@ -328,33 +336,45 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                           // table's own header row has no width to spare for
                           // a control once the weight column is gone.
                           if (!showWeight)
-                            InkWell(
-                              key: const Key('logpanel.addweight'),
-                              onTap: () => setState(() => _weightAdded = true),
-                              borderRadius: BorderRadius.circular(FsRadius.sm),
-                              // A caption to look at, a 48 dp target to tap:
-                              // the box grows around the text, which keeps
-                              // its size and its place at the left.
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                  minWidth: 48,
-                                  minHeight: 48,
+                            Semantics(
+                              // "+ weight" is a caption to the eye; to a
+                              // screen reader it is a button with a name.
+                              container: true,
+                              button: true,
+                              label: 'Add a weight column',
+                              excludeSemantics: true,
+                              onTap: _addWeight,
+                              child: InkWell(
+                                key: const Key('logpanel.addweight'),
+                                onTap: _addWeight,
+                                borderRadius: BorderRadius.circular(
+                                  FsRadius.sm,
                                 ),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 4,
+                                // A caption to look at, a 48 dp target to tap:
+                                // the box grows around the text, which keeps
+                                // its size and its place at the left.
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    minWidth: 48,
+                                    minHeight: 48,
                                   ),
-                                  child: Align(
-                                    alignment: AlignmentDirectional.centerStart,
-                                    widthFactor: 1,
-                                    heightFactor: 1,
-                                    child: Text(
-                                      '+ weight',
-                                      style: TextStyle(
-                                        fontFamily: fsMonoFamily,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
-                                        color: t.accentText,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                    ),
+                                    child: Align(
+                                      alignment:
+                                          AlignmentDirectional.centerStart,
+                                      widthFactor: 1,
+                                      heightFactor: 1,
+                                      child: Text(
+                                        '+ weight',
+                                        style: TextStyle(
+                                          fontFamily: fsMonoFamily,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: t.accentText,
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -477,9 +497,7 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                             unit: widget.unit,
                             showWeight: showWeight,
                             active: setNumber == widget.activeSetNumber,
-                            repsHint: exercise.targetReps.isEmpty
-                                ? 'reps'
-                                : exercise.targetReps,
+                            targetReps: exercise.targetReps,
                             onReopen: () => widget.onUndoSet(setNumber),
                             trailingWidth: trailingWidth,
                             onRemove: setNumber == removable
@@ -490,7 +508,7 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                       ),
                     if (widget.onAddSet != null)
                       _AddSet(
-                        exerciseName: exercise.name,
+                        exerciseName: name,
                         atCap: rows >= maxSetsPerExercise,
                         onAddSet: widget.onAddSet!,
                       ),

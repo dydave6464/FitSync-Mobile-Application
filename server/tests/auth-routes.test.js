@@ -44,7 +44,8 @@ test('auth endpoints', async (t) => {
     // that regression.
     assert.deepEqual(
       Object.keys(res.body.data.user).sort(),
-      ['email', 'emailVerified', 'fullName', 'isPremium', 'onboardingCompleted', 'userId'].sort(),
+      ['email', 'emailVerified', 'fullName', 'hasGoogle', 'hasPassword', 'isPremium',
+        'onboardingCompleted', 'userId'].sort(),
     );
     assert.ok(
       !Object.prototype.hasOwnProperty.call(res.body.data.user, 'password_hash'),
@@ -163,5 +164,33 @@ test('auth endpoints', async (t) => {
       .set('Authorization', `Bearer ${login.body.data.token}`).expect(200);
     assert.equal(res.body.data.user.email, 'juan@example.com');
     assert.equal(res.body.data.user.onboardingCompleted, false);
+    // A password account with no Google identity linked.
+    assert.equal(res.body.data.user.hasPassword, true);
+    assert.equal(res.body.data.user.hasGoogle, false);
+  });
+
+  await t.test('me reports a Google-only account as having no password', async () => {
+    await reset();
+    const google = await request(app).post('/api/v1/auth/google')
+      .send({ idToken: 'stub-token-juan' }).expect(200);
+    assert.equal(google.body.data.user.hasPassword, false);
+    assert.equal(google.body.data.user.hasGoogle, true);
+    const res = await request(app).get('/api/v1/auth/me')
+      .set('Authorization', `Bearer ${google.body.data.token}`).expect(200);
+    assert.equal(res.body.data.user.hasPassword, false);
+    assert.equal(res.body.data.user.hasGoogle, true);
+  });
+
+  await t.test('me reports both when a password account has linked Google', async () => {
+    await reset();
+    const { body } = await register().expect(201);
+    await markEmailVerified(pool, body.data.user.userId);
+    // Same address as the stub's Google identity: signing in links it.
+    await request(app).post('/api/v1/auth/google')
+      .send({ idToken: 'stub-token-juan' }).expect(200);
+    const login = await request(app).post('/api/v1/auth/login')
+      .send({ email: 'juan@example.com', password: 's3cret-pass' }).expect(200);
+    assert.equal(login.body.data.user.hasPassword, true);
+    assert.equal(login.body.data.user.hasGoogle, true);
   });
 });

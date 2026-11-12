@@ -1,5 +1,6 @@
 'use strict';
 const { toNumber, periodDays } = require('./sessions');
+const { effectiveDaysPerWeekSql } = require('./plans');
 
 /// How many points each period's volume line has.
 ///
@@ -73,7 +74,8 @@ function bucketLabel(index, width) {
 ///
 /// The COUNT and the target cover the same N days -- the window every reader
 /// here uses, the N calendar days ending today -- and the target is the
-/// plan's days_per_week spread over them, rounded: 3 a week is 13 over 30
+/// plan's effective days per week (effectiveDaysPerWeekSql: the chosen
+/// training days when set) spread over them, rounded: 3 a week is 13 over 30
 /// days. Counting over a different span than the target describes is what
 /// once let a diligent user score 17/16.
 ///
@@ -88,10 +90,12 @@ async function readAdherence(pool, userId, period = 'week') {
 
   const weeks = Math.round(days / 7);
 
+  // The effective count -- the user's chosen days when set -- the same rule
+  // GET /plans/active reports, so Progress never disagrees with the Plan tab.
   const [[plan]] = await pool.query(
-    `SELECT days_per_week FROM workout_plans
-      WHERE user_id = ? AND is_active = TRUE
-      ORDER BY plan_id DESC LIMIT 1`,
+    `SELECT ${effectiveDaysPerWeekSql('wp')} AS days_per_week FROM workout_plans wp
+      WHERE wp.user_id = ? AND wp.is_active = TRUE
+      ORDER BY wp.plan_id DESC LIMIT 1`,
     [userId],
   );
 

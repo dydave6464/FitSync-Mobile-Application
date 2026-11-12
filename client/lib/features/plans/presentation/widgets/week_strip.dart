@@ -73,7 +73,8 @@ class WeekDayCell extends StatelessWidget {
         key: const Key('day.dot'),
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: isToday ? t.onAccent : t.accent,
+          // accentFill, not accent: a state marker needs 3:1 on the cell.
+          color: isToday ? t.onAccent : t.accentFill,
         ),
         child: Icon(
           Icons.check,
@@ -95,8 +96,9 @@ class WeekDayCell extends StatelessWidget {
               shape: BoxShape.circle,
               color: switch (mark) {
                 DayMark.missed => Colors.transparent,
-                DayMark.planned =>
-                  isToday ? t.onAccent.withValues(alpha: 0.45) : t.line2,
+                // Full-strength tokens: this dot alone tells a training
+                // day from a rest day, so it needs 3:1 (line2 was 1.4:1).
+                DayMark.planned => isToday ? t.onAccent : t.control,
                 _ => Colors.transparent,
               },
               border: mark == DayMark.missed
@@ -270,6 +272,7 @@ class WeekStrip extends StatelessWidget {
     // profile lands, and the bare count is already how this row reports a
     // week it cannot set a target for.
     final hasTarget = known && target >= _minTarget && target <= _maxTarget;
+    final tally = done == 1 ? '1 session' : '$done sessions';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -280,15 +283,21 @@ class WeekStrip extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Flexible(child: FsEyebrow('This week')),
-              Text(
+              // Read with what it counts: a bare "1 of 3" is a fraction to a
+              // screen reader. Its own node, so a card around the strip does
+              // not fold the label into its own.
+              fsSpokenAs(
                 hasTarget
-                    ? '$done of $target'
-                    : (done == 1 ? '1 session' : '$done sessions'),
-                key: const Key('week.tally'),
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: t.accentText,
+                    ? '$done of $target workouts this week'
+                    : '$tally this week',
+                Text(
+                  hasTarget ? '$done of $target' : tally,
+                  key: const Key('week.tally'),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: t.accentText,
+                  ),
                 ),
               ),
             ],

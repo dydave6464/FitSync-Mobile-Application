@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
-import '../domain/auth_user.dart';
+import '../domain/sign_in_outcome.dart';
 import 'auth_controller.dart';
 import 'code_entry.dart';
 
@@ -40,15 +40,24 @@ class CheckEmailScreen extends ConsumerStatefulWidget {
   ConsumerState<CheckEmailScreen> createState() => _CheckEmailScreenState();
 }
 
+/// Which request is on its way, so only the button that sent it spins. The
+/// other is disabled without a spinner: one request at a time.
+enum _Pending { none, verify, resend }
+
 class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
   final _code = TextEditingController();
-  bool _busy = false;
+  _Pending _pending = _Pending.none;
+  bool get _busy => _pending != _Pending.none;
 
   /// Set once the server accepts the code. From then on the button only
   /// retries the sign-in: the code is spent, and sending it again would come
   /// back CODE_INVALID for an address that is in fact verified.
   bool _verified = false;
-  String? _status;
+
+  /// The last outcome, and whether it went wrong: an error is drawn as one
+  /// (red, with an icon) so it cannot be mistaken for "a new code is on its
+  /// way".
+  ({String text, bool isError})? _status;
 
   @override
   void initState() {
@@ -83,18 +92,18 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
     final email = widget.email;
     final password = widget.password;
     setState(() {
-      _busy = true;
+      _pending = _Pending.verify;
       _status = null;
     });
 
     // No `mounted` check here, unlike sign_in_screen.dart: repo.login has
-    // already stored the session token, so finishing onAuthenticated keeps
+    // already stored the session token, so finishing onSignedIn keeps
     // the app's state consistent with that stored session even if this
     // screen was closed mid-flight. Skipping it would leave the UI signed
     // out while holding a valid token.
-    void signedIn(AuthUser user) {
+    void signedIn(SignInOutcome outcome) {
       navigator.popUntil((route) => route.isFirst);
-      controller.onAuthenticated(user);
+      controller.onSignedIn(outcome);
       showSignedInBanner(messenger, verifiedSignInMessage);
     }
 
@@ -111,20 +120,30 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
     } on ApiException catch (error) {
       if (!_verified && error.code == 'CODE_INVALID') {
         // Perhaps the code was right and only the reply was lost.
-        final user = await signInAfterRejectedCode(repo, email, password);
-        if (user != null) {
-          signedIn(user);
+        final outcome = await signInAfterRejectedCode(repo, email, password);
+        if (outcome != null) {
+          signedIn(outcome);
           return;
         }
       }
       if (!mounted) return;
+      // A suspended account can't sign in however often it retries (spec
+      // §3), so that refusal is the error shown instead of the good news.
+      final goodNews = _verified && error.code != 'ACCOUNT_SUSPENDED';
       setState(() {
-        _status = _verified
-            ? 'Your email is verified. Tap to sign in.'
-            : (error.code == 'CODE_INVALID' ? wrongCodeMessage : error.message);
+        _status = (
+          text: goodNews
+              ? 'Your email is verified. Tap to sign in.'
+              : (error.code == 'CODE_INVALID'
+                    ? wrongCodeMessage
+                    : userMessage(error)),
+          // Verified is good news, drawn in neutral text rather than as an
+          // error even though the sign-in after it failed.
+          isError: !goodNews,
+        );
       });
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _pending = _Pending.none);
     }
   }
 
@@ -132,7 +151,7 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
     if (_busy) return;
     final repo = ref.read(authRepositoryProvider);
     setState(() {
-      _busy = true;
+      _pending = _Pending.resend;
       _status = null;
     });
 
@@ -142,12 +161,12 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
         password: widget.password,
       );
       if (!mounted) return;
-      setState(() => _status = newCodeMessage);
+      setState(() => _status = (text: newCodeMessage, isError: false));
     } on ApiException catch (error) {
       if (!mounted) return;
-      setState(() => _status = error.message);
+      setState(() => _status = (text: userMessage(error), isError: true));
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _pending = _Pending.none);
     }
   }
 
@@ -187,21 +206,44 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
                   style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.5),
                 ),
                 const SizedBox(height: 22),
-                if (!_verified) CodeField(controller: _code),
-                if (_status != null) ...[
-                  const SizedBox(height: 14),
-                  Text(
-                    _status!,
-                    key: const Key('status'),
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 12.5, color: t.text2),
+                if (!_verified)
+                  FsLabeledField(
+                    label: 'Code',
+                    field: CodeField(controller: _code),
                   ),
+                if (_status case final status?) ...[
+                  const SizedBox(height: 14),
+                  // Both kinds are live regions, so a screen reader says the
+                  // outcome of Verify or Send a new code as it appears.
+                  // Centred like every other line here: only as wide as its
+                  // icon and words, so a short one does not hang off the
+                  // left edge.
+                  if (status.isError)
+                    Center(
+                      child: IntrinsicWidth(
+                        child: FsErrorLine(
+                          status.text,
+                          key: const Key('status'),
+                        ),
+                      ),
+                    )
+                  else
+                    Semantics(
+                      container: true,
+                      liveRegion: true,
+                      child: Text(
+                        status.text,
+                        key: const Key('status'),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 12.5, color: t.text2),
+                      ),
+                    ),
                 ],
                 const SizedBox(height: 18),
                 FsButton(
                   key: const Key('verify'),
                   label: _verified ? 'Sign in' : 'Verify',
-                  busy: _busy,
+                  busy: _pending == _Pending.verify,
                   onPressed: _canSubmit ? _verify : null,
                 ),
                 if (!_verified) ...[
@@ -210,6 +252,7 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
                     key: const Key('resend'),
                     label: 'Send a new code',
                     kind: FsButtonKind.secondary,
+                    busy: _pending == _Pending.resend,
                     onPressed: _busy ? null : _resend,
                   ),
                 ],

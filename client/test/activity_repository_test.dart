@@ -34,6 +34,40 @@ void main() {
     expect(day.distanceKm, 4.52);
   });
 
+  test('saveDays PUTs every day in one request and reads the week back', () async {
+    late http.Request seen;
+    final repo = ActivityRepository(_api(MockClient((request) async {
+      seen = request;
+      return http.Response(jsonEncode({'data': {
+        'days': [
+          for (var d = 22; d <= 28; d++)
+            {'date': '2026-09-$d', 'steps': d >= 27 ? 6420 : null,
+             'caloriesBurned': d >= 27 ? 158 : null,
+             'distanceKm': d >= 27 ? 4.52 : null,
+             'activeMinutes': d >= 27 ? 64 : null},
+        ],
+        'usual': null, 'usualDays': 1, 'missing': <String>[],
+        'perStep': {'distanceKm': 0.0007038, 'caloriesBurned': 0.024633,
+                    'activeMinutes': 0.01},
+        'skipped': <String>[],
+      }}), 200);
+    })));
+
+    final week = await repo.saveDays({'2026-09-28': 6420, '2026-09-27': 6420});
+
+    expect(seen.method, 'PUT');
+    expect(seen.url.path, '/api/v1/activity');
+    expect(jsonDecode(seen.body), {
+      'days': [
+        {'date': '2026-09-28', 'steps': 6420},
+        {'date': '2026-09-27', 'steps': 6420},
+      ],
+    });
+    expect(week.days, hasLength(7));
+    expect(week.today.steps, 6420);
+    expect(week.perStep!.activeMinutes, 0.01);
+  });
+
   test('week GETs the seven days', () async {
     late http.Request seen;
     final repo = ActivityRepository(_api(MockClient((request) async {

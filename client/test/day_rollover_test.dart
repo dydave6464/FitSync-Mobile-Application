@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/manila_day.dart';
 import 'package:fitsync/features/home/presentation/day_rollover.dart';
+import 'package:fitsync/features/nutrition/domain/meal_suggestion.dart';
 import 'package:fitsync/features/nutrition/domain/nutrition.dart';
 import 'package:fitsync/features/nutrition/presentation/providers.dart';
 import 'package:fitsync/features/pro/domain/pro_status.dart';
@@ -108,6 +109,10 @@ void main() {
               return _pending<Streak>();
             }),
             nutritionDayProvider.overrideWith(() => _CountingNutrition(builds)),
+            mealSuggestionsProvider.overrideWith((ref, meal) {
+              count('suggestions:$meal');
+              return _pending<MealSuggestions>();
+            }),
             proStatusProvider.overrideWith((ref) {
               count('proStatus');
               return _pending<ProStatus>();
@@ -128,6 +133,7 @@ void main() {
                   ref.watch(pendingOutcomeProvider);
                   ref.watch(streakProvider);
                   ref.watch(nutritionDayProvider);
+                  ref.watch(mealSuggestionsProvider('lunch'));
                   // "Ends soon" and the end itself turn over by date.
                   ref.watch(proStatusProvider);
                   return const SizedBox();
@@ -160,6 +166,7 @@ void main() {
       'pendingOutcome',
       'streak',
       'nutrition',
+      'suggestions:lunch',
       'proStatus',
     };
 

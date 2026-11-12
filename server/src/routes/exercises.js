@@ -1,6 +1,7 @@
 'use strict';
 const express = require('express');
 const AppError = require('../lib/app-error');
+const { parsePositiveInt } = require('../lib/query-params');
 const {
   listExercises,
   getExerciseById,
@@ -13,28 +14,6 @@ const {
 } = require('../db/exercises');
 const { resolveCues } = require('../db/cues');
 const { createCueService } = require('../services/cues');
-
-// A client sending nonsense should learn that it did, rather than have the
-// value silently clamped and get results it did not ask for.
-function parsePositiveInt(name, raw, fallback, max = null) {
-  if (raw === undefined || raw === '') return fallback;
-  const value = Number(raw);
-  if (!Number.isSafeInteger(value) || value < 1) {
-    throw AppError.badRequest(
-      'INVALID_QUERY_PARAM',
-      `${name} must be a positive integer.`,
-      [{ field: name, value: String(raw) }],
-    );
-  }
-  if (max !== null && value > max) {
-    throw AppError.badRequest(
-      'INVALID_QUERY_PARAM',
-      `${name} must not exceed ${max}.`,
-      [{ field: name, value: String(raw) }],
-    );
-  }
-  return value;
-}
 
 // Express 5's default query parser turns a repeated key (?equipment=a&
 // equipment=b) into an array. mysql2 happily formats an array as a comma

@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
-import '../../exercises/presentation/exercise_list_screen.dart'
-    show describeError;
 import '../../plans/presentation/providers.dart';
+import '../../plans/presentation/widgets/regenerate_plan_button.dart'
+    show openGenerator;
 import '../../recovery/presentation/providers.dart'
     show recoveryOverviewProvider;
 import '../../recovery/presentation/widgets/checkin_sheet.dart'
@@ -25,6 +26,7 @@ import '../../plans/domain/workout_plan.dart';
 import '../../streaks/presentation/providers.dart' show streakProvider;
 import '../../streaks/presentation/streaks_screen.dart';
 import '../../activity/presentation/widgets/activity_stats_row.dart';
+import '../../ads/presentation/ad_slot.dart';
 import 'plan_ready.dart';
 import 'widgets/active_workout_card.dart';
 import 'widgets/greeting.dart';
@@ -38,11 +40,11 @@ import 'widgets/routine_card.dart';
 
 /// The signed-in landing screen.
 ///
-/// Only sections with a live API are here. The routine checklist now has one
-/// -- see [_Routine] -- but the design's ad still needs a server slice that
-/// does not exist yet (the quick stats are now [ActivityStatsRow]), and a
-/// placeholder showing invented figures cannot be told apart from a real one
-/// by anyone looking at the screen.
+/// Only sections with a live API are here: a placeholder showing invented
+/// figures cannot be told apart from a real one by anyone looking at the
+/// screen. The routine checklist is [_Routine], the quick stats are
+/// [ActivityStatsRow], and the design's ad is the free trainee's [AdSlot]
+/// at the very end.
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({
     super.key,
@@ -89,8 +91,9 @@ class HomeScreen extends ConsumerWidget {
       body: SafeArea(
         child: profile.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => _Retry(
-            message: describeError(error),
+          error: (error, _) => FsRetry(
+            fullScreen: true,
+            message: userMessage(error),
             onRetry: () => ref.invalidate(profileProvider),
           ),
           data: (p) => ListView(
@@ -133,8 +136,8 @@ class HomeScreen extends ConsumerWidget {
                     padding: EdgeInsets.symmetric(vertical: 24),
                     child: Center(child: CircularProgressIndicator()),
                   ),
-                  error: (error, _) => _Retry(
-                    message: describeError(error),
+                  error: (error, _) => FsRetry(
+                    message: userMessage(error),
                     onRetry: () => ref.invalidate(activePlanProvider),
                   ),
                   data: (workoutPlan) => workoutPlan == null
@@ -145,7 +148,7 @@ class HomeScreen extends ConsumerWidget {
                           dayNo: workoutPlan.todayDayNo(completedDays.length),
                           // The way to the plan the welcome points at, so
                           // taking it puts the welcome away as See plan does.
-                          onStart: () {
+                          onOpenPlan: () {
                             ref.read(planReadyProvider.notifier).dismiss();
                             onGoToTrain?.call();
                           },
@@ -159,6 +162,10 @@ class HomeScreen extends ConsumerWidget {
               _Progress(onTap: () => onGoToProgress?.call()),
               const SizedBox(height: 14),
               _Routine(onGoToTrain: onGoToTrain),
+              // Last, below everything the trainee came for; it draws
+              // nothing for Pro, or with no ad running.
+              const SizedBox(height: 14),
+              const AdSlot(placement: 'home'),
             ],
           ),
         ),
@@ -220,7 +227,7 @@ class _ActiveWorkoutState extends ConsumerState<_ActiveWorkout> {
       // resumable. Say so rather than letting a destructive tap look like it
       // did nothing.
       if (mounted) {
-        messenger.showSnackBar(SnackBar(content: Text(describeError(error))));
+        messenger.showSnackBar(SnackBar(content: Text(userMessage(error))));
       }
     } finally {
       if (mounted) setState(() => _discarding = false);
@@ -241,9 +248,8 @@ class _ActiveWorkoutState extends ConsumerState<_ActiveWorkout> {
   );
 }
 
-/// Plans are created only by `POST /profile/complete-onboarding`. There is no
-/// on-demand generate endpoint, so this state deliberately offers no action —
-/// a button that calls nothing is worse than a sentence that explains why.
+/// No active plan: the Plan tab's words for the same state, and its way out,
+/// "Generate a plan", which opens the generator.
 class _NoPlan extends StatelessWidget {
   const _NoPlan();
 
@@ -260,48 +266,29 @@ class _NoPlan extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const FsEyebrow("Today's plan"),
+          Semantics(
+            container: true,
+            header: true,
+            child: const FsEyebrow("Today's plan"),
+          ),
           const SizedBox(height: 8),
+          Text('No plan yet', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
           Text(
-            'You have no active plan yet.',
+            'Build one from your goals, equipment and injuries.',
             style: TextStyle(fontSize: 12.5, color: t.text2),
+          ),
+          const SizedBox(height: 12),
+          FsButton(
+            key: const Key('home.noPlan.generate'),
+            label: 'Generate a plan',
+            small: true,
+            onPressed: () => openGenerator(context),
           ),
         ],
       ),
     );
   }
-}
-
-/// Matches PlanScreen's failure treatment, so the two screens fail the same
-/// way rather than each inventing their own.
-class _Retry extends StatelessWidget {
-  const _Retry({required this.message, required this.onRetry, this.buttonKey});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  /// Lets a caller keep a stable finder for the button itself, since keying
-  /// this whole widget would make a tap land wherever its centre happens to
-  /// fall -- the message above it, say -- rather than on the button.
-  final Key? buttonKey;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 16),
-    child: Column(
-      children: [
-        Text(message, textAlign: TextAlign.center),
-        const SizedBox(height: 12),
-        FsButton(
-          key: buttonKey,
-          label: 'Retry',
-          small: true,
-          kind: FsButtonKind.secondary,
-          onPressed: onRetry,
-        ),
-      ],
-    ),
-  );
 }
 
 /// Hidden entirely when the estimate cannot be read: the Recovery tab is
@@ -321,7 +308,11 @@ class _Readiness extends ConsumerWidget {
           // estimate on the default 800dp test surface. An earlier day's adds
           // a "From" line, and a narrow phone can wrap the injury-risk line,
           // so either may still land a little taller.
-          loading: () => const SizedBox(height: 170),
+          loading: () => const Padding(
+            key: Key('home.readiness.placeholder'),
+            padding: EdgeInsets.only(bottom: 14),
+            child: _LoadingCard(height: 156, label: 'Loading readiness'),
+          ),
           error: (_, _) => const SizedBox.shrink(),
           data: (overview) => Padding(
             padding: const EdgeInsets.only(bottom: 14),
@@ -351,7 +342,7 @@ class _Progress extends ConsumerWidget {
     final analytics = ref.watch(trainingAnalyticsProvider('month'));
 
     if (summary.hasError || analytics.hasError) {
-      return _Retry(
+      return FsRetry(
         message: "Couldn't load progress",
         buttonKey: const Key('home.progress.retry'),
         onRetry: () {
@@ -369,7 +360,11 @@ class _Progress extends ConsumerWidget {
     // standing in for data about to replace it must match.
     // 186 since the bars gained their dates and the labels grew to 12.
     if (s == null || a == null) {
-      return const SizedBox(key: Key('home.progress.placeholder'), height: 186);
+      return const _LoadingCard(
+        key: Key('home.progress.placeholder'),
+        height: 186,
+        label: 'Loading progress',
+      );
     }
     return ProgressSnapshotCard(
       summary: s,
@@ -397,10 +392,15 @@ class _Routine extends ConsumerWidget {
     return ref
         .watch(routineTodayProvider)
         .when(
-          // The card's with-data height (three rows plus "+N more"), measured
-          // the way _Progress's placeholder note describes.
-          loading: () => const SizedBox(height: 167),
-          error: (_, _) => _Retry(
+          // The card's with-data height (three rows, "+N more" and the
+          // streak chip, which is taller than the title alone), measured the
+          // way _Progress's placeholder note describes.
+          loading: () => const _LoadingCard(
+            key: Key('home.routine.placeholder'),
+            height: 170,
+            label: "Loading today's routine",
+          ),
+          error: (_, _) => FsRetry(
             message: "Couldn't load your routine",
             buttonKey: const Key('home.routine.retry'),
             onRetry: () => ref.invalidate(routineTodayProvider),
@@ -423,5 +423,51 @@ class _Routine extends ConsumerWidget {
             ),
           ),
         );
+  }
+}
+
+/// A card still waiting on its data: the card's outline and a few grey bars,
+/// at the card's own with-data [height] so Home does not jump when it lands.
+/// Still, not shimmering, so it needs no reduced-motion case. A screen
+/// reader hears [label] rather than nothing at all.
+class _LoadingCard extends StatelessWidget {
+  const _LoadingCard({super.key, required this.height, required this.label});
+
+  final double height;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+    Widget bar(double widthFactor, double barHeight) => FractionallySizedBox(
+      widthFactor: widthFactor,
+      child: Container(
+        height: barHeight,
+        decoration: BoxDecoration(
+          color: t.surface2,
+          borderRadius: BorderRadius.circular(FsRadius.pill),
+        ),
+      ),
+    );
+
+    return Semantics(
+      container: true,
+      label: label,
+      child: SizedBox(
+        height: height,
+        child: FsCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              bar(0.4, 14),
+              const SizedBox(height: 14),
+              bar(0.9, 10),
+              const SizedBox(height: 8),
+              bar(0.65, 10),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

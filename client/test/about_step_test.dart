@@ -1,9 +1,14 @@
+import 'dart:ui' show CheckedState;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show SemanticsData;
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/units.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart' show FsStatField;
+import 'package:fitsync/features/onboarding/presentation/steps/about_checks.dart';
 import 'package:fitsync/features/onboarding/presentation/steps/about_step.dart';
 
 import 'helpers/onboarding_screen.dart';
@@ -43,6 +48,8 @@ Future<AboutAnswers?> _pumpAndEdit(
   AboutAnswers value = const AboutAnswers(),
   WeightUnit unit = WeightUnit.kg,
   List<String> goals = const [],
+  Map<String, String> fieldErrors = const {},
+  String? mainGoal,
 }) async {
   AboutAnswers? emitted;
   await tester.pumpWidget(
@@ -53,6 +60,8 @@ Future<AboutAnswers?> _pumpAndEdit(
             value: value,
             unit: unit,
             goals: goals,
+            fieldErrors: fieldErrors,
+            mainGoal: mainGoal,
             onChanged: (v) => emitted = v,
           ),
         ),
@@ -63,6 +72,14 @@ Future<AboutAnswers?> _pumpAndEdit(
   await tester.pumpAndSettle();
   return emitted;
 }
+
+/// The semantics a single-choice chip reports (P-1a): one of a group where
+/// picking one unpicks the rest, checked or not checked.
+SemanticsData _chipData(WidgetTester tester, Key key) => tester
+    .getSemantics(
+      find.descendant(of: find.byKey(key), matching: find.byType(Text)),
+    )
+    .getSemanticsData();
 
 void main() {
   testWidgets('offers the two sexes the design shows', (tester) async {
@@ -559,6 +576,57 @@ void main() {
     },
   );
 
+  // L-82: a kg/lb switch rewrote the weights inside didUpdateWidget, and the
+  // listeners reported it upwards then, mid-rebuild, so an owner that simply
+  // called setState on a change asserted. It is reported after the frame.
+  testWidgets(
+    'a unit switch reports the converted weight after the frame, so a plain '
+    'setState in the owner is safe',
+    (tester) async {
+      final emitted = <AboutAnswers>[];
+      var unit = WeightUnit.kg;
+      late StateSetter rebuild;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: StatefulBuilder(
+                builder: (context, setState) {
+                  rebuild = setState;
+                  return AboutStep(
+                    value: _complete,
+                    unit: unit,
+                    goals: const [],
+                    onChanged: (v) => setState(() => emitted.add(v)),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+
+      rebuild(() => unit = WeightUnit.lb);
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      await tester.pump();
+
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const Key('weightKg')))
+            .controller!
+            .text,
+        '158.7',
+      );
+      expect(emitted, hasLength(1));
+      // 158.7 lb, as now shown, back in kilograms.
+      expect(
+        emitted.single.weightKg,
+        closeTo(parseWeight('158.7', WeightUnit.lb)!, 1e-9),
+      );
+    },
+  );
+
   testWidgets('the estimate reads as the daily target', (tester) async {
     // The user's chosen wording (2026-10-18). A "to maintain your weight"
     // version was tried and turned down.
@@ -619,6 +687,459 @@ void main() {
     });
 
     expect(emitted?.activityLevel, _activityValues.last);
+  });
+
+  // #30 + #2: the server's hard limits, said under the card in the user's
+  // unit, rather than "can't be saved as it is".
+  group('rangeFieldMessage', () {
+    ApiException refusal(
+      String field,
+      String unit, {
+      String code = 'INVALID_PROFILE_FIELD',
+      num? min,
+      num? max,
+    }) => ApiException(
+      code,
+      'Enter a ... between ...',
+      details: [
+        {'field': field, 'min': ?min, 'max': ?max, 'unit': unit},
+      ],
+    );
+
+    test('a height reads in centimetres', () {
+      expect(
+        rangeFieldMessage(
+          refusal('heightCm', 'cm', min: 50, max: 275),
+          WeightUnit.lb,
+        ),
+        'Enter a height between 50 and 275 cm.',
+      );
+    });
+
+    test('a weight reads in kilograms for a kg user', () {
+      expect(
+        rangeFieldMessage(
+          refusal('weightKg', 'kg', min: 20, max: 500),
+          WeightUnit.kg,
+        ),
+        'Enter a weight between 20 and 500 kg.',
+      );
+    });
+
+    test('a weight reads in whole pounds for an lb user, inside the range', () {
+      expect(
+        rangeFieldMessage(
+          refusal('weightKg', 'kg', min: 20, max: 500),
+          WeightUnit.lb,
+        ),
+        'Enter a weight between 45 and 1102 lb.',
+      );
+    });
+
+    test('the pounds shown are ones the server takes back', () {
+      // 20 kg is 44.09 lb: "44" would read back as 19.96 kg and be refused
+      // again, so the low end rounds up and the high end rounds down.
+      final message = rangeFieldMessage(
+        refusal('weightKg', 'kg', min: 20, max: 500),
+        WeightUnit.lb,
+      )!;
+      final bounds = RegExp(r'between (\d+) and (\d+) lb').firstMatch(message)!;
+      final low = parseWeight(bounds.group(1)!, WeightUnit.lb)!;
+      final high = parseWeight(bounds.group(2)!, WeightUnit.lb)!;
+      expect(low, greaterThanOrEqualTo(20));
+      expect(high, lessThanOrEqualTo(500));
+    });
+
+    test('a goal weight is named as one', () {
+      expect(
+        rangeFieldMessage(
+          refusal('goalWeightKg', 'kg', min: 20, max: 500),
+          WeightUnit.lb,
+        ),
+        'Enter a goal weight between 45 and 1102 lb.',
+      );
+    });
+
+    test('a weigh-in refusal (WEIGHT_OUT_OF_RANGE) reads the same', () {
+      expect(
+        rangeFieldMessage(
+          refusal(
+            'weightKg',
+            'kg',
+            code: 'WEIGHT_OUT_OF_RANGE',
+            min: 20,
+            max: 500,
+          ),
+          WeightUnit.kg,
+        ),
+        'Enter a weight between 20 and 500 kg.',
+      );
+    });
+
+    test('an older server, with no range in details, gives null', () {
+      expect(rangeFieldMessage(refusal('heightCm', 'cm'), WeightUnit.kg), null);
+      expect(
+        rangeFieldMessage(refusal('heightCm', 'cm', min: 50), WeightUnit.kg),
+        null,
+      );
+    });
+
+    test('any other failure gives null', () {
+      expect(
+        rangeFieldMessage(
+          const ApiException('NETWORK_ERROR', 'offline'),
+          WeightUnit.kg,
+        ),
+        null,
+      );
+      expect(rangeFieldMessage(Exception('boom'), WeightUnit.kg), null);
+    });
+
+    test('WEIGHT_OUT_OF_RANGE naming a field points at it', () {
+      final error = refusal(
+        'weightKg',
+        'kg',
+        code: 'WEIGHT_OUT_OF_RANGE',
+        min: 20,
+        max: 500,
+      );
+      expect(rejectedProfileField(error), 'weightKg');
+      expect(
+        plainProfileError(error),
+        "Your weight can't be saved as it is. Check it and try again.",
+      );
+    });
+
+    test('WEIGHT_OUT_OF_RANGE with no details keeps its own message', () {
+      const error = ApiException(
+        'WEIGHT_OUT_OF_RANGE',
+        'Enter a weight between 20 and 500 kg.',
+      );
+      expect(rejectedProfileField(error), null);
+      expect(plainProfileError(error), 'Enter a weight between 20 and 500 kg.');
+    });
+  });
+
+  group('implausible numbers', () {
+    test('a height or weight well outside a person is queried', () {
+      final problems = aboutRangeProblems(
+        const AboutAnswers(heightCm: 17, weightKg: 7, goalWeightKg: 400),
+        WeightUnit.kg,
+      );
+
+      expect(problems.keys, ['heightCm', 'weightKg', 'goalWeightKg']);
+      expect(problems['heightCm'], contains('17 cm'));
+      expect(problems['heightCm'], contains('100–250 cm'));
+      expect(problems['weightKg'], contains('7 kg'));
+      expect(problems['weightKg'], contains('25–300 kg'));
+      expect(problems['goalWeightKg'], contains('400 kg'));
+    });
+
+    test('the edges of the ranges and blanks are fine', () {
+      expect(
+        aboutRangeProblems(
+          const AboutAnswers(heightCm: 100, weightKg: 300, goalWeightKg: 25),
+          WeightUnit.kg,
+        ),
+        isEmpty,
+      );
+      expect(aboutRangeProblems(const AboutAnswers(), WeightUnit.kg), isEmpty);
+    });
+
+    test('a weight is queried in the unit it was typed in', () {
+      final problems = aboutRangeProblems(
+        AboutAnswers(weightKg: parseWeight('15', WeightUnit.lb)),
+        WeightUnit.lb,
+      );
+
+      expect(problems['weightKg'], contains('15 lb'));
+      expect(problems['weightKg'], contains('55–661 lb'));
+    });
+
+    testWidgets('a queried answer is flagged right under its card', (
+      tester,
+    ) async {
+      await _pumpAndEdit(
+        tester,
+        (_) async {},
+        value: const AboutAnswers(heightCm: 17, weightKg: 72),
+        fieldErrors: const {'heightCm': 'Check this: 17 cm?'},
+      );
+
+      final error = find.byKey(const Key('error.heightCm'));
+      expect(error, findsOneWidget);
+      expect(
+        find.descendant(of: error, matching: find.text('Check this: 17 cm?')),
+        findsOneWidget,
+      );
+      final height = tester.getRect(find.byKey(const Key('heightCm')));
+      expect(tester.getRect(error).top, greaterThan(height.bottom));
+      expect(
+        tester.getRect(error).top - height.bottom,
+        lessThan(40),
+        reason: 'under the card, not at the end of the step',
+      );
+      // The card itself is marked too, and only that one.
+      bool marked(String key) => tester
+          .widget<FsStatField>(
+            find.ancestor(
+              of: find.byKey(Key(key)),
+              matching: find.byType(FsStatField),
+            ),
+          )
+          .error;
+      expect(marked('heightCm'), isTrue);
+      expect(marked('weightKg'), isFalse);
+    });
+  });
+
+  testWidgets('the target follows the main goal, as Nutrition will', (
+    tester,
+  ) async {
+    await _pumpAndEdit(
+      tester,
+      (_) async {},
+      value: _complete,
+      mainGoal: 'lose_weight',
+    );
+
+    expect(
+      find.text('Estimated daily target ≈ 1,800 kcal · 115g protein'),
+      findsOneWidget,
+    );
+  });
+
+  group('the date of birth button', () {
+    testWidgets('says what it sets when nothing is set yet', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pumpAndEdit(tester, (_) async {});
+
+      final data = tester
+          .getSemantics(find.byKey(const Key('dateOfBirth')))
+          .getSemanticsData();
+      expect(data.label, 'Date of birth');
+      expect(data.value, 'Not set');
+      expect(data.flagsCollection.isButton, isTrue);
+      expect(data.hint, 'Opens a date picker');
+      handle.dispose();
+    });
+
+    testWidgets('reads the date and age as its value', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pumpAndEdit(
+        tester,
+        (_) async {},
+        value: const AboutAnswers(dateOfBirth: '1998-03-14'),
+      );
+
+      final data = tester
+          .getSemantics(find.byKey(const Key('dateOfBirth')))
+          .getSemanticsData();
+      expect(data.label, 'Date of birth');
+      expect(data.value, startsWith('14 March 1998, '));
+      expect(data.value, endsWith(' years old'));
+      handle.dispose();
+    });
+
+    testWidgets('its eyebrow is not read a second time', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pumpAndEdit(tester, (_) async {});
+
+      expect(
+        find.bySemanticsLabel(RegExp(r'^date of birth$', caseSensitive: false)),
+        findsOneWidget,
+      );
+      handle.dispose();
+    });
+  });
+
+  testWidgets('stacked at large text, each message sits under its own card', (
+    tester,
+  ) async {
+    // L-20: once Weight moved under Height, the height message still came
+    // after both cards, under Weight.
+    await pumpOnPhone(
+      tester,
+      const AboutStep(
+        value: AboutAnswers(heightCm: 17, weightKg: 7),
+        goals: [],
+        onChanged: _ignore,
+        fieldErrors: {
+          'heightCm': 'Check this: 17 cm?',
+          'weightKg': 'Check: 7?',
+        },
+      ),
+      screenWidth: 360,
+    );
+
+    final height = tester.getRect(find.byKey(const Key('heightCm')));
+    final weight = tester.getRect(find.byKey(const Key('weightKg')));
+    final heightError = tester.getRect(find.byKey(const Key('error.heightCm')));
+    final weightError = tester.getRect(find.byKey(const Key('error.weightKg')));
+    expect(weight.top, greaterThan(height.bottom), reason: 'stacked');
+    expect(heightError.top, greaterThan(height.bottom));
+    expect(heightError.bottom, lessThan(weight.top));
+    expect(weightError.top, greaterThan(weight.bottom));
+  });
+
+  testWidgets('side by side, both messages still sit under the pair', (
+    tester,
+  ) async {
+    await pumpOnPhone(
+      tester,
+      const AboutStep(
+        value: AboutAnswers(heightCm: 17, weightKg: 7),
+        goals: [],
+        onChanged: _ignore,
+        fieldErrors: {
+          'heightCm': 'Check this: 17 cm?',
+          'weightKg': 'Check: 7?',
+        },
+      ),
+      screenWidth: 360,
+      textScale: 1.0,
+    );
+
+    final height = tester.getRect(find.byKey(const Key('heightCm')));
+    final heightError = tester.getRect(find.byKey(const Key('error.heightCm')));
+    final weightError = tester.getRect(find.byKey(const Key('error.weightKg')));
+    expect(heightError.top, greaterThan(height.bottom));
+    expect(weightError.top, greaterThan(heightError.bottom));
+  });
+
+  group('the activity level', () {
+    // AO-24: five bare chips, though they move the calorie estimate by more
+    // than half.
+    testWidgets('explains the one picked', (tester) async {
+      await _pumpAndEdit(
+        tester,
+        (_) async {},
+        value: const AboutAnswers(activityLevel: 'light'),
+      );
+
+      expect(
+        tester.widget<Text>(find.byKey(const Key('activity.hint'))).data,
+        'On your feet some of the day, or 1 to 3 workouts a week.',
+      );
+    });
+
+    testWidgets('changes its explanation with the pick', (tester) async {
+      await _pumpAndEdit(tester, (tester) async {
+        await _tapKey(tester, const Key('activity.very_active'));
+      });
+
+      expect(
+        tester.widget<Text>(find.byKey(const Key('activity.hint'))).data,
+        'Hard training most days, or a very physical job.',
+      );
+    });
+
+    // P-11a: focus stays on the chip, so the new explanation below it
+    // changed without a word to a screen reader.
+    testWidgets('reads the new explanation aloud when the pick changes', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _pumpAndEdit(tester, (tester) async {
+        await _tapKey(tester, const Key('activity.very_active'));
+      }, value: const AboutAnswers(activityLevel: 'light'));
+
+      expect(tester.takeAnnouncements().map((a) => a.message), [
+        'Hard training most days, or a very physical job.',
+      ]);
+      handle.dispose();
+    });
+
+    testWidgets('says nothing more when the picked level is tapped again', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _pumpAndEdit(tester, (tester) async {
+        await _tapKey(tester, const Key('activity.light'));
+      }, value: const AboutAnswers(activityLevel: 'light'));
+
+      expect(tester.takeAnnouncements(), isEmpty);
+      handle.dispose();
+    });
+
+    testWidgets('says how to choose before anything is picked', (tester) async {
+      await _pumpAndEdit(tester, (_) async {});
+
+      expect(
+        tester.widget<Text>(find.byKey(const Key('activity.hint'))).data,
+        'Pick the one closest to a usual week, work included.',
+      );
+    });
+
+    testWidgets('has a hint of its own for every level', (tester) async {
+      final hints = <String?>{};
+      for (final level in _activityValues) {
+        // A fresh step each time: it reads its value once, as it opens.
+        await tester.pumpWidget(const SizedBox());
+        await _pumpAndEdit(
+          tester,
+          (_) async {},
+          value: AboutAnswers(activityLevel: level),
+        );
+        hints.add(
+          tester.widget<Text>(find.byKey(const Key('activity.hint'))).data,
+        );
+      }
+      expect(hints, hasLength(_activityValues.length));
+    });
+  });
+
+  group('the date of birth picker', () {
+    // AO-25: it opened on a month calendar 25 years back, and allowed today.
+    Future<DatePickerDialog> open(
+      WidgetTester tester, {
+      String? dateOfBirth,
+    }) async {
+      await _pumpAndEdit(tester, (tester) async {
+        await _tapKey(tester, const Key('dateOfBirth'));
+      }, value: AboutAnswers(dateOfBirth: dateOfBirth));
+      return tester.widget<DatePickerDialog>(find.byType(DatePickerDialog));
+    }
+
+    testWidgets('opens on the years', (tester) async {
+      final dialog = await open(tester);
+
+      expect(dialog.initialCalendarMode, DatePickerMode.year);
+      expect(find.byType(YearPicker), findsOneWidget);
+    });
+
+    testWidgets('stops at 13 years ago', (tester) async {
+      final dialog = await open(tester);
+
+      final now = DateTime.now();
+      expect(dialog.lastDate, DateTime(now.year - 13, now.month, now.day));
+    });
+
+    testWidgets('a saved date later than that still opens', (tester) async {
+      final now = DateTime.now();
+      final recent =
+          '${now.year - 2}-${now.month.toString().padLeft(2, '0')}-01';
+      final dialog = await open(tester, dateOfBirth: recent);
+
+      expect(dialog.initialDate, dialog.lastDate);
+    });
+  });
+
+  // P-1a: picking an activity level unpicks the others, so a screen reader
+  // hears a radio group, not five independent toggles.
+  testWidgets('the activity levels are one single choice', (tester) async {
+    final handle = tester.ensureSemantics();
+    await _pumpAndEdit(tester, (_) async {}, value: _complete);
+
+    for (final value in _activityValues) {
+      final data = _chipData(tester, Key('activity.$value'));
+      expect(data.flagsCollection.isInMutuallyExclusiveGroup, isTrue);
+      expect(
+        data.flagsCollection.isChecked,
+        value == 'light' ? CheckedState.isTrue : CheckedState.isFalse,
+      );
+    }
+    handle.dispose();
   });
 }
 

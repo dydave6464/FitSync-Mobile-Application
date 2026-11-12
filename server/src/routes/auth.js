@@ -2,22 +2,22 @@
 const express = require('express');
 const AppError = require('../lib/app-error');
 const { signToken } = require('../lib/tokens');
-const { hashPassword, verifyPassword, DUMMY_HASH } = require('../lib/passwords');
+const { signAdminToken } = require('../lib/admin-tokens');
+const {
+  hashPassword, verifyPassword, confirmPassword, DUMMY_HASH,
+  MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH,
+} = require('../lib/passwords');
 const {
   findUserByEmail, findUserById, createUserWithPassword, findOrCreateGoogleUser,
-  markEmailVerified, updatePasswordHash,
+  markEmailVerified, replacePasswordAndSignOut,
 } = require('../db/users');
 const { codeKey, normaliseCode, TTL_MINUTES } = require('../lib/auth-codes');
 const { issueCode, checkCode } = require('../db/auth-codes');
+const { findAdminByEmail } = require('../db/admins');
+const { toPublicAdmin } = require('./admin');
+const { SUSPENDED } = require('../lib/suspension');
 const requireAuth = require('../middleware/require-auth');
 
-const MIN_PASSWORD_LENGTH = 8;
-// bcrypt (via bcryptjs) only reads the first 72 bytes of its input — anything
-// beyond that contributes nothing to the hash. Without a cap, an anonymous
-// caller can send an arbitrarily large password and force the server to spend
-// real CPU running it through a deliberately slow hash function: a cheap
-// denial-of-service against the one route that has no auth to gate it.
-const MAX_PASSWORD_LENGTH = 72;
 // users.email and users.full_name are both VARCHAR(255). Anything longer must
 // be rejected here as a 400, not discovered as ER_DATA_TOO_LONG from MySQL —
 // see the identical MAX_LENGTH map in src/routes/profile.js.
@@ -32,6 +32,9 @@ function toPublicUser(row) {
     onboardingCompleted: row.onboarding_completed_at !== null,
     isPremium: Boolean(row.is_premium),
     emailVerified: Boolean(row.email_verified),
+    // What the app offers: Change password, or "You sign in with Google".
+    hasPassword: row.password_hash !== null,
+    hasGoogle: Boolean(row.has_google),
   };
 }
 
@@ -129,6 +132,11 @@ module.exports = function buildAuthRouter({
       if (await findUserByEmail(pool, email)) {
         throw AppError.conflict('EMAIL_TAKEN', 'That email is already registered.');
       }
+      // Sign-in looks in admins first, so an admin's address can never also
+      // be a trainee's.
+      if (await findAdminByEmail(pool, email)) {
+        throw AppError.conflict('EMAIL_TAKEN', 'That email is already registered.');
+      }
 
       const user = await createUserWithPassword(pool, {
         email, passwordHash: await hashPassword(password), fullName,
@@ -144,6 +152,20 @@ module.exports = function buildAuthRouter({
     try {
       const email = requireString('email', req.body.email).toLowerCase();
       const password = requireString('password', req.body.password);
+
+      // Admins sign in on the same form (spec 2026-11-07-admin-dashboard),
+      // looked up first; an address is never both (register, Google and
+      // admin:create keep them apart).
+      const admin = await findAdminByEmail(pool, email);
+      if (admin) {
+        // One bcrypt compare, as on the trainee path: an admin email costs the same.
+        if (!(await verifyPassword(password, admin.password_hash))) {
+          throw AppError.unauthorized('INVALID_CREDENTIALS', 'Email or password is incorrect.');
+        }
+        return res.json({
+          data: { role: 'admin', admin: toPublicAdmin(admin), token: signAdminToken(admin.admin_id, jwt) },
+        });
+      }
 
       const user = await findUserByEmail(pool, email);
       // One error, one message, whether the email is unknown or the password is
@@ -165,14 +187,24 @@ module.exports = function buildAuthRouter({
       // an address is registered without knowing its password -- exactly what
       // the DUMMY_HASH dance above exists to prevent. Reaching this line
       // already required the correct password, so disclosing the account's
-      // state costs nothing further.
+      // state costs nothing further. Suspended comes first: verifying the
+      // address would not let a suspended account in either.
+      if (user.suspended_at) throw SUSPENDED();
       if (!user.email_verified) {
         throw AppError.forbidden(
           'EMAIL_NOT_VERIFIED', 'Check your email to finish setting up your account.',
         );
       }
 
-      res.json({ data: { user: toPublicUser(user), token: signToken(user.user_id, jwt) } });
+      // The generation read with the hash just compared: if a password change
+      // landed during the compare, this token is already signed out.
+      res.json({
+        data: {
+          role: 'trainee',
+          user: toPublicUser(user),
+          token: signToken(user.user_id, jwt, user.token_version),
+        },
+      });
     } catch (err) { next(err); }
   });
 
@@ -226,23 +258,33 @@ module.exports = function buildAuthRouter({
   });
 
   // Mirrors sendVerification, with one deliberate difference: the mail send
-  // is not awaited. Awaiting it would make the verified branch of
-  // /password-reset/request measurably slower than the others, turning an
-  // endpoint whose whole purpose is an indistinguishable 202 into a timing
-  // oracle. (issueCode's queries are still awaited -- the known residual
-  // recorded on /password-reset/request.)
+  // is not awaited. Awaiting it would make a known address on
+  // /password-reset/request measurably slower than an unknown one, turning
+  // an endpoint whose whole purpose is an indistinguishable 202 into a
+  // timing oracle. (issueCode's queries are still awaited -- the known
+  // residual recorded on /password-reset/request.)
+  //
+  // An unverified account gets the same reset_password code under the same
+  // subject, worded for what using it does there: it sets the password and
+  // finishes setting up (verifies) the account -- see /password-reset.
   async function sendPasswordReset(req, user) {
     const code = await issueCode(pool, {
       key: codesKey(), userId: user.user_id, purpose: 'reset_password',
     });
     if (code === null) return;
+    const text = user.email_verified
+      ? `Enter this code in the FitSync app to reset your password: ${code}\n\n`
+        + `It expires in ${TTL_MINUTES.reset_password} minutes. `
+        + "If you didn't ask to reset your password, you can ignore this email "
+        + "— your password hasn't changed."
+      : 'Enter this code in the FitSync app to choose a new password and finish '
+        + `setting up your account: ${code}\n\n`
+        + `It expires in ${TTL_MINUTES.reset_password} minutes. `
+        + "If you didn't ask for this, you can ignore this email — nothing has changed.";
     void mail.send({
       to: user.email,
       subject: `Your FitSync password reset code: ${code}`,
-      text: `Enter this code in the FitSync app to reset your password: ${code}\n\n`
-        + `It expires in ${TTL_MINUTES.reset_password} minutes. `
-        + "If you didn't ask to reset your password, you can ignore this email "
-        + "— your password hasn't changed.",
+      text,
     }).catch((err) => {
       req.log?.error({ err }, 'password reset email failed to send');
     });
@@ -253,23 +295,26 @@ module.exports = function buildAuthRouter({
   // /verify-email/request and on login's INVALID_CREDENTIALS: anything that
   // differs by case here becomes an account-existence oracle.
   //
-  // An unverified account is refused too, but silently, inside that same
-  // 202 -- mailing a reset code to an address nobody has proven they own
-  // would be a takeover path, not a recovery path.
+  // An unverified account is sent a code too, worded to finish setting the
+  // account up: used on /password-reset it sets the password and verifies
+  // the address. That is recovery, not takeover. An unverified account
+  // cannot sign in (login answers EMAIL_NOT_VERIFIED and /register issues no
+  // token), so it holds nothing beyond a name and a password hash, and the
+  // code goes to the address itself -- the same proof /verify-email accepts.
+  // It is a reset_password code (15 minutes, purpose-bound), not the
+  // verify_email one, which /password-reset could not accept anyway.
   //
-  // Known residual: the verified branch still awaits issueCode's queries
-  // before responding, so it is marginally slower than the unknown/unverified
-  // branches, which return after a single SELECT. Not closed here -- closing
-  // it would mean a dummy INSERT (or similar) on every miss, which buys
-  // nothing while POST /register already answers EMAIL_TAKEN for a known
-  // address in one request. Recorded as a known limitation, not fixed.
+  // Known residual: a known address (verified or not) still awaits
+  // issueCode's queries before responding, so it is marginally slower than
+  // an unknown one, which returns after a single SELECT. Not closed here --
+  // closing it would mean a dummy INSERT (or similar) on every miss, which
+  // buys nothing while POST /register already answers EMAIL_TAKEN for a
+  // known address in one request. Recorded as a known limitation, not fixed.
   router.post('/password-reset/request', async (req, res, next) => {
     try {
       const email = requireString('email', req.body.email).toLowerCase();
       const user = await findUserByEmail(pool, email);
-      if (user && user.email_verified) {
-        await sendPasswordReset(req, user);
-      }
+      if (user) await sendPasswordReset(req, user);
       res.status(202).json({
         data: { message: 'If that account can receive a reset code, it is on its way.' },
       });
@@ -279,16 +324,16 @@ module.exports = function buildAuthRouter({
   // The reset itself, from the app. The password is validated FIRST: a
   // mistyped password is a 400 that spends no attempt and keeps the code
   // alive. Then the code, with the same single CODE_INVALID for every
-  // failure. Only a verified account can have a reset code, but the check is
-  // repeated here so an unverified account could never reset even if one
-  // existed.
+  // failure. A match on an unverified account also verifies it, in the same
+  // UPDATE: the code was mailed to the address, which is what verification
+  // proves (see /password-reset/request). A verify_email code typed here is
+  // still CODE_INVALID, because code hashes are bound to their purpose.
   //
   // Known residual, in timing only, mirroring /verify-email: an unknown
-  // address returns a little sooner than a known one, and a verified account
-  // takes longer than an unknown or unverified one, because only it reaches
-  // checkCode's locked transaction (and, on a match, bcrypt). That reveals
-  // verification status only -- low value next to /register's EMAIL_TAKEN,
-  // so it is left alone.
+  // address returns a little sooner than a known one, because only a known
+  // one reaches checkCode's locked transaction (and, on a match, bcrypt).
+  // That reveals whether an account exists -- low value next to /register's
+  // EMAIL_TAKEN, so it is left alone.
   router.post('/password-reset', async (req, res, next) => {
     try {
       const password = requireString('password', req.body.password, {
@@ -297,12 +342,43 @@ module.exports = function buildAuthRouter({
       const email = emailFrom(req.body.email);
       const code = normaliseCode(req.body.code);
       const user = email && code ? await findUserByEmail(pool, email) : null;
-      const ok = Boolean(user && user.email_verified && await checkCode(pool, {
+      const ok = Boolean(user && await checkCode(pool, {
         key: codesKey(), userId: user.user_id, purpose: 'reset_password', code,
       }));
       if (!ok) throw codeInvalid();
-      await updatePasswordHash(pool, user.user_id, await hashPassword(password));
+      // Whoever had the old password may hold a token: sign out every device.
+      await replacePasswordAndSignOut(
+        pool, user.user_id, await hashPassword(password), { verifyEmail: true },
+      );
       res.json({ data: { reset: true } });
+    } catch (err) { next(err); }
+  });
+
+  // Change password, from Settings. The new password is checked first, by
+  // the register rule (a 400 that reads nothing). A Google-only account has
+  // no password to confirm, so it is told so before being asked for one.
+  // Success moves the account to a new token generation, signing out every
+  // other device, and hands this one a fresh token of the new generation.
+  router.post('/password', requireAuth({ pool, jwt }), async (req, res, next) => {
+    try {
+      const newPassword = requireString('newPassword', req.body.newPassword, {
+        minLength: MIN_PASSWORD_LENGTH, maxLength: MAX_PASSWORD_LENGTH,
+      });
+      const user = await findUserById(pool, req.user.userId);
+      if (!user) {
+        throw AppError.unauthorized('UNAUTHENTICATED', 'Sign in again to continue.');
+      }
+      if (user.password_hash === null) {
+        throw AppError.conflict(
+          'NO_PASSWORD', 'This account signs in with Google and has no password.',
+        );
+      }
+      // 400 WRONG_PASSWORD for anything that is not the current password.
+      await confirmPassword(req.body.currentPassword, user.password_hash);
+      const generation = await replacePasswordAndSignOut(
+        pool, user.user_id, await hashPassword(newPassword),
+      );
+      res.json({ data: { token: signToken(user.user_id, jwt, generation) } });
     } catch (err) { next(err); }
   });
 
@@ -310,11 +386,17 @@ module.exports = function buildAuthRouter({
     try {
       const idToken = requireString('idToken', req.body.idToken);
       const identity = await google.verifyIdToken(idToken);
+      // Google sign-in is trainee-only: an admin's address must not become a
+      // trainee account too.
+      if (identity.email && await findAdminByEmail(pool, identity.email)) {
+        throw AppError.conflict('EMAIL_TAKEN', 'That email is already registered.');
+      }
       const { user, isNew } = await findOrCreateGoogleUser(pool, identity);
+      if (user.suspended_at) throw SUSPENDED();
       res.json({
         data: {
           user: toPublicUser(user),
-          token: signToken(user.user_id, jwt),
+          token: signToken(user.user_id, jwt, user.token_version),
           isNewUser: isNew,
         },
       });

@@ -21,7 +21,7 @@ class SetRow extends StatelessWidget {
     this.unit = WeightUnit.kg,
     this.showWeight = true,
     this.active = false,
-    this.repsHint = 'reps',
+    this.targetReps,
     this.onReopen,
     this.onRemove,
     this.trailingWidth = tickWidth,
@@ -69,9 +69,10 @@ class SetRow extends StatelessWidget {
   /// is next -- every empty row is otherwise identical.
   final bool active;
 
-  /// What the empty reps box says: the exercise's target range ("8-12") when
-  /// there is one, so the number to aim for sits where it is typed.
-  final String repsHint;
+  /// The exercise's target ("8-12"), or null or empty for none. The empty
+  /// reps box shows it, so the number to aim for sits where it is typed, and
+  /// the box's name carries it; with none the box says just "reps".
+  final String? targetReps;
 
   /// Reopens a stored set for editing. Null leaves the row inert.
   final VoidCallback? onReopen;
@@ -97,6 +98,9 @@ class SetRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
+    final target = targetReps == null || targetReps!.isEmpty
+        ? null
+        : targetReps;
     final done = logged != null;
     // A stored set is the record and is not typed over; anything else is.
     // There is no in-flight lock here any more: the write happens at the
@@ -196,14 +200,17 @@ class SetRow extends StatelessWidget {
                 ),
                 if (showWeight) ...[
                   Expanded(
-                    // Named for screen readers: the hint is only the unit, and it
-                    // goes once a number is typed.
+                    // Named for screen readers with its unit: the hint is
+                    // only the unit, and it goes once a number is typed --
+                    // which, on rows filled from last session, is always.
                     child: _FieldGap(
+                      focus: editable ? drafts.weightFocus(setNumber) : null,
                       child: Semantics(
-                        label: 'Weight',
+                        label: 'Weight in ${unit.api}',
                         child: TextField(
                           key: Key('set.$setNumber.weight'),
                           controller: drafts.weight(setNumber),
+                          focusNode: drafts.weightFocus(setNumber),
                           enabled: editable,
                           onTapOutside: _letGo,
                           textAlign: TextAlign.center,
@@ -232,11 +239,15 @@ class SetRow extends StatelessWidget {
                 ],
                 Expanded(
                   child: _FieldGap(
+                    focus: editable ? drafts.repsFocus(setNumber) : null,
                     child: Semantics(
-                      label: 'Reps',
+                      // The target goes with the hint too, so it is in the
+                      // name.
+                      label: target == null ? 'Reps' : 'Reps, target $target',
                       child: TextField(
                         key: Key('set.$setNumber.reps'),
                         controller: drafts.reps(setNumber),
+                        focusNode: drafts.repsFocus(setNumber),
                         enabled: editable,
                         onTapOutside: _letGo,
                         textAlign: TextAlign.center,
@@ -246,7 +257,7 @@ class SetRow extends StatelessWidget {
                             RegExp(r'^\d{0,3}'),
                           ),
                         ],
-                        decoration: decoration(repsHint),
+                        decoration: decoration(target ?? 'reps'),
                         style: TextStyle(
                           fontFamily: fsMonoFamily,
                           fontSize: 14,
@@ -326,12 +337,37 @@ class SetRow extends StatelessWidget {
 
 /// The space above and below a set's fields: what separates one row's boxes
 /// from the next.
+///
+/// The drawn cell is about 37 dp, under the 48 dp minimum, on the control
+/// typed into most. The gap is what makes up the band, so a tap in it hands
+/// [focus] to the field instead of landing on nothing -- the cell keeps the
+/// mockup's size and the target is the whole band. Null for a stored row,
+/// whose fields are not typed in.
 class _FieldGap extends StatelessWidget {
-  const _FieldGap({required this.child});
+  const _FieldGap({required this.child, this.focus});
 
   final Widget child;
+  final FocusNode? focus;
 
   @override
-  Widget build(BuildContext context) =>
-      Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: child);
+  Widget build(BuildContext context) {
+    final gap = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: child,
+    );
+    final node = focus;
+    if (node == null) return gap;
+    // Inside the text fields' tap group: otherwise pointer-down here counts as
+    // a tap outside the focused field, which lets go and closes the keyboard,
+    // and pointer-up reopens it for this one.
+    return TextFieldTapRegion(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        // The field inside is the node a screen reader lands on already.
+        excludeFromSemantics: true,
+        onTap: node.requestFocus,
+        child: gap,
+      ),
+    );
+  }
 }

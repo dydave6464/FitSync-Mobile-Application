@@ -156,6 +156,45 @@ void main() {
     expect(identical(api.abortTrigger, cancel.future), isTrue);
     expect(api.timeout, MealPhotoRepository.recognizeTimeout);
   });
+
+  // NU-15: the capture sheet's allowance, asked before a photo.
+  test('today gets the allowance and any unlogged photo', () async {
+    final repo = MealPhotoRepository(
+      _api(
+        MockClient((r) async {
+          expect(r.method, 'GET');
+          expect(r.url.path, '/api/v1/nutrition/recognitions/today');
+          return http.Response(
+            jsonEncode({
+              'data': {'limit': 15, 'remainingToday': 3, 'unlogged': null},
+            }),
+            200,
+          );
+        }),
+      ),
+    );
+    final t = await repo.today();
+    expect([t.limit, t.remainingToday, t.unlogged], [15, 3, null]);
+  });
+
+  // getJson has no timeout of its own to pass.
+  testWidgets('today gives up after 5 seconds', (tester) async {
+    Object? error;
+    unawaited(MealPhotoRepository(_SlowGetApi()).today().then<void>((_) {}, onError: (Object e) => error = e));
+    await tester.pump(const Duration(milliseconds: 4900));
+    expect(error, isNull);
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(error, isA<TimeoutException>());
+  });
+}
+
+/// Never answers a GET.
+class _SlowGetApi extends ApiClient {
+  _SlowGetApi() : super(baseUrl: 'http://test.local', tokens: TokenStore(backing: InMemorySecureStore()));
+
+  @override
+  Future<Map<String, dynamic>> getJson(String path, {Map<String, Object?> query = const {}}) =>
+      Completer<Map<String, dynamic>>().future;
 }
 
 /// Records what the repository asks of the API, and answers an empty photo.

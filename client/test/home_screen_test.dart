@@ -6,10 +6,13 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/widgets/fs_charts.dart' show FsRing;
+import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart' hide FsRing;
 import 'package:fitsync/features/activity/data/step_permission.dart';
 import 'package:fitsync/features/activity/data/step_source.dart';
 import 'package:fitsync/features/activity/presentation/providers.dart';
+import 'package:fitsync/features/ads/data/ad_source.dart';
+import 'package:fitsync/features/ads/presentation/ad_slot.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart'
     show exerciseDetailProvider;
@@ -18,6 +21,7 @@ import 'package:fitsync/features/home/presentation/plan_ready.dart';
 import 'package:fitsync/features/home/presentation/widgets/greeting.dart';
 import 'package:fitsync/features/home/presentation/widgets/plan_card.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
+import 'package:fitsync/features/plans/presentation/generator_screen.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
@@ -30,6 +34,7 @@ import 'package:fitsync/features/routine/presentation/routine_screen.dart';
 import 'package:fitsync/features/sessions/data/session_repository.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/domain/session_history.dart';
+import 'package:fitsync/features/sessions/domain/session_outcome.dart';
 import 'package:fitsync/features/sessions/domain/training_analytics.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/session_logger_screen.dart';
@@ -39,6 +44,7 @@ import 'package:fitsync/features/streaks/presentation/providers.dart'
 import 'package:fitsync/features/streaks/presentation/streaks_screen.dart';
 
 import 'helpers/dialog_buttons.dart';
+import 'helpers/fake_ad_source.dart';
 import 'helpers/in_memory_secure_store.dart';
 
 const _someEquipment = [EquipmentOption(equipmentId: 1, name: 'Dumbbells')];
@@ -164,6 +170,11 @@ class _FakeSessionRepository implements SessionRepository {
   @override
   Future<Set<String>> completedThisWeek() async => const {};
 
+  /// Nothing pending: the check-in sheet asks for this, and an unanswered
+  /// lookup would print a skipped-lookup line into the test output.
+  @override
+  Future<PendingOutcome?> pendingOutcome() async => null;
+
   @override
   String get baseUrl => 'http://test.local';
 
@@ -236,13 +247,14 @@ class _StubProfileNotifier extends ProfileNotifier {
 }
 
 class _StubRoutine extends RoutineController {
-  _StubRoutine(this.day, this.error);
+  _StubRoutine(this.day, this.error, [this.pending]);
   final RoutineDay? day;
   final Object? error;
+  final Future<RoutineDay>? pending;
   @override
   Future<RoutineDay> build() async {
     if (error != null) throw error!;
-    return day!;
+    return pending ?? day!;
   }
 }
 
@@ -291,8 +303,13 @@ Future<void> _pumpHome(
   // from the very start.
   bool streakFailsOnRefresh = false,
   Future<TrainingSummary>? summaryFuture,
+  Future<RecoveryOverview>? recoveryFuture,
+  Future<RoutineDay>? routineFuture,
   StepPermission? stepPermission,
   bool planReady = false,
+  ThemeData? theme,
+  // No ad running unless a test hands over a source with one.
+  FakeAdSource? adSource,
 }) async {
   var streakReads = 0;
   await tester.pumpWidget(
@@ -326,7 +343,7 @@ Future<void> _pumpHome(
         ),
         recoveryOverviewProvider.overrideWith((ref) async {
           if (recoveryError != null) throw recoveryError;
-          return recovery!;
+          return recoveryFuture ?? recovery!;
         }),
         homeSummaryProvider.overrideWith((ref) async {
           if (progressError != null) throw progressError;
@@ -337,7 +354,7 @@ Future<void> _pumpHome(
           return _defaultAnalytics;
         }),
         routineTodayProvider.overrideWith(
-          () => _StubRoutine(routine, routineError),
+          () => _StubRoutine(routine, routineError, routineFuture),
         ),
         streakProvider.overrideWith((ref) async {
           streakReads += 1;
@@ -356,8 +373,10 @@ Future<void> _pumpHome(
         ),
         stepSourceProvider.overrideWithValue(const NoStepSource()),
         if (planReady) planReadyProvider.overrideWith(_JustOnboarded.new),
+        adSourceProvider.overrideWithValue(adSource ?? FakeAdSource()),
       ],
       child: MaterialApp(
+        theme: theme,
         home: HomeScreen(
           onGoToTrain: onGoToTrain,
           onGoToProfile: onGoToProfile,
@@ -523,7 +542,7 @@ void main() {
     expect(find.byType(PlanCard), findsOneWidget);
   });
 
-  testWidgets('start workout and the nudge each select their tab', (
+  testWidgets('the plan button and the nudge each select their tab', (
     tester,
   ) async {
     final selected = <String>[];
@@ -536,7 +555,7 @@ void main() {
 
     await tester.tap(find.text('Finish your profile'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Start workout'));
+    await tester.tap(find.byKey(const Key('home.plan.open')));
     await tester.pumpAndSettle();
 
     expect(selected, [
@@ -545,40 +564,28 @@ void main() {
     ], reason: 'Home selects tabs; it never pushes a second PlanScreen');
   });
 
-  testWidgets('a null plan explains itself and offers no generate action', (
-    tester,
-  ) async {
+  testWidgets('a null plan says so and offers to generate one', (tester) async {
     await _pumpHome(tester, plan: null);
-    expect(find.text('Start workout'), findsNothing);
-    expect(find.textContaining('no active plan'), findsOneWidget);
+    expect(find.byKey(const Key('home.plan.open')), findsNothing);
+    // The Plan tab's own words for the same state, so the two agree.
+    expect(find.text('No plan yet'), findsOneWidget);
     expect(
-      find.byKey(const Key('home.noPlan')),
+      find.text('Build one from your goals, equipment and injuries.'),
       findsOneWidget,
-      reason:
-          'the descendant check below is vacuous if this key does not '
-          'resolve to the no-plan card',
     );
-    // Absence of the one specific label is not enough — a relabelled
-    // "Generate plan" button would satisfy both assertions above. The
-    // no-plan state must offer no action at all, so nothing tappable may
-    // exist inside it: there is no on-demand generate endpoint, so a
-    // button here would call nothing. Scoped to the home.noPlan-keyed
-    // subtree, not the whole screen, so this can't be satisfied or defeated
-    // by an unrelated FsButton elsewhere (e.g. a retry button in another
-    // state). This key is distinct from PlanScreen's own 'noPlan' key —
-    // both tabs build eagerly once visited, and with no active plan both
-    // no-plan states can exist in the tree at once, so a shared key would
-    // leave any finder using it ambiguous.
-    expect(
-      find.descendant(
-        of: find.byKey(const Key('home.noPlan')),
-        matching: find.byType(FsButton),
-      ),
-      findsNothing,
-      reason:
-          'the no-plan state must offer no action; a "Generate plan" '
-          'button would call an endpoint that does not exist',
+
+    final generate = find.descendant(
+      of: find.byKey(const Key('home.noPlan')),
+      matching: find.widgetWithText(FsButton, 'Generate a plan'),
     );
+    expect(generate, findsOneWidget);
+
+    await tester.ensureVisible(generate);
+    await tester.pumpAndSettle();
+    await tester.tap(generate);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(GeneratorScreen), findsOneWidget);
   });
 
   testWidgets('a failed plan load offers a retry', (tester) async {
@@ -586,7 +593,11 @@ void main() {
       tester,
       planError: const ApiException('X', 'Server is down'),
     );
-    expect(find.text('Retry'), findsOneWidget);
+    // The app's one retry treatment, in plain words, as every other
+    // screen's load error now is.
+    expect(find.byType(FsRetry), findsOneWidget);
+    expect(find.text('Server is down'), findsOneWidget);
+    expect(find.text('Try again'), findsOneWidget);
   });
 
   testWidgets(
@@ -734,7 +745,7 @@ void main() {
       expect(container.read(planReadyProvider), isFalse);
     });
 
-    testWidgets('Start workout on the plan card puts it away too', (
+    testWidgets("View today's plan on the plan card puts it away too", (
       tester,
     ) async {
       _tallScreen(tester);
@@ -743,7 +754,7 @@ void main() {
 
       // The usual first move: straight to the plan card's own button. The
       // plan has been found, so the welcome has done its job.
-      await tester.tap(find.text('Start workout'));
+      await tester.tap(find.byKey(const Key('home.plan.open')));
       await tester.pumpAndSettle();
 
       expect(trains, 1);
@@ -787,6 +798,87 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(find.byKey(const Key('home.planReady')), findsOneWidget);
+    });
+  });
+
+  group('headings', () {
+    bool isHeader(WidgetTester tester, String text) => tester
+        .getSemantics(find.text(text))
+        .getSemanticsData()
+        .flagsCollection
+        .isHeader;
+
+    testWidgets('the greeting and each card title are headings', (
+      tester,
+    ) async {
+      // A screen reader moving by heading found nothing on Home.
+      _tallScreen(tester);
+      final handle = tester.ensureSemantics();
+      await _pumpHome(tester);
+
+      for (final title in [
+        'Kumusta, Juan',
+        "TODAY'S PLAN",
+        'Your progress',
+        "Today's routine",
+      ]) {
+        expect(isHeader(tester, title), isTrue, reason: title);
+      }
+      // A heading is the title alone, not the line under it.
+      expect(isHeader(tester, 'Upper Body · Push'), isFalse);
+      handle.dispose();
+    });
+
+    testWidgets('with no plan, that card is headed too', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pumpHome(tester, plan: null);
+      expect(isHeader(tester, "TODAY'S PLAN"), isTrue);
+      expect(isHeader(tester, 'No plan yet'), isFalse);
+      handle.dispose();
+    });
+
+    testWidgets('a workout under way is headed too', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pumpHome(tester, sessions: _FakeSessionRepository(_planSession()));
+      expect(isHeader(tester, 'WORKOUT IN PROGRESS'), isTrue);
+      handle.dispose();
+    });
+
+    testWidgets('with no readiness score yet, that card is headed too', (
+      tester,
+    ) async {
+      _tallScreen(tester);
+      final handle = tester.ensureSemantics();
+      await _pumpHome(
+        tester,
+        recovery: const RecoveryOverview(
+          todayCheckin: null,
+          latestEstimate: null,
+          load: [],
+        ),
+      );
+      // The title folds into the card's one button node (as Progress and
+      // Routine do), so that node is the heading; the check-in chip is its
+      // own button and stays out of it.
+      expect(isHeader(tester, 'READINESS'), isTrue);
+      expect(isHeader(tester, 'Check in'), isFalse);
+      handle.dispose();
+    });
+
+    testWidgets('a plan just built is headed too', (tester) async {
+      _tallScreen(tester);
+      final handle = tester.ensureSemantics();
+      await _pumpHome(tester, planReady: true);
+      expect(isHeader(tester, 'YOUR PLAN IS READY'), isTrue);
+      handle.dispose();
+    });
+
+    testWidgets('the profile nudge is headed too', (tester) async {
+      _tallScreen(tester);
+      final handle = tester.ensureSemantics();
+      await _pumpHome(tester, profile: _profile(mainGoal: null));
+      expect(isHeader(tester, 'Finish your profile'), isTrue);
+      handle.dispose();
     });
   });
 
@@ -836,6 +928,133 @@ void main() {
       final card = tester.getSize(find.byKey(const Key('home.progress')));
       expect(placeholder.height, closeTo(card.height, 1));
     });
+
+    testWidgets('the readiness placeholder is as tall as the card and its '
+        'gap', (tester) async {
+      _tallScreen(tester);
+      final recovery = Completer<RecoveryOverview>();
+      await _pumpHome(tester, recoveryFuture: recovery.future);
+      final placeholder = tester.getSize(
+        find.byKey(const Key('home.readiness.placeholder')),
+      );
+
+      recovery.complete(_defaultRecovery);
+      await tester.pumpAndSettle();
+      final card = tester.getSize(find.byKey(const Key('home.readiness')));
+      expect(placeholder.height, closeTo(card.height + 14, 1));
+    });
+
+    testWidgets('the routine placeholder is as tall as a full routine card: '
+        'three items, "+N more" and the streak chip', (tester) async {
+      _tallScreen(tester);
+      final routine = Completer<RoutineDay>();
+      await _pumpHome(
+        tester,
+        routineFuture: routine.future,
+        streak: const Streak(current: 4, best: 4, todayActive: true, week: []),
+      );
+      final placeholder = tester.getSize(
+        find.byKey(const Key('home.routine.placeholder')),
+      );
+
+      routine.complete(
+        RoutineDay(
+          date: '2026-09-24',
+          habits: [
+            for (var i = 1; i <= 5; i++)
+              Habit(
+                habitId: i,
+                title: 'Habit $i',
+                time: '06:00',
+                durationMin: null,
+                weekdays: const [1, 2, 3, 4, 5, 6, 7],
+                done: false,
+              ),
+          ],
+          workout: null,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('home.routine.streak')), findsOneWidget);
+      expect(find.byKey(const Key('home.routine.more')), findsOneWidget);
+      final card = tester.getSize(find.byKey(const Key('home.routine')));
+      expect(placeholder.height, closeTo(card.height, 1));
+    });
+
+    testWidgets('a card still loading shows a card-shaped placeholder and '
+        'says it is loading', (tester) async {
+      // Blank space of the right height kept Home from jumping, but drew
+      // and announced nothing, so the wait looked like an empty screen.
+      _tallScreen(tester);
+      final handle = tester.ensureSemantics();
+      await _pumpHome(
+        tester,
+        recoveryFuture: Completer<RecoveryOverview>().future,
+        summaryFuture: Completer<TrainingSummary>().future,
+        routineFuture: Completer<RoutineDay>().future,
+      );
+
+      for (final (key, label) in [
+        ('home.readiness.placeholder', 'Loading readiness'),
+        ('home.progress.placeholder', 'Loading progress'),
+        ('home.routine.placeholder', "Loading today's routine"),
+      ]) {
+        final placeholder = find.byKey(Key(key));
+        expect(
+          find.descendant(of: placeholder, matching: find.byType(FsCard)),
+          findsOneWidget,
+          reason: key,
+        );
+        expect(
+          find.descendant(
+            of: placeholder,
+            matching: find.bySemanticsLabel(label),
+          ),
+          findsOneWidget,
+          reason: key,
+        );
+      }
+      handle.dispose();
+    });
+
+    // P-29a: checked in light only before; the placeholders are drawn from
+    // tokens, so in dark they must take dark's card and bar colours.
+    for (final dark in [false, true]) {
+      testWidgets('the loading placeholders take the '
+          '${dark ? 'dark' : 'light'} theme\'s card and bars', (tester) async {
+        _tallScreen(tester);
+        await _pumpHome(
+          tester,
+          theme: dark ? fsDarkTheme() : fsLightTheme(),
+          recoveryFuture: Completer<RecoveryOverview>().future,
+          summaryFuture: Completer<TrainingSummary>().future,
+          routineFuture: Completer<RoutineDay>().future,
+        );
+        final t = dark ? FsTokens.dark : FsTokens.light;
+        final other = dark ? FsTokens.light : FsTokens.dark;
+
+        for (final key in [
+          'home.readiness.placeholder',
+          'home.progress.placeholder',
+          'home.routine.placeholder',
+        ]) {
+          // Container draws through a DecoratedBox too, so this finds the
+          // card's fill and every bar's.
+          final colors = {
+            for (final box in tester.widgetList<DecoratedBox>(
+              find.descendant(
+                of: find.byKey(Key(key)),
+                matching: find.byType(DecoratedBox),
+              ),
+            ))
+              if (box.decoration case BoxDecoration(:final color?)) color,
+          };
+          expect(colors, containsAll([t.surface, t.surface2]), reason: key);
+          expect(colors, isNot(contains(other.surface)), reason: key);
+          expect(colors, isNot(contains(other.surface2)), reason: key);
+        }
+      });
+    }
 
     testWidgets('steps that cannot be read leave one gap, not two', (
       tester,
@@ -927,6 +1146,7 @@ void main() {
             reminderPromptStoreProvider.overrideWithValue(
               inMemoryReminderPromptStore(),
             ),
+            adSourceProvider.overrideWithValue(FakeAdSource()),
           ],
           child: const MaterialApp(home: HomeScreen()),
         ),
@@ -1141,5 +1361,33 @@ void main() {
       200,
     );
     expect(find.byKey(const Key('home.activity.steps')), findsOneWidget);
+  });
+
+  testWidgets('a free trainee finds the ad card at the very end of Home', (
+    tester,
+  ) async {
+    final source = FakeAdSource(ad: sampleHouseAd);
+    await _pumpHome(tester, adSource: source);
+
+    final list = tester.widget<ListView>(
+      find
+          .descendant(
+            of: find.byType(HomeScreen),
+            matching: find.byType(ListView),
+          )
+          .first,
+    );
+    final children =
+        (list.childrenDelegate as SliverChildListDelegate).children;
+    expect(
+      children.last,
+      isA<AdSlot>().having((slot) => slot.placement, 'placement', 'home'),
+    );
+
+    await tester.scrollUntilVisible(find.text(sampleHouseAd.title), 200);
+    await tester.pumpAndSettle();
+    expect(find.text(sampleHouseAd.title), findsOneWidget);
+    expect(find.byKey(const Key('ad.removeWithPro')), findsOneWidget);
+    expect(source.calls, ['viewed 7']);
   });
 }

@@ -1,13 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
+import 'package:fitsync/features/nutrition/presentation/providers.dart';
 import 'package:fitsync/features/profile/data/profile_repository.dart';
 import 'package:fitsync/features/profile/domain/body_weight.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/profile/presentation/widgets/log_body_weight_sheet.dart';
+
+import 'helpers/a11y.dart' show contrast;
+import 'nutrition_controller_test.dart' show FakeNutritionRepository;
 
 const _profile = Profile(
   userId: 1,
@@ -21,7 +28,15 @@ const _profile = Profile(
 );
 
 class FakeProfileRepository implements ProfileRepository {
+  FakeProfileRepository({this.logError});
+
+  /// Thrown by [logBodyWeight] instead of saving, when set.
+  final Object? logError;
+
   final logged = <double>[];
+
+  /// The day each save was for; null for today (the server's own day).
+  final loggedOn = <String?>[];
 
   /// How many times [load] has been called -- starts at 0, since unlike
   /// [bodyWeightProvider] nothing in `_pump` eagerly watches [profileProvider]
@@ -35,8 +50,13 @@ class FakeProfileRepository implements ProfileRepository {
   }
 
   @override
-  Future<BodyWeightPoint> logBodyWeight(double weightKg) async {
+  Future<BodyWeightPoint> logBodyWeight(
+    double weightKg, {
+    String? loggedOn,
+  }) async {
+    if (logError != null) throw logError!;
     logged.add(weightKg);
+    this.loggedOn.add(loggedOn);
     return BodyWeightPoint(loggedOn: '2026-09-16', weightKg: weightKg);
   }
 
@@ -52,14 +72,20 @@ class _FetchCount {
   int value = 0;
 }
 
+/// Noon on 6 Nov 2026 in Manila.
+final _noonNov6 = DateTime.utc(2026, 11, 6, 4);
+
 Future<void> _pump(
   WidgetTester tester, {
   required FakeProfileRepository repo,
   required _FetchCount fetches,
+  DateTime? now,
+  bool dark = false,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        bodyWeightClockProvider.overrideWithValue(() => now ?? _noonNov6),
         profileRepositoryProvider.overrideWithValue(repo),
         bodyWeightProvider.overrideWith((ref, period) async {
           fetches.value += 1;
@@ -72,7 +98,7 @@ Future<void> _pump(
         }),
       ],
       child: MaterialApp(
-        theme: fsLightTheme(),
+        theme: dark ? fsDarkTheme() : fsLightTheme(),
         home: Scaffold(
           body: Consumer(
             builder: (context, ref, _) {
@@ -96,6 +122,29 @@ Future<void> _pump(
 }
 
 void main() {
+  // PS-10: the sheet's only escape control was announced as a bare "Button".
+  testWidgets('the close button is named Close for screen readers', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester, repo: FakeProfileRepository(), fetches: _FetchCount());
+
+    expect(
+      tester.getSemantics(find.byKey(const Key('bodyWeight.close'))),
+      matchesSemantics(
+        tooltip: 'Close',
+        isButton: true,
+        isEnabled: true,
+        hasEnabledState: true,
+        isFocusable: true,
+        hasTapAction: true,
+        hasFocusAction: true,
+      ),
+    );
+    await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+    handle.dispose();
+  });
+
   testWidgets(
     'entering a weight and saving calls the repository and refreshes the card',
     (tester) async {
@@ -222,5 +271,345 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(fetches, {'week': 2, 'month': 2});
+  });
+
+  // The server moves users.weight_kg to the newest weigh-in, and today's
+  // target is worked out from it: the ring and the suggestions follow.
+  testWidgets("a save refreshes today's target and the meal suggestions", (tester) async {
+    final nutrition = FakeNutritionRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          bodyWeightClockProvider.overrideWithValue(() => _noonNov6),
+          profileRepositoryProvider.overrideWithValue(FakeProfileRepository()),
+          nutritionRepositoryProvider.overrideWithValue(nutrition),
+        ],
+        child: MaterialApp(
+          theme: fsLightTheme(),
+          home: Scaffold(
+            body: Consumer(
+              builder: (context, ref, _) {
+                ref.watch(nutritionDayProvider);
+                ref.watch(mealSuggestionsProvider('lunch'));
+                return ElevatedButton(
+                  onPressed: () => showLogBodyWeightSheet(context),
+                  child: const Text('open'),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    int days() => nutrition.calls.where((c) => c.startsWith('get ')).length;
+    expect((days(), nutrition.suggestionCalls.length), (1, 1));
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('bodyWeight.field')), '72.5');
+    await tester.tap(find.byKey(const Key('bodyWeight.save')));
+    await tester.pumpAndSettle();
+
+    expect((days(), nutrition.suggestionCalls.length), (2, 2));
+  });
+
+  // L-85: a weight the sheet turns down is flagged on its card too, as the
+  // About step flags one; a failed request is not the number's fault.
+  group('the weight card is flagged only for a number to fix', () {
+    bool flagged(WidgetTester tester) =>
+        tester.widget<FsStatField>(find.byType(FsStatField)).error;
+
+    testWidgets('empty', (tester) async {
+      await _pump(
+        tester,
+        repo: FakeProfileRepository(),
+        fetches: _FetchCount(),
+      );
+      expect(flagged(tester), isFalse);
+      await tester.tap(find.byKey(const Key('bodyWeight.save')));
+      await tester.pumpAndSettle();
+      expect(flagged(tester), isTrue);
+
+      await tester.enterText(find.byKey(const Key('bodyWeight.field')), '7');
+      await tester.pump();
+      expect(flagged(tester), isFalse, reason: 'cleared once it is changed');
+    });
+
+    testWidgets('out of range', (tester) async {
+      await _pump(
+        tester,
+        repo: FakeProfileRepository(),
+        fetches: _FetchCount(),
+      );
+      await tester.enterText(find.byKey(const Key('bodyWeight.field')), '600');
+      await tester.tap(find.byKey(const Key('bodyWeight.save')));
+      await tester.pumpAndSettle();
+      expect(flagged(tester), isTrue);
+    });
+
+    testWidgets('not for a failed request', (tester) async {
+      await _pump(
+        tester,
+        repo: FakeProfileRepository(
+          logError: const ApiException('NETWORK_ERROR', 'offline'),
+        ),
+        fetches: _FetchCount(),
+      );
+      await tester.enterText(find.byKey(const Key('bodyWeight.field')), '72');
+      await tester.tap(find.byKey(const Key('bodyWeight.save')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('bodyWeight.error')), findsOneWidget);
+      expect(flagged(tester), isFalse);
+    });
+  });
+
+  // PS-20: weigh-ins could only be for today, and nothing said a second one
+  // today replaces the first.
+  group('the day a weigh-in is for', () {
+    String dateShown(WidgetTester tester) => tester
+        .widget<Text>(
+          find.descendant(
+            of: find.byKey(const Key('bodyWeight.date')),
+            matching: find.byKey(const Key('bodyWeight.dateText')),
+          ),
+        )
+        .data!;
+
+    testWidgets('is today unless picked, and says today is replaced', (
+      tester,
+    ) async {
+      final repo = FakeProfileRepository();
+      await _pump(tester, repo: repo, fetches: _FetchCount());
+      expect(dateShown(tester), 'Today');
+      expect(
+        find.text("Logging again today replaces today's entry."),
+        findsOneWidget,
+      );
+
+      await tester.enterText(find.byKey(const Key('bodyWeight.field')), '72');
+      await tester.tap(find.byKey(const Key('bodyWeight.save')));
+      await tester.pumpAndSettle();
+      expect(repo.loggedOn, [null], reason: "today is the server's own day");
+    });
+
+    testWidgets('a past day can be picked, and is sent', (tester) async {
+      final repo = FakeProfileRepository();
+      await _pump(tester, repo: repo, fetches: _FetchCount());
+
+      await tester.tap(find.byKey(const Key('bodyWeight.date')));
+      await tester.pumpAndSettle();
+      final picker = tester.widget<DatePickerDialog>(
+        find.byType(DatePickerDialog),
+      );
+      expect(picker.lastDate, DateTime(2026, 11, 6), reason: 'no future day');
+      expect(picker.firstDate, DateTime(2025, 11, 6));
+      await tester.tap(find.text('4'));
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+
+      expect(dateShown(tester), 'Wed, Nov 4');
+      expect(
+        find.text('Logging again for this day replaces its entry.'),
+        findsOneWidget,
+      );
+      await tester.enterText(find.byKey(const Key('bodyWeight.field')), '72');
+      await tester.tap(find.byKey(const Key('bodyWeight.save')));
+      await tester.pumpAndSettle();
+      expect(repo.loggedOn, ['2026-11-04']);
+    });
+
+    testWidgets('yesterday is said as Yesterday', (tester) async {
+      await _pump(
+        tester,
+        repo: FakeProfileRepository(),
+        fetches: _FetchCount(),
+      );
+      await tester.tap(find.byKey(const Key('bodyWeight.date')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('5'));
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      expect(dateShown(tester), 'Yesterday');
+    });
+
+    testWidgets('a day in another year carries its year after a comma', (
+      tester,
+    ) async {
+      // P-2: it read 'Wed, Dec 31 2025', with no comma before the year.
+      await _pump(
+        tester,
+        repo: FakeProfileRepository(),
+        fetches: _FetchCount(),
+        now: DateTime.utc(2026, 1, 2, 4),
+      );
+      await tester.tap(find.byKey(const Key('bodyWeight.date')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Previous month'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('31'));
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      expect(dateShown(tester), 'Wed, Dec 31, 2025');
+    });
+
+    testWidgets("today is Manila's, as the server counts it", (tester) async {
+      // 01:00 on 6 Nov in Manila, still 5 Nov in UTC.
+      await _pump(
+        tester,
+        repo: FakeProfileRepository(),
+        fetches: _FetchCount(),
+        now: DateTime.utc(2026, 11, 5, 17),
+      );
+      await tester.tap(find.byKey(const Key('bodyWeight.date')));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<DatePickerDialog>(find.byType(DatePickerDialog)).lastDate,
+        DateTime(2026, 11, 6),
+      );
+    });
+
+    testWidgets('the date is one button, named for what it sets', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _pump(
+        tester,
+        repo: FakeProfileRepository(),
+        fetches: _FetchCount(),
+      );
+      expect(
+        tester.getSemantics(find.byKey(const Key('bodyWeight.date'))),
+        isSemantics(
+          label: 'Date',
+          value: 'Today',
+          hint: 'Opens a date picker',
+          isButton: true,
+          hasTapAction: true,
+        ),
+      );
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      handle.dispose();
+    });
+
+    testWidgets('fits a small phone at 2x text', (tester) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await _pump(
+        tester,
+        repo: FakeProfileRepository(),
+        fetches: _FetchCount(),
+      );
+      expect(tester.takeException(), isNull);
+      await tester.ensureVisible(find.byKey(const Key('bodyWeight.save')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  // P-29d: the PS-20 date card and the line under it, in both themes.
+  for (final dark in [false, true]) {
+    testWidgets('${dark ? 'dark' : 'light'}: the date card and its line read', (
+      tester,
+    ) async {
+      final t = dark ? FsTokens.dark : FsTokens.light;
+      await _pump(
+        tester,
+        repo: FakeProfileRepository(),
+        fetches: _FetchCount(),
+        dark: dark,
+      );
+      Color colorOf(Finder text) =>
+          tester.renderObject<RenderParagraph>(text).text.style!.color!;
+
+      final day = find.byKey(const Key('bodyWeight.dateText'));
+      expect(contrast(colorOf(day), t.surface), greaterThanOrEqualTo(4.5));
+      final chevron = tester.widget<Icon>(
+        find.descendant(
+          of: find.byKey(const Key('bodyWeight.date')),
+          matching: find.byIcon(Icons.chevron_right),
+        ),
+      );
+      expect(contrast(chevron.color!, t.surface), greaterThanOrEqualTo(3));
+      final line = find.text("Logging again today replaces today's entry.");
+      expect(contrast(colorOf(line), t.surface), greaterThanOrEqualTo(4.5));
+    });
+  }
+
+  // PS-6 / PS-3: a failed save showed the client's transport text (an
+  // address, an adb command, "HTTP 502") as a plain red line no screen
+  // reader announced.
+  testWidgets('a failed save says so in plain words, announced', (
+    tester,
+  ) async {
+    final repo = FakeProfileRepository(
+      logError: const ApiException(
+        'INVALID_RESPONSE',
+        'Server returned a non-JSON body (HTTP 502).',
+      ),
+    );
+    await _pump(tester, repo: repo, fetches: _FetchCount());
+
+    await tester.enterText(find.byKey(const Key('bodyWeight.field')), '72.5');
+    await tester.tap(find.byKey(const Key('bodyWeight.save')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Something went wrong on our side. Please try again.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('HTTP'), findsNothing);
+    expect(find.textContaining('adb'), findsNothing);
+    final error = find.byKey(const Key('bodyWeight.error'));
+    expect(error, findsOneWidget);
+    expect(
+      find.descendant(
+        of: error,
+        matching: find.byWidgetPredicate(
+          (w) => w is Semantics && w.properties.liveRegion == true,
+        ),
+      ),
+      findsOneWidget,
+      reason: 'the error must be announced when it appears',
+    );
+  });
+
+  // P-26: only an ApiException was caught, so a timeout or any other failure
+  // escaped and left the sheet spinning with Save locked for good.
+  testWidgets('a save failing in any other way says so and unlocks Save', (
+    tester,
+  ) async {
+    final repo = FakeProfileRepository(logError: StateError('no answer'));
+    await _pump(tester, repo: repo, fetches: _FetchCount());
+
+    await tester.enterText(find.byKey(const Key('bodyWeight.field')), '72.5');
+    final logs = <String?>[];
+    final original = debugPrint;
+    debugPrint = (message, {wrapWidth}) => logs.add(message);
+    try {
+      await tester.tap(find.byKey(const Key('bodyWeight.save')));
+      await tester.pumpAndSettle();
+    } finally {
+      debugPrint = original;
+    }
+
+    expect(tester.takeException(), isNull);
+    expect(logs, contains(contains('no answer')), reason: 'and logs why');
+    expect(find.byKey(const Key('bodyWeight.error')), findsOneWidget);
+    expect(
+      find.text('Something went wrong. Please try again.'),
+      findsOneWidget,
+    );
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(
+      tester
+          .widget<FsButton>(find.byKey(const Key('bodyWeight.save')))
+          .onPressed,
+      isNotNull,
+      reason: 'Save must be tappable again',
+    );
   });
 }

@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/numbers.dart';
+import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/units.dart';
 import '../../../core/widgets/fs_kit.dart';
-import '../../exercises/presentation/exercise_list_screen.dart'
-    show describeError;
 import '../../profile/presentation/providers.dart'
     show bodyWeightProvider, weightUnitProvider;
 import '../../profile/presentation/widgets/body_weight_card.dart';
 import '../../profile/presentation/widgets/log_body_weight_sheet.dart';
+import '../../profile/presentation/widgets/weigh_ins_sheet.dart';
+import '../domain/session_dates.dart';
 import '../domain/session_history.dart';
 import 'providers.dart';
+import 'session_detail_screen.dart';
 import 'widgets/progress_cards.dart';
 import 'widgets/share_report_sheet.dart';
 
@@ -59,7 +60,11 @@ class ProgressScreen extends ConsumerWidget {
     // rest of the screen is perfectly readable.
     final error = analytics.error;
     if (error != null) {
-      return _Retry(message: describeError(error), onRetry: retry);
+      return FsRetry(
+        fullScreen: true,
+        message: userMessage(error),
+        onRetry: retry,
+      );
     }
 
     return ListView(
@@ -79,7 +84,7 @@ class ProgressScreen extends ConsumerWidget {
           ),
           // Unreachable: a failure was handled above. Kept because `when`
           // demands it, and a silent SizedBox would hide a future regression.
-          error: (e, _) => _Retry(message: describeError(e), onRetry: retry),
+          error: (e, _) => FsRetry(message: userMessage(e), onRetry: retry),
           data: (data) => VolumeTrendCard(analytics: data, unit: unit),
         ),
         const SizedBox(height: 12),
@@ -94,7 +99,7 @@ class ProgressScreen extends ConsumerWidget {
                 child: analytics.when(
                   loading: () => const _CardLoading(),
                   error: (e, _) =>
-                      _Retry(message: describeError(e), onRetry: retry),
+                      FsRetry(message: userMessage(e), onRetry: retry),
                   data: (data) => AdherenceCard(adherence: data.adherence),
                 ),
               ),
@@ -103,7 +108,7 @@ class ProgressScreen extends ConsumerWidget {
                 child: summary.when(
                   loading: () => const _CardLoading(),
                   error: (e, _) => _CardError(
-                    message: describeError(e),
+                    message: userMessage(e),
                     onRetry: () => ref.invalidate(trainingSummaryProvider),
                   ),
                   data: (data) => SetsCard(setCount: data.setCount),
@@ -116,7 +121,7 @@ class ProgressScreen extends ConsumerWidget {
         bodyWeight.when(
           loading: () => const _CardLoading(),
           error: (e, _) => _CardError(
-            message: describeError(e),
+            message: userMessage(e),
             onRetry: () => ref.invalidate(bodyWeightProvider(period)),
           ),
           data: (data) => BodyWeightCard(
@@ -124,6 +129,7 @@ class ProgressScreen extends ConsumerWidget {
             unit: unit,
             period: period,
             onAdd: () => showLogBodyWeightSheet(context),
+            onShowEntries: () => showWeighInsSheet(context),
           ),
         ),
         const SizedBox(height: 12),
@@ -135,11 +141,12 @@ class ProgressScreen extends ConsumerWidget {
           loading: () => const _CardLoading(),
           // Unreachable: a failure was handled above. Kept because `when`
           // demands it, and a silent SizedBox would hide a future regression.
-          error: (e, _) => _Retry(message: describeError(e), onRetry: retry),
+          error: (e, _) => FsRetry(message: userMessage(e), onRetry: retry),
           data: (data) => VolumeByMuscleCard(analytics: data),
         ),
         const SizedBox(height: 12),
         ShareWithCoachCard(
+          period: period,
           onTap: () => showShareReportSheet(context, period: period),
         ),
         const SizedBox(height: 22),
@@ -150,15 +157,10 @@ class ProgressScreen extends ConsumerWidget {
             padding: EdgeInsets.symmetric(vertical: 20),
             child: Center(child: CircularProgressIndicator()),
           ),
-          error: (e, _) => _Retry(message: describeError(e), onRetry: retry),
+          error: (e, _) => FsRetry(message: userMessage(e), onRetry: retry),
           data: (page) => page.sessions.isEmpty
               ? const _NothingYet()
-              : Column(
-                  children: [
-                    for (final entry in page.sessions)
-                      _HistoryRow(entry: entry, unit: unit),
-                  ],
-                ),
+              : _HistoryList(first: page, unit: unit),
         ),
       ],
     );
@@ -180,8 +182,9 @@ class _CardLoading extends StatelessWidget {
 }
 
 /// A card-sized failure, for the strength and body-weight cards. Unlike
-/// [_Retry], this does not take over the screen: either can fail while
-/// everything around it stays readable, so its retry only refetches itself.
+/// the full-screen retry, this does not take over the screen: either can
+/// fail while everything around it stays readable, so its retry only
+/// refetches itself.
 class _CardError extends StatelessWidget {
   const _CardError({required this.message, required this.onRetry});
 
@@ -189,22 +192,63 @@ class _CardError extends StatelessWidget {
   final VoidCallback onRetry;
 
   @override
-  Widget build(BuildContext context) {
-    final t = context.fs;
+  Widget build(BuildContext context) => FsCard(
+    child: FsRetry(message: message, onRetry: onRetry),
+  );
+}
 
-    return FsCard(
-      // Retry is the last line, so the card's padding under it, not the
-      // column, is where the rest of its 48 dp has to come from.
-      child: FsTapRoom(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(message, style: TextStyle(fontSize: 12, color: t.text3)),
-            const SizedBox(height: 8),
-            FsChip(label: 'Retry', selected: false, onTap: onRetry),
-          ],
+/// Every page of history fetched so far, and what comes after it: "Show
+/// older workouts" while the server holds more, or the next page loading or
+/// failing.
+class _HistoryList extends ConsumerWidget {
+  const _HistoryList({required this.first, required this.unit});
+
+  final SessionHistoryPage first;
+  final WeightUnit unit;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final shown = ref.watch(historyPagesProvider);
+    final pages = [first];
+    Widget? tail;
+    for (var n = 2; n <= shown; n++) {
+      final next = ref.watch(olderHistoryProvider(n));
+      // Loading first, even with a value: a page refetched because page 1
+      // was still carries its old rows, cut before a newer workout moved
+      // every row down one (or from the account signed in before).
+      if (next.isLoading) {
+        tail = const _CardLoading();
+        break;
+      }
+      if (next.hasError) {
+        tail = FsRetry(
+          message: userMessage(next.error!),
+          onRetry: () => ref.invalidate(olderHistoryProvider(n)),
+        );
+        break;
+      }
+      pages.add(next.requireValue);
+    }
+    if (tail == null && pages.last.hasMore) {
+      tail = Align(
+        child: FsButton(
+          key: const Key('progress.history.more'),
+          label: 'Show older workouts',
+          kind: FsButtonKind.secondary,
+          small: true,
+          onPressed: ref.read(historyPagesProvider.notifier).showMore,
         ),
-      ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final page in pages)
+          for (final entry in page.sessions)
+            _HistoryRow(entry: entry, unit: unit),
+        ?tail,
+      ],
     );
   }
 }
@@ -222,45 +266,67 @@ class _HistoryRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fs;
 
-    // A bodyweight-only session has no volume. "0 kg" would read as a failure
-    // to record rather than as a fact about the workout, so it is left out.
-    final facts = [
-      '${entry.setCount} ${entry.setCount == 1 ? 'set' : 'sets'}',
-      if (entry.totalVolumeKg != null && entry.totalVolumeKg! > 0)
-        '${groupThousands(convertFromKg(entry.totalVolumeKg!, unit))} '
-            '${unit.api}',
-      if (entry.durationMin != null) '${entry.durationMin} min',
-    ].join(' · ');
+    final facts = sessionFactsLine(
+      setCount: entry.setCount,
+      totalVolumeKg: entry.totalVolumeKg,
+      durationMin: entry.durationMin,
+      unit: unit,
+    );
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: FsCard(
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    entry.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => SessionDetailScreen(
+              sessionId: entry.sessionId,
+              title: entry.title,
+            ),
+          ),
+        ),
+        // Merged into the card's one node: read after the row's words.
+        child: Semantics(
+          hint: 'Opens this workout',
+          child: LayoutBuilder(
+            builder: (context, constraints) => Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        entry.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        facts,
+                        style: TextStyle(fontSize: 12, color: t.text2),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 3),
-                  Text(facts, style: TextStyle(fontSize: 12, color: t.text2)),
-                ],
-              ),
+                ),
+                const SizedBox(width: 10),
+                // Capped, so at large text on a small phone the day wraps under
+                // itself instead of squeezing the name and the numbers to nothing.
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: constraints.maxWidth * 0.4,
+                  ),
+                  child: Text(
+                    sessionDayLabel(entry.sessionDate),
+                    textAlign: TextAlign.end,
+                    style: TextStyle(fontSize: 11, color: t.text3),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 10),
-            Text(
-              entry.sessionDate,
-              style: TextStyle(fontSize: 11, color: t.text3),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -293,28 +359,4 @@ class _NothingYet extends StatelessWidget {
       ),
     );
   }
-}
-
-class _Retry extends StatelessWidget {
-  const _Retry({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.cloud_off, size: 40),
-          const SizedBox(height: 12),
-          Text(message, textAlign: TextAlign.center),
-          const SizedBox(height: 16),
-          FilledButton(onPressed: onRetry, child: const Text('Retry')),
-        ],
-      ),
-    ),
-  );
 }

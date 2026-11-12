@@ -1,13 +1,20 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
+
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/features/auth/data/auth_repository.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
+import 'package:fitsync/features/auth/domain/sign_in_outcome.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/auth/presentation/code_entry.dart';
 import 'package:fitsync/features/auth/presentation/forgot_password_screen.dart';
+import 'package:fitsync/features/auth/presentation/password_reveal_toggle.dart';
 
 /// Shown whatever the repository does: the server answers every request the
 /// same way so it can never reveal who has an account, and the app must not
@@ -45,6 +52,16 @@ class FakeAuthRepository implements AuthRepository {
   }
 
   @override
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> deleteAccount({String? password, String? idToken}) =>
+      throw UnimplementedError();
+
+  @override
   Future<void> resetPassword({
     required String email,
     required String code,
@@ -58,11 +75,11 @@ class FakeAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<AuthUser> login(String email, String password) {
+  Future<SignInOutcome> login(String email, String password) async {
     loginCalls++;
     lastEmail = email;
     lastPassword = password;
-    return onLogin?.call() ?? Future.value(_user);
+    return TraineeSignedIn(await (onLogin?.call() ?? Future.value(_user)));
   }
 
   @override
@@ -110,8 +127,9 @@ class RecordingAuthController extends AuthController {
 
 Future<List<AuthUser>> _pump(
   WidgetTester tester,
-  FakeAuthRepository repo,
-) async {
+  FakeAuthRepository repo, {
+  String initialEmail = '',
+}) async {
   final seen = <AuthUser>[];
   await tester.pumpWidget(
     ProviderScope(
@@ -127,7 +145,8 @@ Future<List<AuthUser>> _pump(
             body: TextButton(
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                  builder: (_) => const ForgotPasswordScreen(),
+                  builder: (_) =>
+                      ForgotPasswordScreen(initialEmail: initialEmail),
                 ),
               ),
               child: const Text('open'),
@@ -158,6 +177,9 @@ Future<void> _fillReset(
   await tester.tap(find.byKey(const Key('reset')));
   await tester.pumpAndSettle();
 }
+
+bool _isLive(WidgetTester tester, Finder finder) =>
+    tester.getSemantics(finder).getSemanticsData().flagsCollection.isLiveRegion;
 
 void main() {
   testWidgets('an empty email is rejected without a network call', (
@@ -282,6 +304,50 @@ void main() {
     expect(find.byType(SnackBar), findsNothing);
   });
 
+  testWidgets('a reset that cannot reach the server says so plainly', (
+    tester,
+  ) async {
+    final repo = FakeAuthRepository(
+      onReset: () async => throw const ApiException(
+        'NETWORK_ERROR',
+        'Could not reach http://10.0.2.2:3000. Check the server is running, '
+            'and that "adb reverse tcp:3000 tcp:3000" has been run.',
+      ),
+    );
+    final seen = await _pump(tester, repo);
+
+    await _sendCode(tester);
+    await _fillReset(tester);
+
+    expect(
+      find.text("Couldn't reach FitSync. Check your connection and try again."),
+      findsOneWidget,
+    );
+    expect(find.textContaining('adb'), findsNothing);
+    expect(seen, isEmpty);
+  });
+
+  testWidgets('a reset that gets a non-JSON reply shows plain words', (
+    tester,
+  ) async {
+    final repo = FakeAuthRepository(
+      onReset: () async => throw const ApiException(
+        'INVALID_RESPONSE',
+        'Server returned a non-JSON body (HTTP 502).',
+      ),
+    );
+    await _pump(tester, repo);
+
+    await _sendCode(tester);
+    await _fillReset(tester);
+
+    expect(
+      find.text('Something went wrong on our side. Please try again.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('non-JSON'), findsNothing);
+  });
+
   testWidgets('a lost reset response still signs in', (tester) async {
     // The server reset the password but its reply was lost; the retry is told
     // CODE_INVALID for a code this very reset already spent.
@@ -329,6 +395,18 @@ void main() {
       find.text('Your password is reset. Tap to sign in.'),
       findsOneWidget,
     );
+    // AO-9: good news, so neutral text rather than a red error line -- still
+    // said aloud as it appears.
+    expect(find.byType(FsErrorLine), findsNothing);
+    expect(
+      find.ancestor(
+        of: find.text('Your password is reset. Tap to sign in.'),
+        matching: find.byWidgetPredicate(
+          (w) => w is Semantics && w.properties.liveRegion == true,
+        ),
+      ),
+      findsOneWidget,
+    );
 
     failLogin = false;
     await tester.tap(find.byKey(const Key('reset')));
@@ -337,6 +415,43 @@ void main() {
     expect(repo.resetCalls, 1, reason: 'the spent code is not sent again');
     expect(repo.loginCalls, 2);
     expect(seen, [_user]);
+  });
+
+  // Spec §3: a reset still works for a suspended account, but sign-in stays
+  // refused, and the refusal says why rather than inviting a retry that can
+  // only fail the same way.
+  testWidgets('reset but the account is suspended: the sign-in error says so', (
+    tester,
+  ) async {
+    final repo = FakeAuthRepository(
+      onLogin: () async => throw const ApiException(
+        'ACCOUNT_SUSPENDED',
+        'This account is suspended.',
+      ),
+    );
+    final handle = tester.ensureSemantics();
+    final seen = await _pump(tester, repo);
+
+    await _sendCode(tester);
+    await _fillReset(tester);
+
+    final message = find.text('This account is suspended.');
+    expect(
+      find.ancestor(of: message, matching: find.byType(FsErrorLine)),
+      findsOneWidget,
+    );
+    expect(_isLive(tester, message), isTrue);
+    expect(find.text('Your password is reset. Tap to sign in.'), findsNothing);
+
+    // Tapping again retries the sign-in only, and still says why.
+    await tester.tap(find.byKey(const Key('reset')));
+    await tester.pumpAndSettle();
+
+    expect(repo.resetCalls, 1, reason: 'the spent code is not sent again');
+    expect(repo.loginCalls, 2);
+    expect(find.text('This account is suspended.'), findsOneWidget);
+    expect(seen, isEmpty);
+    handle.dispose();
   });
 
   testWidgets('Send a new code asks again', (tester) async {
@@ -349,5 +464,365 @@ void main() {
 
     expect(repo.requestCalls, 2);
     expect(find.text(_resent), findsOneWidget);
+  });
+
+  testWidgets('a wrong code is a red error line that is read aloud', (
+    tester,
+  ) async {
+    final repo = FakeAuthRepository(
+      onReset: () async => throw const ApiException(
+        'CODE_INVALID',
+        'That code is wrong or has expired.',
+      ),
+      onLogin: () async => throw const ApiException(
+        'INVALID_CREDENTIALS',
+        'Email or password is incorrect.',
+      ),
+    );
+    final handle = tester.ensureSemantics();
+    await _pump(tester, repo);
+
+    await _sendCode(tester);
+    await _fillReset(tester, code: '000000');
+
+    final message = find.text(wrongCodeMessage);
+    expect(
+      find.ancestor(of: message, matching: find.byType(FsErrorLine)),
+      findsOneWidget,
+    );
+    expect(_isLive(tester, message), isTrue);
+    handle.dispose();
+  });
+
+  testWidgets('the code-sent message is plain news, still read aloud', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester, FakeAuthRepository());
+
+    await _sendCode(tester);
+
+    final message = find.text(_sent);
+    expect(
+      find.ancestor(of: message, matching: find.byType(FsErrorLine)),
+      findsNothing,
+      reason: 'a confirmation must not look like an error',
+    );
+    expect(_isLive(tester, message), isTrue);
+    handle.dispose();
+  });
+
+  testWidgets('a missing email is a red error line', (tester) async {
+    await _pump(tester, FakeAuthRepository());
+
+    await tester.tap(find.byKey(const Key('submit')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.ancestor(
+        of: find.text('Enter your email.'),
+        matching: find.byType(FsErrorLine),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  group('A code request that never reached the server', () {
+    const offline =
+        "Couldn't reach FitSync. Check your connection and try again.";
+    ApiException networkError() => const ApiException(
+      'NETWORK_ERROR',
+      'Could not reach http://10.0.2.2:3000. Check the server is running.',
+    );
+
+    testWidgets('stays on the email step and says so', (tester) async {
+      var offlineNow = true;
+      final repo = FakeAuthRepository(
+        onRequestReset: () async {
+          if (offlineNow) throw networkError();
+        },
+      );
+      await _pump(tester, repo);
+
+      await _sendCode(tester);
+
+      expect(find.text(_sent), findsNothing, reason: 'no code was sent');
+      expect(find.byKey(const Key('code')), findsNothing);
+      expect(
+        find.ancestor(
+          of: find.text(offline),
+          matching: find.byType(FsErrorLine),
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('10.0.2.2'), findsNothing);
+
+      // Back online, the same button sends it.
+      offlineNow = false;
+      await _sendCode(tester);
+      expect(find.text(_sent), findsOneWidget);
+      expect(find.text(offline), findsNothing);
+    });
+
+    testWidgets('on Send a new code, does not claim one is coming', (
+      tester,
+    ) async {
+      var offlineNow = false;
+      final repo = FakeAuthRepository(
+        onRequestReset: () async {
+          if (offlineNow) throw networkError();
+        },
+      );
+      await _pump(tester, repo);
+      await _sendCode(tester);
+
+      offlineNow = true;
+      await tester.tap(find.byKey(const Key('resend')));
+      await tester.pumpAndSettle();
+
+      expect(find.text(_resent), findsNothing);
+      expect(find.text(offline), findsOneWidget);
+      expect(find.byKey(const Key('code')), findsOneWidget);
+    });
+  });
+
+  group('Labels and the new password', () {
+    TextField field(WidgetTester tester, String key) =>
+        tester.widget<TextField>(find.byKey(Key(key)));
+
+    testWidgets('every field keeps a visible name a screen reader hears', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await _pump(tester, FakeAuthRepository());
+
+      expect(find.text('Email'), findsOneWidget);
+      expect(
+        tester.getSemantics(find.byKey(const Key('email'))).label,
+        contains('Email'),
+      );
+
+      await _sendCode(tester);
+
+      for (final (key, label) in [
+        ('code', 'Code'),
+        ('newPassword', 'New password'),
+      ]) {
+        expect(find.text(label), findsOneWidget);
+        expect(
+          tester.getSemantics(find.byKey(Key(key))).label,
+          contains(label),
+          reason: 'the $key field must be announced by its label',
+        );
+      }
+      // The rule stays on screen once typing starts, not only as a hint.
+      await tester.enterText(find.byKey(const Key('newPassword')), 'abc');
+      await tester.pumpAndSettle();
+      expect(find.text('At least 8 characters'), findsOneWidget);
+      semantics.dispose();
+    });
+
+    testWidgets('the eye shows and hides the new password', (tester) async {
+      await _pump(tester, FakeAuthRepository());
+      await _sendCode(tester);
+
+      final eye = find.byKey(const Key('toggleNewPassword'));
+      expect(field(tester, 'newPassword').obscureText, isTrue);
+      expect(
+        tester.widget(eye),
+        isA<PasswordRevealToggle>(),
+        reason: 'one eye for every password field, not a copy per screen',
+      );
+      expect(find.byTooltip('Show password'), findsOneWidget);
+      // Each side on its own: Size's >= is true when either side is.
+      expect(tester.getSize(eye).width, greaterThanOrEqualTo(48));
+      expect(tester.getSize(eye).height, greaterThanOrEqualTo(48));
+
+      await tester.tap(eye);
+      await tester.pumpAndSettle();
+      expect(field(tester, 'newPassword').obscureText, isFalse);
+      expect(find.byTooltip('Hide password'), findsOneWidget);
+
+      await tester.tap(eye);
+      await tester.pumpAndSettle();
+      expect(field(tester, 'newPassword').obscureText, isTrue);
+    });
+  });
+
+  testWidgets('both steps fit a 320 dp phone at 2.0x text', (tester) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await _pump(tester, FakeAuthRepository());
+    expect(tester.takeException(), isNull);
+
+    await tester.enterText(find.byKey(const Key('email')), 'juan@example.com');
+    await tester.ensureVisible(find.byKey(const Key('submit')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('submit')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('toggleNewPassword')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('only Send a new code spins while a new code is asked for', (
+    tester,
+  ) async {
+    // AO-18: Reset password used to spin during a resend.
+    var calls = 0;
+    final pending = Completer<void>();
+    final repo = FakeAuthRepository(
+      onRequestReset: () => ++calls == 1 ? Future.value() : pending.future,
+    );
+    await _pump(tester, repo);
+    await _sendCode(tester);
+
+    await tester.tap(find.byKey(const Key('resend')));
+    await tester.pump();
+
+    expect(
+      tester.widget<FsButton>(find.byKey(const Key('resend'))).busy,
+      isTrue,
+    );
+    final reset = tester.widget<FsButton>(find.byKey(const Key('reset')));
+    expect(reset.busy, isFalse);
+    expect(reset.onPressed, isNull, reason: 'one request at a time');
+
+    pending.complete();
+    await tester.pumpAndSettle();
+  });
+
+  group('the email the user already typed', () {
+    // AO-21: reset made the user type again the email just entered on
+    // sign-in, its keyboard key did nothing, and a typo could only be fixed
+    // by leaving the whole flow.
+    testWidgets('is filled in from sign-in', (tester) async {
+      final repo = FakeAuthRepository();
+      await _pump(tester, repo, initialEmail: 'juan@example.com');
+
+      expect(find.text('juan@example.com'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('submit')));
+      await tester.pumpAndSettle();
+      expect(repo.lastEmail, 'juan@example.com');
+    });
+
+    testWidgets("is sent from the keyboard's send key", (tester) async {
+      final repo = FakeAuthRepository();
+      await _pump(tester, repo);
+
+      await tester.enterText(
+        find.byKey(const Key('email')),
+        'juan@example.com',
+      );
+      final field = tester.widget<TextField>(
+        find.descendant(
+          of: find.byKey(const Key('email')),
+          matching: find.byType(TextField),
+          matchRoot: true,
+        ),
+      );
+      expect(field.textInputAction, TextInputAction.send);
+      await tester.testTextInput.receiveAction(TextInputAction.send);
+      await tester.pumpAndSettle();
+
+      expect(repo.requestCalls, 1);
+      expect(find.byKey(const Key('code')), findsOneWidget);
+    });
+
+    testWidgets('can be changed from the code step', (tester) async {
+      final repo = FakeAuthRepository();
+      await _pump(tester, repo);
+      await _sendCode(tester);
+
+      await tester.tap(find.byKey(const Key('changeEmail')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('code')), findsNothing);
+      expect(find.text('juan@example.com'), findsOneWidget);
+      expect(find.text(_sent), findsNothing);
+      await tester.enterText(find.byKey(const Key('email')), 'jd@example.com');
+      await tester.tap(find.byKey(const Key('submit')));
+      await tester.pumpAndSettle();
+      expect(repo.lastEmail, 'jd@example.com');
+      expect(find.byKey(const Key('code')), findsOneWidget);
+    });
+
+    // P-10: the link was a Material TextButton among the auth screens'
+    // small accent links, and focus went nowhere when it disappeared.
+    testWidgets('the change link looks like the other auth links', (
+      tester,
+    ) async {
+      await _pump(tester, FakeAuthRepository());
+      await _sendCode(tester);
+
+      final words = find.text('Use a different email');
+      expect(
+        find.ancestor(of: words, matching: find.byType(TextButton)),
+        findsNothing,
+      );
+      final style = tester.widget<Text>(words).style!;
+      expect(style.fontSize, 12.5);
+      expect(style.fontWeight, FontWeight.w600);
+      expect(style.color, tester.element(words).fs.accentText);
+      // Still a button, with a 48 dp target.
+      final link = find.byKey(const Key('changeEmail'));
+      expect(tester.getSize(link).height, greaterThanOrEqualTo(48));
+      expect(tester.getSize(link).width, greaterThanOrEqualTo(48));
+      final handle = tester.ensureSemantics();
+      expect(
+        tester.getSemantics(words),
+        isSemantics(isButton: true, hasTapAction: true),
+      );
+      handle.dispose();
+    });
+
+    // The link ignores taps while a reset is in flight; a screen reader
+    // must hear it as disabled then, as it did when it was a TextButton.
+    testWidgets('the change link reads as disabled while a reset is sent', (
+      tester,
+    ) async {
+      final pending = Completer<void>();
+      await _pump(tester, FakeAuthRepository(onReset: () => pending.future));
+      await _sendCode(tester);
+      await tester.enterText(find.byKey(const Key('code')), '048213');
+      await tester.enterText(
+        find.byKey(const Key('newPassword')),
+        'a whole new password',
+      );
+      await tester.tap(find.byKey(const Key('reset')));
+      await tester.pump();
+
+      final handle = tester.ensureSemantics();
+      expect(
+        tester.getSemantics(find.byKey(const Key('changeEmail'))),
+        isSemantics(isButton: true, hasEnabledState: true, isEnabled: false),
+      );
+      handle.dispose();
+
+      pending.complete();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('changing the email puts the cursor in the email field', (
+      tester,
+    ) async {
+      await _pump(tester, FakeAuthRepository());
+      await _sendCode(tester);
+
+      await tester.tap(find.byKey(const Key('changeEmail')));
+      await tester.pumpAndSettle();
+
+      final email = tester.state<EditableTextState>(
+        find.descendant(
+          of: find.byKey(const Key('email')),
+          matching: find.byType(EditableText),
+        ),
+      );
+      expect(email.widget.focusNode.hasFocus, isTrue);
+    });
   });
 }

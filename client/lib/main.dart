@@ -48,8 +48,8 @@ class FitSyncApp extends ConsumerWidget {
     debugShowCheckedModeBanner: false,
     theme: fsLightTheme(),
     darkTheme: fsDarkTheme(),
-    // Never ThemeMode.system: the user picks explicitly in Settings, and
-    // the stored choice is restored on launch.
+    // Light, Dark or System, as picked in Settings; the stored choice is
+    // restored on launch, and a fresh install starts in light.
     themeMode: ref.watch(themeModeProvider),
     home: const AppShell(),
   );

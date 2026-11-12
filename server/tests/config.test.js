@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { load, REQUIRED } = require('../src/config');
+const { load, REQUIRED, publicBaseUrlWarning } = require('../src/config');
 
 const validEnv = {
   DB_HOST: '127.0.0.1',
@@ -165,4 +165,34 @@ test('fatsecret defaults to the stub and passes credentials through', () => {
   assert.deepEqual(load(validEnv).fatsecret, { mode: 'stub', clientId: null, clientSecret: null });
   const cfg = load({ ...validEnv, FATSECRET_MODE: 'http', FATSECRET_CONSUMER_KEY: 'k', FATSECRET_CONSUMER_SECRET: 's' });
   assert.deepEqual(cfg.fatsecret, { mode: 'http', clientId: 'k', clientSecret: 's' });
+});
+
+// 2026-11-09: PUBLIC_BASE_URL was empty in development, every shared link read
+// http://localhost:3000, and nothing said why. Production refuses this in
+// load(); development gets a warning instead.
+test('warns in development when PUBLIC_BASE_URL is unset', () => {
+  const env = { ...validEnv, NODE_ENV: 'development' };
+  delete env.PUBLIC_BASE_URL;
+  assert.match(publicBaseUrlWarning(load(env)), /PUBLIC_BASE_URL/);
+});
+
+test('warns in development when PUBLIC_BASE_URL is empty', () => {
+  const cfg = load({ ...validEnv, NODE_ENV: 'development', PUBLIC_BASE_URL: '' });
+  assert.match(publicBaseUrlWarning(cfg), /only open on this machine/);
+});
+
+test('warns in development for a loopback PUBLIC_BASE_URL', () => {
+  for (const url of ['http://localhost:3000', 'http://127.0.0.1:3000']) {
+    const cfg = load({ ...validEnv, NODE_ENV: 'development', PUBLIC_BASE_URL: url });
+    assert.match(publicBaseUrlWarning(cfg), /PUBLIC_BASE_URL/, url);
+  }
+});
+
+test('does not warn for an address other devices can reach', () => {
+  const cfg = load({ ...validEnv, NODE_ENV: 'development', PUBLIC_BASE_URL: 'http://172.20.10.4:3000' });
+  assert.equal(publicBaseUrlWarning(cfg), null);
+});
+
+test('does not warn in production, which refuses loopback outright', () => {
+  assert.equal(publicBaseUrlWarning({ env: 'production', publicBaseUrl: 'http://localhost:3000' }), null);
 });

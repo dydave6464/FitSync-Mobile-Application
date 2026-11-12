@@ -1,3 +1,5 @@
+import '../../../core/dates.dart';
+
 const mealTypes = ['breakfast', 'lunch', 'dinner', 'snack'];
 
 String mealLabel(String mealType) => switch (mealType) {
@@ -20,10 +22,44 @@ String mealForTime(DateTime instant) {
   return 'snack';
 }
 
+/// A day as the Nutrition tab names it, given [today]: "Today",
+/// "Yesterday", "Tue, Nov 3", or "Tue, Nov 4, 2025" in another year (the
+/// app's one day label, [calendarDayLabel]). Both are dates as YYYY-MM-DD.
+String dayLabel(String date, String today) =>
+    calendarDayLabel(DateTime.parse(date), DateTime.parse(today));
+
+/// How many days [date] is before [today], both YYYY-MM-DD: 0 for today,
+/// 1 for yesterday. Whole days in UTC, which never has a 23-hour day.
+int _daysBefore(String date, String today) =>
+    DateTime.parse('${today}T00:00:00Z').difference(DateTime.parse('${date}T00:00:00Z')).inDays;
+
+/// "Today", "Yesterday" or "Nov 3" -- no weekday, and no year even in
+/// another year -- for a line with no room to spare: Log food's "Adding
+/// to" eyebrow, which must stay one line on a 320 dp phone at 2x text. The
+/// Nutrition tab behind it names the day in full ([dayLabel]).
+String shortDayLabel(String date, String today) => switch (_daysBefore(date, today)) {
+  0 => 'Today',
+  1 => 'Yesterday',
+  _ => shortDate(DateTime.parse(date)),
+};
+
+/// The end of a sentence saying which day food went to, when it was not
+/// today: "" for today, " yesterday", or " on Tue, Nov 3" (with its year in
+/// another year, as [dayLabel] names it).
+String onDay(String date, String today) => switch (_daysBefore(date, today)) {
+  0 => '',
+  1 => ' yesterday',
+  _ => ' on ${dayLabel(date, today)}',
+};
+
 /// Atwater: what the server computes for a manual food. Like the server, it
 /// rounds each gram to 2 decimals first, so the preview never differs.
 int manualKcal(double proteinG, double carbsG, double fatG) =>
     (4 * _r2(proteinG) + 4 * _r2(carbsG) + 9 * _r2(fatG)).round();
+
+/// Whether two gram values are the same to the server, which rounds each to
+/// 2 decimals before comparing a manual food with the one it was edited from.
+bool sameGrams(double a, double b) => _r2(a) == _r2(b);
 
 /// 1.0 -> "1", 1.5 -> "1.5": how a servings count reads on screen.
 String formatServings(double servings) =>
@@ -68,6 +104,9 @@ class Food {
     this.sodiumMg,
     this.group,
     this.fatsecretCopy = false,
+    this.basedOnFoodId,
+    this.entryId,
+    this.labelKcal,
   });
 
   factory Food.fromJson(Map<String, dynamic> j) => Food(
@@ -84,6 +123,7 @@ class Food {
     sugarG: j['sugarG'] == null ? null : _d(j['sugarG']),
     sodiumMg: j['sodiumMg'] == null ? null : _d(j['sodiumMg']),
     group: j['group'] as String?,
+    entryId: j['entryId'] as int?,
   );
 
   /// 'local', 'fatsecret' or 'manual'.
@@ -109,6 +149,23 @@ class Food {
   /// attribution shows wherever this food does.
   final bool fatsecretCopy;
 
+  /// For the user's own numbers: the FitSync food they were edited from. The
+  /// server keeps that food's kcal while protein, carbs and fat are unchanged.
+  final int? basedOnFoodId;
+
+  /// For the user's own numbers from Recents: the logged entry they came from.
+  /// The server keeps that entry's kcal while protein, carbs and fat are
+  /// unchanged -- a kept-kcal beer stays 129, not 4·4·9's 47.
+  final int? entryId;
+
+  /// For a manual food, the calories per serving the server saves in place
+  /// of 4·4·9. Two places set it: Add manually, from the label the user
+  /// typed, and [FoodEntry.asFood], from a logged manual entry whose kcal
+  /// isn't 4·4·9's, so Undo logs it again at the same calories. [Food.fromJson]
+  /// never sets it. When set, [kcal] is this too, so previews and Snap a
+  /// meal's totals match what is saved.
+  final int? labelKcal;
+
   bool get isFatsecret => source == 'fatsecret';
 
   /// Whether FatSecret's attribution must show beside this food.
@@ -129,6 +186,9 @@ class Food {
       if (fiberG != null) 'fiberG': fiberG,
       if (sugarG != null) 'sugarG': sugarG,
       if (sodiumMg != null) 'sodiumMg': sodiumMg,
+      if (basedOnFoodId != null) 'basedOnFoodId': basedOnFoodId,
+      if (entryId != null) 'basedOnEntryId': entryId,
+      if (labelKcal != null) 'kcal': labelKcal,
     },
   };
 }
@@ -230,20 +290,30 @@ class FoodEntry {
   final String? externalId;
 
   /// The per-serving food this entry came from, so Undo can log it again.
-  Food asFood() => Food(
-    source: source,
-    id: foodId,
-    externalId: externalId,
-    name: name,
-    servingDesc: servingDesc,
-    kcal: (kcal / servings).round(),
-    proteinG: _r2(proteinG / servings),
-    carbsG: _r2(carbsG / servings),
-    fatG: _r2(fatG / servings),
-    fiberG: fiberG == null ? null : _r2(fiberG! / servings),
-    sugarG: sugarG == null ? null : _r2(sugarG! / servings),
-    sodiumMg: sodiumMg == null ? null : _r1(sodiumMg! / servings),
-  );
+  /// A manual entry whose kcal isn't 4·4·9's (a label's, or one the server
+  /// kept, like a beer's) carries it as [Food.labelKcal], so Undo sends it
+  /// back: otherwise it would return at 4·4·9's, and a 0/0/0 drink with
+  /// label calories would be refused.
+  Food asFood() {
+    final perKcal = (kcal / servings).round();
+    final p = _r2(proteinG / servings), c = _r2(carbsG / servings), f = _r2(fatG / servings);
+    final ownKcal = source == 'manual' && perKcal != manualKcal(p, c, f) && perKcal >= 0 && perKcal <= 5000;
+    return Food(
+      source: source,
+      id: foodId,
+      externalId: externalId,
+      name: name,
+      servingDesc: servingDesc,
+      kcal: perKcal,
+      proteinG: p,
+      carbsG: c,
+      fatG: f,
+      fiberG: fiberG == null ? null : _r2(fiberG! / servings),
+      sugarG: sugarG == null ? null : _r2(sugarG! / servings),
+      sodiumMg: sodiumMg == null ? null : _r1(sodiumMg! / servings),
+      labelKcal: ownKcal ? perKcal : null,
+    );
+  }
 }
 
 class NutritionTarget {

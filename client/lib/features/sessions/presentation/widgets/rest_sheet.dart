@@ -77,6 +77,8 @@ class RestCountdown {
 Future<void> showRestSheet(BuildContext context, {RestCountdown? countdown}) =>
     showModalBottomSheet<void>(
       context: context,
+      // FsSheetHeader draws the handle (PT-22).
+      showDragHandle: false,
       isScrollControlled: true,
       backgroundColor: context.fs.surface,
       shape: const RoundedRectangleBorder(
@@ -221,18 +223,23 @@ class _RestSheetState extends ConsumerState<RestSheet> {
       // screen, and the last of them would otherwise be cut off.
       child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(
-          20,
-          20,
-          20,
+          FsSheetHeader.sideInset,
+          10,
+          FsSheetHeader.sideInset,
           20 + MediaQuery.viewInsetsOf(context).bottom,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Named by what it is about: the rest running now, or -- from
+            // the menu, before any rest -- the rest time itself.
+            FsSheetHeader(
+              title: countdown != null ? 'Rest' : 'Rest time',
+              onClose: _close,
+            ),
             if (countdown != null) ...[
-              Center(child: Text('Rest', style: fsEyebrow(t))),
-              const SizedBox(height: 10),
+              const SizedBox(height: 4),
               Center(
                 child: ValueListenableBuilder<RestReading?>(
                   valueListenable: countdown.reading,
@@ -348,6 +355,9 @@ class _RestSheetState extends ConsumerState<RestSheet> {
                         key: Key('rest.preset.$seconds'),
                         label: formatRest(seconds),
                         selected: seconds == saved,
+                        // One default at a time, Custom included: a radio
+                        // group to a screen reader.
+                        exclusive: true,
                         small: true,
                         onTap: () => _save(seconds),
                       ),
@@ -361,6 +371,7 @@ class _RestSheetState extends ConsumerState<RestSheet> {
                           ? 'Custom…'
                           : 'Custom (${formatRest(saved)})',
                       selected: !isPreset,
+                      exclusive: true,
                       small: true,
                       onTap: () => _custom(saved),
                     ),
@@ -370,7 +381,7 @@ class _RestSheetState extends ConsumerState<RestSheet> {
             ],
             if (_error != null) ...[
               const SizedBox(height: 10),
-              Text(_error!, style: TextStyle(fontSize: 12, color: t.red)),
+              FsErrorLine(_error!),
             ],
           ],
         ),

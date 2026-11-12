@@ -7,6 +7,8 @@ import 'package:fitsync/features/exercises/domain/exercise_cues.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/domain/exercise_filters.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
+import 'package:fitsync/features/nutrition/presentation/error_snack_bar.dart'
+    show retryCanFix;
 
 /// A repository double that always fails with a given [ApiException] and
 /// counts how many times [byId] actually ran, so a test can prove whether a
@@ -63,22 +65,45 @@ void main() {
       expect(apiRetryPolicy(0, error), isNull);
     });
 
-    test(
-      'does not retry INVALID_QUERY_PARAM, INVALID_RESPONSE or UNKNOWN_ERROR',
-      () {
-        for (final code in [
-          'INVALID_QUERY_PARAM',
-          'INVALID_RESPONSE',
-          'UNKNOWN_ERROR',
-        ]) {
-          expect(
-            apiRetryPolicy(0, ApiException(code, 'x')),
-            isNull,
-            reason: code,
-          );
-        }
-      },
-    );
+    test('does not retry INVALID_QUERY_PARAM or UNKNOWN_ERROR', () {
+      for (final code in ['INVALID_QUERY_PARAM', 'UNKNOWN_ERROR']) {
+        expect(
+          apiRetryPolicy(0, ApiException(code, 'x')),
+          isNull,
+          reason: code,
+        );
+      }
+    });
+
+    // P-4: the automatic retry and the snack bar's "Try again" disagreed
+    // about INVALID_RESPONSE (and INTERNAL_ERROR). Both now ask one
+    // question, isRetryableError, so they agree on every code.
+    test('retries a garbled reply and a server fault, like Try again', () {
+      for (final code in ['INVALID_RESPONSE', 'INTERNAL_ERROR']) {
+        final error = ApiException(code, 'x');
+        expect(apiRetryPolicy(0, error), isNotNull, reason: code);
+        expect(apiRetryPolicy(2, error), isNull, reason: '$code, third try');
+      }
+    });
+
+    test('agrees with the "Try again" action on every code', () {
+      for (final code in [
+        'NETWORK_ERROR',
+        'INTERNAL_ERROR',
+        'INVALID_RESPONSE',
+        'UNKNOWN_ERROR',
+        'CANCELLED',
+        'EXERCISE_NOT_FOUND',
+        'INVALID_QUERY_PARAM',
+      ]) {
+        final error = ApiException(code, 'x');
+        expect(
+          apiRetryPolicy(0, error) != null,
+          retryCanFix(error),
+          reason: code,
+        );
+      }
+    });
 
     test(
       'retries NETWORK_ERROR, deferring the backoff to the framework default',

@@ -99,10 +99,22 @@ class ProfileRepository {
 
   // Same fix as bodyWeight() above: postJson already unwraps the outer
   // "data" envelope once.
-  Future<BodyWeightPoint> logBodyWeight(double weightKg) async =>
-      BodyWeightPoint.fromJson(
-        await _api.postJson('/api/v1/profile/body-weight', {
-          'weightKg': weightKg,
-        }),
-      );
+  /// [loggedOn] (`YYYY-MM-DD`) backfills a past day; null is the server's
+  /// today. Either way a day's earlier entry is replaced, not added to.
+  Future<BodyWeightPoint> logBodyWeight(
+    double weightKg, {
+    String? loggedOn,
+  }) async => BodyWeightPoint.fromJson(
+    await _api.postJson('/api/v1/profile/body-weight', {
+      'weightKg': weightKg,
+      'loggedOn': ?loggedOn,
+    }),
+  );
+
+  /// Removes the weigh-in on [loggedOn] (`YYYY-MM-DD`). The server refuses
+  /// the user's only weigh-in (409 ONLY_WEIGH_IN) and answers 404
+  /// WEIGH_IN_NOT_FOUND for a day with none.
+  Future<void> deleteBodyWeight(String loggedOn) async {
+    await _api.deleteJson('/api/v1/profile/body-weight/$loggedOn');
+  }
 }

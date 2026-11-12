@@ -39,9 +39,21 @@ class TokenStore {
   TokenStore({this._backing = const PluginSecureStore()});
 
   static const _key = 'fitsync.jwt';
+  static const _roleKey = 'fitsync.role';
   final SecureStore _backing;
 
   Future<String?> read() => _backing.read(_key);
   Future<void> write(String token) => _backing.write(_key, token);
-  Future<void> clear() => _backing.delete(_key);
+
+  /// Who the stored token belongs to: `'trainee'` or `'admin'`. Null on an
+  /// install from before roles, which callers read as a trainee, so those
+  /// keep opening the trainee app.
+  Future<String?> readRole() => _backing.read(_roleKey);
+  Future<void> writeRole(String role) => _backing.write(_roleKey, role);
+
+  /// Drops the role with the token, so the next sign-in starts from neither.
+  Future<void> clear() async {
+    await _backing.delete(_key);
+    await _backing.delete(_roleKey);
+  }
 }

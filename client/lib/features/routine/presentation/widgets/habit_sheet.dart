@@ -5,6 +5,8 @@ import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
 import '../../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
+import '../../../nutrition/presentation/error_snack_bar.dart'
+    show saveOrOfferRetry;
 import '../../../plans/presentation/widgets/training_days_row.dart';
 import '../../domain/routine.dart';
 import '../providers.dart';
@@ -23,10 +25,11 @@ Future<void> showHabitSheet(
 }) {
   return showModalBottomSheet<void>(
     context: context,
-    backgroundColor: context.fs.surface,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-    ),
+    // The surface and corners are the theme's. Its handle is not: Material
+    // draws it outside the sheet's child, past the drag the sheet holds back
+    // while something typed would be lost, so the sheet draws the kit's own
+    // inside that hold (PT-22).
+    showDragHandle: false,
     isScrollControlled: true,
     builder: (_) =>
         _HabitSheet(existing: existing, announceRepeats: announceRepeats),
@@ -55,6 +58,20 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
   bool _busy = false;
   String? _error;
 
+  /// Whether closing now would throw away what was typed or picked: any
+  /// field that differs from what the sheet opened with. Never while a save
+  /// is in flight -- that save still lands after the sheet has gone.
+  bool get _dirty {
+    if (_busy) return false;
+    final existing = widget.existing;
+    final days = existing?.weekdays ?? const [1, 2, 3, 4, 5, 6, 7];
+    return _title.text != (existing?.title ?? '') ||
+        _duration.text != (existing?.durationMin?.toString() ?? '') ||
+        _time != existing?.time ||
+        !(_weekdays.toSet().length == days.toSet().length &&
+            _weekdays.toSet().containsAll(days));
+  }
+
   /// The weekday of the day the routine screen was showing when this sheet
   /// opened, 1-7. Read once, in initState, rather than each time it is
   /// needed: the provider may have already moved on to a different day by the
@@ -69,7 +86,13 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
     _openedOnWeekday = DateTime.tryParse(
       ref.read(routineTodayProvider).value?.date ?? '',
     )?.weekday;
+    // The fields are not rebuilt by typing; whether closing asks first
+    // depends on what is in them.
+    _title.addListener(_refresh);
+    _duration.addListener(_refresh);
   }
+
+  void _refresh() => setState(() {});
 
   @override
   void dispose() {
@@ -109,8 +132,11 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
   /// only a save that repeats on a day other than the one this sheet opened
   /// on gets a snackbar, telling the person what just happened to a habit
   /// that then dropped out of today's list with nothing else to say so.
-  Future<void> _run(Future<Habit?> Function(RoutineController c) action) async {
-    if (_busy) return;
+  ///
+  /// True once [action] has landed, whether or not this sheet is still
+  /// there to close; false when it failed or never ran.
+  Future<bool> _run(Future<Habit?> Function(RoutineController c) action) async {
+    if (_busy) return false;
     setState(() {
       _busy = true;
       _error = null;
@@ -120,7 +146,7 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
     final messenger = ScaffoldMessenger.of(context);
     try {
       final saved = await action(ref.read(routineTodayProvider.notifier));
-      if (!mounted) return;
+      if (!mounted) return true;
       Navigator.of(context).pop();
       if (widget.announceRepeats &&
           saved != null &&
@@ -132,12 +158,14 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
           ),
         );
       }
+      return true;
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted) return false;
       setState(() {
         _busy = false;
         _error = describeError(error);
       });
+      return false;
     }
   }
 
@@ -147,6 +175,45 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
     final existing = widget.existing;
     await _run(
       (c) => existing == null ? c.add(draft) : c.edit(existing.habitId, draft),
+    );
+  }
+
+  /// Deletes at once and offers Undo for about five seconds, rather than
+  /// asking first: the delete is soft, so a mis-tap just under Save costs
+  /// one tap to put right (PT-11). With a screen reader the bar waits,
+  /// since reaching its action by swiping takes longer than that.
+  ///
+  /// The messenger, the controller and the screen-reader setting are read
+  /// before the await: the sheet has closed by the time the delete lands.
+  /// The controller is not autoDispose, so it outlives the sheet for Undo.
+  /// A failed delete keeps the sheet open, saying why, and offers no Undo.
+  Future<void> _delete(Habit existing) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final controller = ref.read(routineTodayProvider.notifier);
+    final screenReader = MediaQuery.accessibleNavigationOf(context);
+    final deleted = await _run((c) async {
+      await c.remove(existing.habitId);
+      return null;
+    });
+    if (!deleted) return;
+    // Nothing is said when Undo lands: the habit reappearing in the list is
+    // the feedback, as with nutrition's Removed / Undo.
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 5),
+        persist: screenReader,
+        content: const Text('Habit deleted'),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () => saveOrOfferRetry(
+            messenger,
+            save: () => controller.restore(existing.habitId),
+            failure: "Couldn't bring the habit back.",
+            persist: screenReader,
+          ),
+        ),
+      ),
     );
   }
 
@@ -168,107 +235,132 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
 
   @override
   Widget build(BuildContext context) {
+    // Typed or picked and not saved: back, a tap on the scrim and a swipe
+    // down ask before throwing it away, as the check-in sheet does (the
+    // kit's sheet guard, which claims the drag while dirty).
+    return FsSheetDiscardGuard(dirty: _dirty, child: _content());
+  }
+
+  Widget _content() {
     final t = context.fs;
     final existing = widget.existing;
 
     return SafeArea(
-      child: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(
-          18,
-          10,
-          18,
-          MediaQuery.of(context).viewInsets.bottom + 20,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              existing == null ? 'New habit' : 'Edit habit',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: t.text,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 10, bottom: 12),
+            child: Center(child: FsSheetHandle()),
+          ),
+          Flexible(child: _form(t, existing)),
+        ],
+      ),
+    );
+  }
+
+  Widget _form(FsTokens t, Habit? existing) {
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(
+        18,
+        0,
+        18,
+        MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            existing == null ? 'New habit' : 'Edit habit',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: t.text,
+            ),
+          ),
+          const SizedBox(height: 16),
+          FsField(
+            controller: _title,
+            fieldKey: const Key('habit.title'),
+            label: 'Name',
+            hint: 'e.g. Morning mobility',
+          ),
+          const SizedBox(height: 12),
+          Row(
+            // The time button lines up with the duration box, not with
+            // the duration's label above it.
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                // The kit's secondary button: text-coloured on the
+                // surface, like the field beside it, where M3's outlined
+                // button fell back to the brand green (2.87:1 on white).
+                child: FsButton(
+                  key: const Key('habit.time'),
+                  kind: FsButtonKind.secondary,
+                  small: true,
+                  // Grows rather than cutting '7:00 AM' to '7:00 …' at
+                  // large text, which would lose the AM/PM.
+                  wrapLabel: true,
+                  onPressed: _busy ? null : _pickTime,
+                  icon: const Icon(Icons.schedule, size: 18),
+                  label: _time == null ? 'Any time' : formatClock(_time!),
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            FsField(
-              controller: _title,
-              fieldKey: const Key('habit.title'),
-              hint: 'e.g. Morning mobility',
-            ),
+              if (_time != null)
+                IconButton(
+                  key: const Key('habit.time.clear'),
+                  tooltip: 'Clear time',
+                  icon: const Icon(Icons.close, size: 18),
+                  onPressed: _busy ? null : () => setState(() => _time = null),
+                ),
+              const SizedBox(width: 12),
+              SizedBox(
+                width: 120,
+                child: FsField(
+                  controller: _duration,
+                  fieldKey: const Key('habit.duration'),
+                  label: 'Duration',
+                  // No placeholder: the eyebrow names the field, and the
+                  // 'min' suffix keeps its room even while hidden, so in
+                  // 120 dp any word was cut off ('Optional' at 1x).
+                  hint: '',
+                  suffix: 'min',
+                  keyboardType: TextInputType.number,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const FsEyebrow('Repeat on'),
+          const SizedBox(height: 8),
+          TrainingDaysRow(
+            selected: _weekdays,
+            enabled: !_busy,
+            onChanged: (days) => setState(() => _weekdays = days),
+          ),
+          if (_error != null) ...[
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    key: const Key('habit.time'),
-                    onPressed: _busy ? null : _pickTime,
-                    icon: const Icon(Icons.schedule, size: 18),
-                    label: Text(
-                      _time == null ? 'Any time' : formatClock(_time!),
-                    ),
-                  ),
-                ),
-                if (_time != null)
-                  IconButton(
-                    key: const Key('habit.time.clear'),
-                    tooltip: 'Clear time',
-                    icon: const Icon(Icons.close, size: 18),
-                    onPressed: _busy
-                        ? null
-                        : () => setState(() => _time = null),
-                  ),
-                const SizedBox(width: 12),
-                SizedBox(
-                  width: 120,
-                  child: FsField(
-                    controller: _duration,
-                    fieldKey: const Key('habit.duration'),
-                    hint: 'Minutes',
-                    keyboardType: TextInputType.number,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            const FsEyebrow('Repeat on'),
-            const SizedBox(height: 8),
-            TrainingDaysRow(
-              selected: _weekdays,
-              enabled: !_busy,
-              onChanged: (days) => setState(() => _weekdays = days),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                _error!,
-                key: const Key('habit.error'),
-                style: TextStyle(fontSize: 12, color: t.red),
-              ),
-            ],
-            const SizedBox(height: 18),
-            FsButton(
-              key: const Key('habit.save'),
-              label: 'Save',
-              busy: _busy,
-              onPressed: _busy ? null : _save,
-            ),
-            if (existing != null) ...[
-              const SizedBox(height: 6),
-              TextButton(
-                key: const Key('habit.delete'),
-                onPressed: _busy
-                    ? null
-                    : () => _run((c) async {
-                        await c.remove(existing.habitId);
-                        return null;
-                      }),
-                child: Text('Delete habit', style: TextStyle(color: t.red)),
-              ),
-            ],
+            FsErrorLine(_error!, key: const Key('habit.error')),
           ],
-        ),
+          const SizedBox(height: 18),
+          FsButton(
+            key: const Key('habit.save'),
+            label: 'Save',
+            busy: _busy,
+            onPressed: _busy ? null : _save,
+          ),
+          if (existing != null) ...[
+            const SizedBox(height: 6),
+            TextButton(
+              key: const Key('habit.delete'),
+              onPressed: _busy ? null : () => _delete(existing),
+              child: Text('Delete habit', style: TextStyle(color: t.red)),
+            ),
+          ],
+        ],
       ),
     );
   }

@@ -3,8 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/units.dart';
 import '../../exercises/presentation/providers.dart'
     show apiClientProvider, apiRetryPolicy;
+import '../../nutrition/presentation/providers.dart'
+    show mealSuggestionsProvider, nutritionDayProvider;
 import '../../plans/presentation/providers.dart' show activePlanProvider;
-import '../../sessions/presentation/providers.dart' show activeSessionProvider;
+import '../../sessions/presentation/providers.dart'
+    show activeSessionProvider, trainingAnalyticsProvider;
 import '../data/profile_repository.dart';
 import '../domain/body_weight.dart';
 import '../domain/profile.dart';
@@ -30,6 +33,20 @@ class ProfileNotifier extends AsyncNotifier<Profile> {
   /// series wrong; patching anything else changes nothing the card shows.
   static const _bodyWeightFields = {'weightKg', 'goalWeightKg'};
 
+  /// The profile fields the server works today's calorie and protein target
+  /// out from (server/src/lib/nutrition-target.js; `mainGoal` comes through
+  /// [setGoals]). The Nutrition day carries that target and the meal
+  /// suggestions are fitted to it, so a change to any of these leaves both
+  /// wrong -- the ring, "Fits the ~... left", and "Add your weight and
+  /// height..." once the last missing figure is filled in.
+  static const _targetFields = {
+    'weightKg',
+    'heightCm',
+    'dateOfBirth',
+    'sex',
+    'activityLevel',
+  };
+
   // Each write replaces state only on success. A failed write leaves the
   // profile already on screen intact and rethrows, so the caller can show the
   // error without the form underneath it disappearing.
@@ -44,6 +61,14 @@ class ProfileNotifier extends AsyncNotifier<Profile> {
       // every segment the user has already opened is holding the old line.
       ref.invalidate(bodyWeightProvider);
     }
+    if (fields.keys.any(_targetFields.contains)) _refreshDailyTarget();
+  }
+
+  /// Refetches the day on screen and every meal's suggestions (the whole
+  /// family: the meal shown changes with the clock).
+  void _refreshDailyTarget() {
+    ref.invalidate(nutritionDayProvider);
+    ref.invalidate(mealSuggestionsProvider);
   }
 
   Future<void> setEquipment(List<int> equipmentIds) async {
@@ -66,12 +91,19 @@ class ProfileNotifier extends AsyncNotifier<Profile> {
     state = AsyncData(
       await ref.read(profileRepositoryProvider).setTrainingDays(weekdays),
     );
+    // The server counts the chosen days for the plan's days a week and for
+    // Progress's adherence target (PT-18), so both read the new count. The
+    // whole analytics family: every period opened holds the old target.
+    ref.invalidate(activePlanProvider);
+    ref.invalidate(trainingAnalyticsProvider);
   }
 
   Future<void> setGoals(List<String> goals, String mainGoal) async {
     state = AsyncData(
       await ref.read(profileRepositoryProvider).setGoals(goals, mainGoal),
     );
+    // The main goal moves the target: -500 to lose, +250 to gain.
+    _refreshDailyTarget();
   }
 
   Future<CompletedOnboarding> completeOnboarding() async {
@@ -98,6 +130,11 @@ final equipmentOptionsProvider = FutureProvider<List<EquipmentOption>>(
 final injuryOptionsProvider = FutureProvider<List<InjuryOption>>(
   (ref) => ref.watch(profileRepositoryProvider).injuryOptions(),
   retry: apiRetryPolicy,
+);
+
+/// The clock the weigh-in sheet reads "today" from; a test fixes it.
+final bodyWeightClockProvider = Provider<DateTime Function()>(
+  (ref) => DateTime.now,
 );
 
 /// The unit every weight in the app is rendered in and typed in.

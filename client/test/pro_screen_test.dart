@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph, SemanticsNode;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,6 +15,7 @@ import 'package:fitsync/features/pro/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart'
     show trainingAnalyticsProvider;
 
+import 'helpers/a11y.dart' show contrast;
 import 'helpers/fake_pro_repository.dart';
 import 'helpers/pro_locks_probe.dart';
 
@@ -62,6 +64,7 @@ ProviderContainer _container(WidgetTester tester) =>
 Future<(FakeProRepository, _Opener)> _pump(
   WidgetTester tester, {
   ProStatus status = freeStatus,
+  bool dark = false,
 }) async {
   final repo = FakeProRepository(status);
   final opener = _Opener();
@@ -71,7 +74,10 @@ Future<(FakeProRepository, _Opener)> _pump(
         proRepositoryProvider.overrideWithValue(repo),
         proCheckoutOpenerProvider.overrideWithValue(opener.call),
       ],
-      child: MaterialApp(theme: fsLightTheme(), home: const ProScreen()),
+      child: MaterialApp(
+        theme: dark ? fsDarkTheme() : fsLightTheme(),
+        home: const ProScreen(),
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -82,6 +88,68 @@ Finder _inside(String key, Finder f) =>
     find.descendant(of: find.byKey(Key(key)), matching: f);
 
 void main() {
+  // L-83: the words for a plan's length live with the screen that says them,
+  // not in the domain enum.
+  test('a plan says how long one payment lasts', () {
+    expect(planPeriod(1), '1 month');
+    expect(planPeriod(12), '12 months');
+  });
+
+  // #31: the terms come from the server, not from the app's enum.
+  group('terms from the server', () {
+    const threeMonths = {
+      ProPlan.monthly: ProPlanTerms(pricePhp: 249, months: 3),
+      ProPlan.annual: ProPlanTerms(pricePhp: 1788, months: 12),
+    };
+
+    testWidgets("a plan's months are the server's", (tester) async {
+      await _pump(
+        tester,
+        status: const ProStatus(
+          pro: false,
+          source: null,
+          until: null,
+          plan: null,
+          method: null,
+          endsSoon: false,
+          plans: threeMonths,
+        ),
+      );
+
+      expect(_inside('pro.plan.monthly', find.text('for 3 months')), findsOne);
+      expect(
+        tester.getSemantics(find.byKey(const Key('pro.plan.monthly'))),
+        isSemantics(label: 'Monthly, ₱249 for 3 months'),
+      );
+    });
+
+    testWidgets('extending starts where the server says the next period does', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        status: paidStatus(
+          until: DateTime(2026, 11, 26, 12),
+          nextPeriodStartsAt: DateTime(2026, 12, 1, 12),
+          plans: threeMonths,
+        ),
+      );
+      await tester.tap(find.byKey(const Key('pro.plan.monthly')));
+      await tester.pump();
+
+      expect(find.text('Adds 3 months after 1 Dec 2026.'), findsOneWidget);
+      expect(find.textContaining('26 Nov 2026.'), findsNothing);
+    });
+
+    testWidgets('no "doesn\'t renew" line for a plan that renews', (
+      tester,
+    ) async {
+      await _pump(tester, status: paidStatus(renews: true));
+      expect(find.byKey(const Key('pro.pay')), findsOneWidget);
+      expect(find.byKey(const Key('pro.terms')), findsNothing);
+    });
+  });
+
   testWidgets(
     'a free user picks a plan; annual is picked first and named for a screen reader',
     (tester) async {
@@ -90,14 +158,14 @@ void main() {
       expect(
         tester.getSemantics(find.byKey(const Key('pro.plan.annual'))),
         isSemantics(
-          label: 'Annual, ₱149 a month, billed ₱1,788 yearly',
+          label: 'Annual, ₱149 a month, ₱1,788 once, for 12 months',
           isSelected: true,
           isButton: true,
         ),
       );
       expect(
         tester.getSemantics(find.byKey(const Key('pro.plan.monthly'))),
-        isSemantics(label: 'Monthly, ₱249 a month', isSelected: false),
+        isSemantics(label: 'Monthly, ₱249 for 1 month', isSelected: false),
       );
       expect(_inside('pro.plan.annual', find.text('-40%')), findsOneWidget);
 
@@ -392,6 +460,99 @@ void main() {
     expect(repo.checkouts.length, 1);
   });
 
+  // PS-17: while a payment is in progress the cards looked tappable but did
+  // nothing, and a screen reader heard no "disabled".
+  testWidgets('while paying, the plans look and read as locked', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester);
+    double opacityOf(String key) => tester
+        .widgetList<Opacity>(
+          find.descendant(
+            of: find.byKey(Key(key)),
+            matching: find.byType(Opacity),
+          ),
+        )
+        .fold(1.0, (o, w) => o * w.opacity);
+    // The card's own node, under any dimming wrapped around it.
+    SemanticsNode plan(String key) => tester.getSemantics(
+      find.descendant(
+        of: find.byKey(Key(key)),
+        matching: find.byType(MergeSemantics),
+      ),
+    );
+    expect(opacityOf('pro.plan.monthly'), 1.0);
+    expect(
+      plan('pro.plan.monthly'),
+      isSemantics(isButton: true, isEnabled: true),
+    );
+
+    await tester.tap(find.byKey(const Key('pro.pay')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('pro.waiting')), findsOneWidget);
+
+    // The plan not being paid for is dimmed, as a disabled FsButton is; the
+    // one being paid for stays legible.
+    expect(opacityOf('pro.plan.monthly'), 0.45);
+    expect(opacityOf('pro.plan.annual'), 1.0);
+    for (final key in ['pro.plan.monthly', 'pro.plan.annual']) {
+      expect(
+        plan(key),
+        isSemantics(hasEnabledState: true, isEnabled: false),
+        reason: key,
+      );
+    }
+    await tester.tap(find.byKey(const Key('pro.plan.monthly')));
+    await tester.pump();
+    expect(plan('pro.plan.annual'), isSemantics(isSelected: true));
+    handle.dispose();
+  });
+
+  // P-25: dimming the plan not being paid for wrapped it in a new Opacity,
+  // which tore the card down and built a fresh one as the payment started.
+  testWidgets('dimming a plan keeps the same card, not a rebuilt one', (
+    tester,
+  ) async {
+    await _pump(tester);
+    Element inkOf(String key) => tester.element(
+      find.descendant(of: find.byKey(Key(key)), matching: find.byType(InkWell)),
+    );
+    final before = inkOf('pro.plan.monthly');
+
+    await tester.tap(find.byKey(const Key('pro.pay')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('pro.waiting')), findsOneWidget);
+
+    expect(identical(inkOf('pro.plan.monthly'), before), isTrue);
+  });
+
+  // PS-18: "with PayMongo" and "again" were cut off at larger text.
+  testWidgets('Pay and Open payment page again are read whole at 2x text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    void expectWhole(String label) {
+      final paragraph = tester.renderObject<RenderParagraph>(find.text(label));
+      expect(paragraph.didExceedMaxLines, isFalse, reason: label);
+    }
+
+    await _pump(tester);
+    await tester.scrollUntilVisible(find.byKey(const Key('pro.pay')), 200);
+    expectWhole('Pay ₱1,788 with PayMongo');
+
+    await tester.tap(find.byKey(const Key('pro.pay')));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.byKey(const Key('pro.reopen')), 200);
+    expectWhole('Open payment page again');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('paid: the end date and how it was paid, with plans to extend', (
     tester,
   ) async {
@@ -409,6 +570,70 @@ void main() {
     expect(find.text('EXTEND YOUR PRO'), findsOneWidget);
     expect(find.byKey(const Key('pro.pay')), findsOneWidget);
     expect(find.byKey(const Key('pro.endsSoon')), findsNothing);
+  });
+
+  // PS-8: "per month, billed yearly" read as a subscription that renews.
+  // The server sells one period at a time, added after any current one.
+  testWidgets('prices read as a one-off payment for a set period', (
+    tester,
+  ) async {
+    await _pump(tester);
+
+    expect(_inside('pro.plan.monthly', find.text('for 1 month')), findsOne);
+    // The ₱149 headline keeps its rate in sight: without "a month" it read
+    // as the annual price, beside ₱1,788 and the monthly card's ₱249.
+    expect(_inside('pro.plan.annual', find.text('₱149')), findsOneWidget);
+    expect(
+      _inside(
+        'pro.plan.annual',
+        find.text('a month · ₱1,788 once, for 12 months'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('billed'), findsNothing);
+    expect(find.textContaining('per month'), findsNothing);
+    expect(
+      find.text("One-time payment. Pro doesn't renew by itself."),
+      findsOneWidget,
+    );
+    final pay = tester.getRect(find.byKey(const Key('pro.pay')));
+    final terms = tester.getRect(
+      find.text("One-time payment. Pro doesn't renew by itself."),
+    );
+    expect(terms.top, greaterThanOrEqualTo(pay.bottom), reason: 'under Pay');
+  });
+
+  testWidgets('extending says the new months start after the current end', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      status: paidStatus(until: DateTime(2026, 11, 26, 12), method: 'gcash'),
+    );
+    expect(find.text('Adds 12 months after 26 Nov 2026.'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('pro.plan.monthly')));
+    await tester.pump();
+    expect(find.text('Adds 1 month after 26 Nov 2026.'), findsOneWidget);
+  });
+
+  testWidgets('the longer terms fit a small phone at 2x text', (tester) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await _pump(
+      tester,
+      status: paidStatus(until: DateTime(2026, 11, 26, 12), method: 'gcash'),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a free user is not told about extending', (tester) async {
+    await _pump(tester);
+    expect(find.textContaining('Adds '), findsNothing);
   });
 
   testWidgets('ending within 3 days: a reminder to renew', (tester) async {
@@ -454,6 +679,102 @@ void main() {
     expect(find.byKey(const Key('pro.pay')), findsOneWidget);
   });
 
+  // PS-16: both errors looked like the neutral "Pro ends on" note.
+  testWidgets('a page that will not open is said as an error, in red', (
+    tester,
+  ) async {
+    final (_, opener) = await _pump(tester);
+    opener.answer = false;
+    await tester.tap(find.byKey(const Key('pro.pay')));
+    await tester.pumpAndSettle();
+    final line = find.byKey(const Key('pro.openError'));
+    expect(tester.widget(line), isA<FsErrorLine>());
+    expect(
+      find.descendant(of: line, matching: find.byIcon(Icons.error_outline)),
+      findsOneWidget,
+    );
+  });
+
+  // P-29d: the PS-16 error line and the PS-17 paying state, checked in the
+  // dark theme as well as the light one.
+  for (final dark in [false, true]) {
+    final theme = dark ? 'dark' : 'light';
+    final t = dark ? FsTokens.dark : FsTokens.light;
+    Color colorOf(WidgetTester tester, Finder text) =>
+        tester.renderObject<RenderParagraph>(text).text.style!.color!;
+
+    testWidgets('$theme: a page that will not open reads in red', (
+      tester,
+    ) async {
+      final (_, opener) = await _pump(tester, dark: dark);
+      opener.answer = false;
+      await tester.tap(find.byKey(const Key('pro.pay')));
+      await tester.pumpAndSettle();
+      final line = find.byKey(const Key('pro.openError'));
+      final words = find.descendant(of: line, matching: find.byType(Text));
+      expect(colorOf(tester, words), t.red);
+      expect(contrast(t.red, t.bg), greaterThanOrEqualTo(4.5));
+      final icon = tester.widget<Icon>(
+        find.descendant(of: line, matching: find.byIcon(Icons.error_outline)),
+      );
+      expect(contrast(icon.color!, t.bg), greaterThanOrEqualTo(3));
+    });
+
+    testWidgets('$theme: while paying, the plan paid for and the panel read', (
+      tester,
+    ) async {
+      await _pump(tester, dark: dark);
+      await tester.tap(find.byKey(const Key('pro.pay')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('pro.waiting')), findsOneWidget);
+
+      // The plan being paid for stays at full strength on its accent card,
+      // whose tint is drawn over the page.
+      final price = _inside('pro.plan.annual', find.text('₱149'));
+      expect(
+        contrast(
+          colorOf(tester, price),
+          Color.alphaBlend(t.accent.withValues(alpha: 0.16), t.bg),
+        ),
+        greaterThanOrEqualTo(4.5),
+      );
+      final words = _inside(
+        'pro.waiting',
+        find.textContaining("Finish paying on PayMongo's page"),
+      );
+      expect(
+        contrast(colorOf(tester, words), t.surface),
+        greaterThanOrEqualTo(4.5),
+      );
+    });
+  }
+
+  testWidgets('a status that will not load says why, with the kit Try again', (
+    tester,
+  ) async {
+    final repo = FakeProRepository()
+      ..statusError = const ApiException('NETWORK_ERROR', 'offline');
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [proRepositoryProvider.overrideWithValue(repo)],
+        child: MaterialApp(theme: fsLightTheme(), home: const ProScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(FsRetry), findsOneWidget);
+    expect(
+      find.text(userMessage(const ApiException('NETWORK_ERROR', 'offline'))),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(FsRetry),
+        matching: find.byKey(const Key('pro.retryStatus')),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('coming back to the app checks at once', (tester) async {
     final (repo, _) = await _pump(tester);
     await tester.tap(find.byKey(const Key('pro.pay')));
@@ -464,6 +785,17 @@ void main() {
     await tester.pump();
     expect(repo.confirms, [7]);
     expect(find.byKey(const Key('pro.notCompleted')), findsOneWidget);
+  });
+
+  // PS-24: the prototype's 56 px crown square is accent-filled.
+  testWidgets('the header crown sits on an accent tile', (tester) async {
+    await _pump(tester);
+    // By its key, not as the first FsIconTile: any tile placed above it
+    // would have been checked instead (P-28).
+    final tile = tester.widget<FsIconTile>(find.byKey(const Key('pro.crown')));
+    expect(tile.icon, Icons.workspace_premium_outlined);
+    expect(tile.size, 56);
+    expect(tile.selected, isTrue);
   });
 
   testWidgets('the close button leaves', (tester) async {
@@ -538,13 +870,24 @@ void main() {
   );
 
   testWidgets(
-    'the plan cards are one choice: a radio group to a screen reader',
+    'the plan cards are one choice: each says whether it is the one picked',
     (tester) async {
       await _pump(tester);
-      for (final key in ['pro.plan.annual', 'pro.plan.monthly']) {
+      for (final (key, picked) in [
+        ('pro.plan.annual', true),
+        ('pro.plan.monthly', false),
+      ]) {
         expect(
           tester.getSemantics(find.byKey(Key(key))),
-          isSemantics(isInMutuallyExclusiveGroup: true),
+          // No group flag (P-30, as FsSegmented): with no checked state it
+          // says nothing on either platform; the selected state does.
+          isSemantics(
+            isButton: true,
+            hasSelectedState: true,
+            isSelected: picked,
+            isInMutuallyExclusiveGroup: false,
+          ),
+          reason: key,
         );
       }
     },
@@ -729,4 +1072,46 @@ void main() {
       expect(find.byKey(const Key('pro.pay')), findsOneWidget);
     },
   );
+
+  for (final dark in [false, true]) {
+    testWidgets(
+      "the picked plan's title and note read at 4.5:1 on its accent tint "
+      '(${dark ? 'dark' : 'light'})',
+      (tester) async {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              proRepositoryProvider.overrideWithValue(
+                FakeProRepository(freeStatus),
+              ),
+              proCheckoutOpenerProvider.overrideWithValue((_) async => true),
+            ],
+            child: MaterialApp(
+              theme: dark ? fsDarkTheme() : fsLightTheme(),
+              home: const ProScreen(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final t = dark ? FsTokens.dark : FsTokens.light;
+        // FsCard(accent: true) at its strongest tint.
+        final strongest = Color.alphaBlend(
+          t.accent.withValues(alpha: 0.16),
+          t.bg,
+        );
+        // Annual is picked first, so its card is the accent one.
+        for (final text in [
+          find.text('Annual'),
+          find.textContaining('once, for 12 months'),
+        ]) {
+          final widget = tester.widget<Text>(_inside('pro.plan.annual', text));
+          expect(
+            contrast(widget.style!.color!, strongest),
+            greaterThanOrEqualTo(4.5),
+            reason: widget.data,
+          );
+        }
+      },
+    );
+  }
 }

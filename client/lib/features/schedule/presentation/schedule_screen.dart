@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart' show userMessage;
 import '../../../core/manila_day.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
@@ -152,12 +153,20 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(
-                        formatMonthTitle(month),
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: t.text,
+                      // A heading, and live: prev/next say the new month.
+                      // Its own node, so neither takes in the card's
+                      // weekday letters and legend.
+                      child: Semantics(
+                        container: true,
+                        header: true,
+                        liveRegion: true,
+                        child: Text(
+                          formatMonthTitle(month),
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: t.text,
+                          ),
                         ),
                       ),
                     ),
@@ -175,7 +184,30 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                // While a month loads its days have no dots and ignore a
+                // tap; this says it is on its way. In the gap that was
+                // already here, so nothing moves when it goes.
+                SizedBox(
+                  height: 8,
+                  child: grid.isLoading
+                      ? Semantics(
+                          // Its own node: the card would fold it in with the
+                          // weekday letters and the legend.
+                          container: true,
+                          child: Align(
+                            alignment: Alignment.topCenter,
+                            child: LinearProgressIndicator(
+                              key: const Key('schedule.grid.loading'),
+                              minHeight: 3,
+                              borderRadius: BorderRadius.circular(
+                                FsRadius.pill,
+                              ),
+                              semanticsLabel: 'Loading month',
+                            ),
+                          ),
+                        )
+                      : null,
+                ),
                 MonthGrid(
                   month: month,
                   dates: dates,
@@ -187,8 +219,9 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                   onTapDay: loaded == null ? null : _tapDay,
                 ),
                 if (grid.hasError)
-                  _SectionError(
-                    message: "Couldn't load this month",
+                  FsRetry(
+                    message:
+                        "Couldn't load this month. ${userMessage(grid.error!)}",
                     buttonKey: const Key('schedule.grid.retry'),
                     onRetry: () => ref.invalidate(calendarProvider(gridSpan)),
                   ),
@@ -234,8 +267,8 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
         height: 120,
         child: Center(child: CircularProgressIndicator()),
       ),
-      error: (error, _) => _SectionError(
-        message: "Couldn't load what's coming up",
+      error: (error, _) => FsRetry(
+        message: "Couldn't load what's coming up. ${userMessage(error)}",
         buttonKey: const Key('schedule.list.retry'),
         onRetry: () => ref.invalidate(calendarProvider(span)),
       ),
@@ -471,40 +504,6 @@ class _Empty extends StatelessWidget {
         text,
         style: TextStyle(fontSize: 13, color: context.fs.text2),
       ),
-    ),
-  );
-}
-
-class _SectionError extends StatelessWidget {
-  const _SectionError({
-    required this.message,
-    required this.buttonKey,
-    required this.onRetry,
-  });
-
-  final String message;
-  final Key buttonKey;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 12),
-    child: Column(
-      children: [
-        Text(
-          message,
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 13, color: context.fs.text2),
-        ),
-        const SizedBox(height: 8),
-        FsButton(
-          key: buttonKey,
-          label: 'Retry',
-          small: true,
-          kind: FsButtonKind.secondary,
-          onPressed: onRetry,
-        ),
-      ],
     ),
   );
 }

@@ -43,12 +43,22 @@ class ProfileNudge extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Finish your profile', style: theme.textTheme.titleMedium),
+                // Folds into the card's one button node, which a screen
+                // reader then also offers as a heading.
+                Semantics(
+                  header: true,
+                  child: Text(
+                    'Finish your profile',
+                    style: theme.textTheme.titleMedium,
+                  ),
+                ),
                 const SizedBox(height: 2),
+                // text2, not text3: on the accent card's tint text3 reads
+                // under 4.5:1.
                 Text(
                   'Using safe defaults — add your goals and equipment for a '
                   'better plan.',
-                  style: TextStyle(fontSize: 11, color: t.text3),
+                  style: TextStyle(fontSize: 11, color: t.text2),
                 ),
               ],
             ),

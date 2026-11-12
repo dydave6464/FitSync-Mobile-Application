@@ -306,6 +306,46 @@ test('exercise endpoints', async (t) => {
     assert.ok(res.body.data.cues.length >= 1);
   });
 
+  // The detail screen opened from the Plan tab has no list row to lean on, so
+  // the detail itself must say whether the exercise loads a reported injury.
+  await t.test('the detail view tells the caller it loads their injury', async () => {
+    const [inj] = await pool.query(
+      "INSERT INTO injuries (name, is_lateral, region_group) VALUES (CONCAT('Region ', UUID()), 0, 'back')",
+    );
+    const [live] = await pool.query(
+      "SELECT exercise_id FROM exercises WHERE status = 'live' ORDER BY exercise_id LIMIT 2",
+    );
+    await pool.query(
+      'INSERT INTO exercise_contraindications (exercise_id, injury_id, pattern) VALUES (?, ?, ?)',
+      [live[0].exercise_id, inj.insertId, 'test_pattern'],
+    );
+    await pool.query(
+      'INSERT INTO user_injuries (user_id, injury_id) VALUES (?, ?)',
+      [u.insertId, inj.insertId],
+    );
+
+    const blocked = await request(app).get(`/api/v1/exercises/${live[0].exercise_id}`)
+      .set('Authorization', auth).expect(200);
+    const clear = await request(app).get(`/api/v1/exercises/${live[1].exercise_id}`)
+      .set('Authorization', auth).expect(200);
+
+    assert.strictEqual(blocked.body.data.contraindicated, true,
+      'a boolean the client can read, not MySQL\'s 1');
+    assert.strictEqual(clear.body.data.contraindicated, false);
+    await pool.query('DELETE FROM user_injuries WHERE user_id = ?', [u.insertId]);
+  });
+
+  await t.test('the detail view says false, not nothing, without injuries', async () => {
+    const [live] = await pool.query(
+      "SELECT exercise_id FROM exercises WHERE status = 'live' ORDER BY exercise_id LIMIT 1",
+    );
+    const res = await request(app).get(`/api/v1/exercises/${live[0].exercise_id}`)
+      .set('Authorization', auth).expect(200);
+
+    assert.strictEqual(res.body.data.contraindicated, false,
+      'the flag must be a real boolean, not absent or 0');
+  });
+
   await t.test('an unknown id is a 404 in the error envelope', async () => {
     const res = await request(app).get('/api/v1/exercises/999999').set('Authorization', auth).expect(404);
     assert.equal(res.body.error.code, 'EXERCISE_NOT_FOUND');

@@ -17,23 +17,27 @@ import '../error_snack_bar.dart';
 import '../log_food_screen.dart' show pickFood;
 import '../providers.dart';
 import '../widgets/fatsecret_attribution.dart';
+import '../widgets/meal_chips.dart';
 import 'photo_cards.dart';
 import 'providers.dart';
 
-/// What went wrong with a photo; each has its own next step.
-enum PhotoProblem { noFood, unavailable, limit, unreadable }
+/// What went wrong with a photo; each has its own next step. retryLimit:
+/// too many failed tries today, so Try again would only be refused.
+enum PhotoProblem { noFood, unavailable, limit, retryLimit, unreadable }
 
 PhotoProblem problemOf(Object error) => switch (error) {
   ApiException(code: 'PHOTO_LIMIT_REACHED') => PhotoProblem.limit,
+  ApiException(code: 'PHOTO_RETRY_LIMIT') => PhotoProblem.retryLimit,
   ApiException(code: 'INVALID_IMAGE' || 'PAYLOAD_TOO_LARGE') => PhotoProblem.unreadable,
   UnsupportedPhoto() => PhotoProblem.unreadable,
   _ => PhotoProblem.unavailable,
 };
 
 const photoProblemText = {
-  PhotoProblem.noFood: "Couldn't spot any food in this photo.",
+  PhotoProblem.noFood: "Couldn't spot any food in this photo. It doesn't count toward today's limit.",
   PhotoProblem.unavailable: "Couldn't look at your photo right now.",
   PhotoProblem.limit: "You've used today's meal photos. Try again tomorrow.",
+  PhotoProblem.retryLimit: "Snap a meal can't read photos right now. Try again tomorrow, or add your food with search.",
   PhotoProblem.unreadable: "Couldn't read this photo. Try another one.",
 };
 
@@ -43,31 +47,59 @@ String logButtonLabel(int n) => switch (n) {
   _ => 'Log $n items',
 };
 
+/// How many meal photos are left today, once few are (at most 5), so the
+/// daily limit is no surprise; null while there are plenty.
+String? photosLeftText(int n) => switch (n) {
+  > 5 => null,
+  <= 0 => 'No meal photos left today',
+  1 => '1 photo left today',
+  _ => '$n photos left today',
+};
+
 /// Snap a meal once the photo is taken: analysing, then the confirm list --
 /// or what went wrong, with a way on. Pops true once the meal is logged.
 class MealPhotoScreen extends ConsumerStatefulWidget {
   const MealPhotoScreen({
     super.key,
-    required this.photo,
-    required this.source,
+    required PickedPhoto this.photo,
+    required PhotoSource this.source,
     required this.mealType,
     this.date,
     required this.onSearchInstead,
-  });
+  }) : recognition = null;
 
-  final PickedPhoto photo;
+  /// Today's unlogged photo, reopened from the capture sheet: straight to
+  /// its confirm list, with no photo sent (the photo itself is not kept).
+  const MealPhotoScreen.resume({
+    super.key,
+    required PhotoRecognition this.recognition,
+    required this.mealType,
+    this.date,
+    required this.onSearchInstead,
+  }) : photo = null,
+       source = null;
 
-  /// Where the photo came from, so Retake goes back there.
-  final PhotoSource source;
+  /// Null for a reopened photo.
+  final PickedPhoto? photo;
 
-  /// The meal it opens on: Log food's meal, or the time of day's.
-  final String mealType;
+  /// Where the photo came from, so Retake goes back there. Null for a
+  /// reopened photo, which never fails and so never offers Retake.
+  final PhotoSource? source;
+
+  /// The answer a reopened photo already has.
+  final PhotoRecognition? recognition;
+
+  /// The meal it opens on: Log food's meal, or the time of day's. Null on a
+  /// past day from the Nutrition tab, where the clock says nothing: the
+  /// user picks one before Log.
+  final String? mealType;
 
   /// The day it logs to; null is today in Manila.
   final String? date;
 
-  /// "Search instead", with this screen's context and the meal chosen here.
-  final void Function(BuildContext context, String mealType) onSearchInstead;
+  /// "Search instead", with this screen's context and the meal chosen here,
+  /// if any.
+  final void Function(BuildContext context, String? mealType) onSearchInstead;
 
   @override
   ConsumerState<MealPhotoScreen> createState() => _MealPhotoScreenState();
@@ -76,12 +108,15 @@ class MealPhotoScreen extends ConsumerStatefulWidget {
 enum _Phase { analysing, failed, confirm }
 
 class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
-  late PickedPhoto _photo = widget.photo;
-  late String _meal = widget.mealType;
+  late PickedPhoto? _photo = widget.photo;
+  late String? _meal = widget.mealType;
   _Phase _phase = _Phase.analysing;
   PhotoProblem? _problem;
   PhotoRecognition? _recognition;
   List<DraftCard> _cards = [];
+
+  /// The next card's [DraftCard.id].
+  int _nextCardId = 0;
   bool _logging = false;
 
   /// Which request is current: a Retake or Try again makes an earlier
@@ -92,6 +127,12 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
   /// at, so the server stops and does not count it.
   Completer<void>? _cancel;
 
+  /// The answer can take up to 45 s: after [_slowAfter] the wait says so,
+  /// once, so it does not look stuck.
+  static const _slowAfter = Duration(seconds: 8);
+  Timer? _slowTimer;
+  bool _slow = false;
+
   ScaffoldMessengerState? _messenger;
   int _undoToken = 0;
   bool _undoShowing = false;
@@ -99,7 +140,24 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
   @override
   void initState() {
     super.initState();
-    _recognize();
+    final reopened = widget.recognition;
+    if (reopened == null) {
+      _recognize();
+    } else {
+      _recognition = reopened;
+      _cards = _cardsFrom(reopened);
+      _phase = _Phase.confirm;
+    }
+  }
+
+  /// One card per item the photo found, matched first, as the server
+  /// listed them.
+  List<DraftCard> _cardsFrom(PhotoRecognition r) {
+    _nextCardId = 0;
+    return [
+      for (final s in r.items) DraftCard.suggested(s, id: _nextCardId++),
+      for (final u in r.unlisted) DraftCard.unlisted(u, id: _nextCardId++),
+    ];
   }
 
   @override
@@ -110,6 +168,7 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
 
   @override
   void dispose() {
+    _slowTimer?.cancel();
     // A "Removed … · Undo" left up would act on a screen that is gone.
     if (_undoShowing) _messenger?.hideCurrentSnackBar();
     // Has no effect once the answer has arrived.
@@ -124,21 +183,29 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
     final previous = _cancel;
     if (previous != null && !previous.isCompleted) previous.complete();
     final cancel = _cancel = Completer<void>();
+    _slow = false;
+    _slowTimer?.cancel();
+    _slowTimer = Timer(_slowAfter, () {
+      if (mounted && attempt == _attempt) setState(() => _slow = true);
+    });
     try {
-      final r = await ref.read(mealPhotoRepositoryProvider).recognize(_photo.bytes, _photo.mimeType, cancel: cancel.future);
+      final photo = _photo!;
+      final r = await ref.read(mealPhotoRepositoryProvider).recognize(photo.bytes, photo.mimeType, cancel: cancel.future);
       if (!mounted || attempt != _attempt) return;
+      _slowTimer?.cancel();
       setState(() {
         _recognition = r;
         if (r.isEmpty) {
           _phase = _Phase.failed;
           _problem = PhotoProblem.noFood;
         } else {
-          _cards = [for (final s in r.items) DraftCard.suggested(s), for (final u in r.unlisted) DraftCard.unlisted(u)];
+          _cards = _cardsFrom(r);
           _phase = _Phase.confirm;
         }
       });
     } catch (e) {
       if (!mounted || attempt != _attempt) return;
+      _slowTimer?.cancel();
       if (e is ApiException && e.code == 'PRO_REQUIRED') {
         final navigator = Navigator.of(context);
         navigator.pop(false);
@@ -163,7 +230,7 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
   Future<void> _retake() async {
     final PickedPhoto? next;
     try {
-      next = await ref.read(mealPhotoPickerProvider).pick(widget.source);
+      next = await ref.read(mealPhotoPickerProvider).pick(widget.source!);
     } on UnsupportedPhoto {
       if (mounted) setState(() => _problem = PhotoProblem.unreadable);
       return;
@@ -210,27 +277,28 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
 
   /// A card's Search: Log food's search, started from the card's name.
   Future<void> _searchFor(DraftCard card) async {
-    final picked = await pickFood(context, mealType: _meal, query: searchNameOf(card.label));
+    final picked = await pickFood(context, query: searchNameOf(card.label));
     if (picked == null || !mounted) return;
     setState(() => card.replaceWith(picked));
   }
 
   Future<void> _add() async {
-    final picked = await pickFood(context, mealType: _meal);
+    final picked = await pickFood(context);
     if (picked == null || !mounted) return;
-    setState(() => _cards.add(DraftCard.added(picked)));
+    setState(() => _cards.add(DraftCard.added(picked, id: _nextCardId++)));
   }
 
   Future<void> _log() async {
     final items = logItemsOf(_cards);
-    if (items.isEmpty || _logging) return;
+    final meal = _meal;
+    if (items.isEmpty || meal == null || _logging) return;
     setState(() => _logging = true);
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     // Kept across the await: the screen may be gone when the answer comes.
     final container = ProviderScope.containerOf(context, listen: false);
-    final date = widget.date ?? manilaDayOf(ref.read(nutritionClockProvider)());
-    final meal = _meal;
+    final today = manilaDayOf(ref.read(nutritionClockProvider)());
+    final date = widget.date ?? today;
     final int n;
     try {
       n = await ref.read(mealPhotoRepositoryProvider).log(
@@ -240,67 +308,88 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
       if (e is ApiException && e.code == 'ALREADY_LOGGED') {
         // An earlier Log reached the server but its answer was lost (a
         // timeout, a dropped connection): the meal is logged, as sent then.
-        _logged(container, messenger, navigator, items.length, meal);
+        _logged(container, messenger, navigator, items.length, meal, onDay(date, today));
         return;
       }
       // The log is all or nothing, but the server may have saved it before
       // the answer was lost: Nutrition reloads its day to show the truth.
       container.invalidate(nutritionDayProvider);
+      container.invalidate(mealSuggestionsProvider);
       if (!mounted) return;
       setState(() => _logging = false);
       // The list stays as it was, so Log can be tried again.
       showErrorSnackBar(messenger, describeError(e));
       return;
     }
-    _logged(container, messenger, navigator, n, meal);
+    _logged(container, messenger, navigator, n, meal, onDay(date, today));
   }
 
   /// The meal is logged: Nutrition and Recent reload, the screen closes,
-  /// and a snack bar says how many items went to which meal.
-  void _logged(ProviderContainer container, ScaffoldMessengerState messenger, NavigatorState navigator, int n, String meal) {
+  /// and a snack bar says how many items went to which meal -- and [day]
+  /// (see `onDay`), when it was not today.
+  void _logged(
+    ProviderContainer container,
+    ScaffoldMessengerState messenger,
+    NavigatorState navigator,
+    int n,
+    String meal,
+    String day,
+  ) {
     container.invalidate(nutritionDayProvider);
     container.invalidate(recentFoodsProvider);
+    container.invalidate(mealSuggestionsProvider);
     _undoShowing = false;
     if (mounted) navigator.pop(true);
     messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(SnackBar(content: Text('Logged $n ${n == 1 ? 'item' : 'items'} to ${mealLabel(meal).toLowerCase()}')));
+    messenger.showSnackBar(SnackBar(content: Text('Logged $n ${n == 1 ? 'item' : 'items'} to ${mealLabel(meal).toLowerCase()}$day')));
   }
 
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
     final toLog = logItemsOf(_cards).length;
-    return PopScope(
-      // Leaving mid-log would hide whether the meal was saved.
-      canPop: !_logging,
-      child: Scaffold(
-        backgroundColor: t.bg,
-        bottomNavigationBar: _phase != _Phase.confirm
-            ? null
-            : SafeArea(
-                minimum: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-                child: FsButton(
-                  key: const Key('snap.log'),
-                  label: logButtonLabel(toLog),
-                  busy: _logging,
-                  onPressed: toLog == 0 ? null : _log,
+    // No meal yet (a past day): the button says what is missing.
+    final noMeal = _meal == null;
+    // Back from the confirm list asks first: the server has already
+    // counted this photo. Its list can be reopened from Snap a meal until
+    // the day ends, but the changes made here are not kept.
+    return FsDiscardGuard(
+      dirty: _phase == _Phase.confirm && !_logging,
+      // Nothing was typed here, so "your changes" would not fit.
+      title: 'Leave without logging?',
+      message: "It still counts toward today's limit. You can finish it later today from Snap a meal.",
+      child: PopScope(
+        // Leaving mid-log would hide whether the meal was saved.
+        canPop: !_logging,
+        child: Scaffold(
+          backgroundColor: t.bg,
+          bottomNavigationBar: _phase != _Phase.confirm
+              ? null
+              : SafeArea(
+                  minimum: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                  child: FsButton(
+                    key: const Key('snap.log'),
+                    label: noMeal ? 'Pick a meal' : logButtonLabel(toLog),
+                    busy: _logging,
+                    onPressed: toLog == 0 || noMeal ? null : _log,
+                  ),
                 ),
+          body: ListView(
+            padding: EdgeInsets.zero,
+            children: [
+              _PhotoHeader(photo: _photo, onBack: () => Navigator.of(context).maybePop()),
+              // Mid-log the list is frozen: what is sent is what the user sees,
+              // and no search can open over the screen that is about to close.
+              AbsorbPointer(
+                absorbing: _logging,
+                child: switch (_phase) {
+                  _Phase.analysing => _analysing(context),
+                  _Phase.failed => _failed(context),
+                  _Phase.confirm => _confirm(context),
+                },
               ),
-        body: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            _PhotoHeader(photo: _photo, onBack: () => Navigator.of(context).maybePop()),
-            // Mid-log the list is frozen: what is sent is what the user sees,
-            // and no search can open over the screen that is about to close.
-            AbsorbPointer(
-              absorbing: _logging,
-              child: switch (_phase) {
-                _Phase.analysing => _analysing(context),
-                _Phase.failed => _failed(context),
-                _Phase.confirm => _confirm(context),
-              },
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -315,7 +404,11 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
         Semantics(
           key: const Key('snap.analysing'),
           liveRegion: true,
-          child: Text('Looking at your meal…', textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium),
+          child: Text(
+            _slow ? 'Still looking — this can take up to a minute.' : 'Looking at your meal…',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
         ),
         const SizedBox(height: 8),
         TextButton(
@@ -336,7 +429,7 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
         onPressed: _retake,
       ),
       PhotoProblem.unavailable => FsButton(key: const Key('snap.retry'), label: 'Try again', onPressed: _tryAgain),
-      PhotoProblem.limit => null,
+      PhotoProblem.limit || PhotoProblem.retryLimit => null,
     };
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
@@ -361,9 +454,16 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
     );
   }
 
+  String _mealHeading() {
+    final today = manilaDayOf(ref.read(nutritionClockProvider)());
+    final date = widget.date ?? today;
+    return date == today ? 'Meal' : 'Meal · ${dayLabel(date, today)}';
+  }
+
   Widget _confirm(BuildContext context) {
     final t = context.fs;
-    final note = TextStyle(color: t.text2, fontSize: 12, height: 1.5);
+    final small = TextStyle(color: t.text2, fontSize: 12);
+    final note = small.copyWith(height: 1.5);
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
       child: Column(
@@ -376,19 +476,15 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
               const Expanded(child: FsEyebrow('AI suggests · check before logging', maxLines: 3)),
             ],
           ),
+          if (photosLeftText(_recognition!.remainingToday) case final left?) ...[
+            const SizedBox(height: 4),
+            Text(left, key: const Key('snap.left'), style: small),
+          ],
           const SizedBox(height: 16),
-          Text('Meal', style: TextStyle(color: t.text2, fontSize: 12)),
+          // The day too, when it is not today (NU-7).
+          FsEyebrow(_mealHeading(), maxLines: 2),
           const SizedBox(height: 6),
-          FsTapRoom(
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final m in mealTypes)
-                  FsChip(key: Key('snap.meal.$m'), label: mealLabel(m), selected: _meal == m, onTap: () => setState(() => _meal = m)),
-              ],
-            ),
-          ),
+          MealChips(keyPrefix: 'snap.meal', selected: _meal, onSelected: (m) => setState(() => _meal = m)),
           const SizedBox(height: 16),
           if (_cards.isEmpty)
             Padding(
@@ -396,15 +492,14 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
               child: Text('Nothing left to log. Add an item to log this meal.', style: TextStyle(color: t.text2)),
             ),
           for (final (i, card) in _cards.indexed) ...[
-            // Keyed by the card, not its place: after ✕ or Undo the other
-            // cards move rather than take on a neighbour's food, so no live
-            // portion line changes its text and gets read out again.
+            // Keyed by the card, not its place, and so are its parts (by
+            // DraftCard.id): after ✕ or Undo the other cards move whole, so
+            // no portion line is made anew and read out again.
             KeyedSubtree(
               key: ObjectKey(card),
               child: card.isUnlisted
-                  ? PhotoUnlistedCard(index: i, card: card, onSearch: () => _searchFor(card), onRemove: () => _remove(i))
+                  ? PhotoUnlistedCard(card: card, onSearch: () => _searchFor(card), onRemove: () => _remove(i))
                   : PhotoItemCard(
-                      index: i,
                       card: card,
                       onSwap: (f) => setState(() => card.replaceWith(f)),
                       onSearch: () => _searchFor(card),
@@ -436,11 +531,12 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
   }
 }
 
-/// The photo across the top, with ‹ back and the Pro tag over it.
+/// The photo across the top, with ‹ back and the Pro tag over it. A
+/// reopened photo has none: a plain block the same height says so.
 class _PhotoHeader extends StatelessWidget {
   const _PhotoHeader({required this.photo, required this.onBack});
 
-  final PickedPhoto photo;
+  final PickedPhoto? photo;
   final VoidCallback onBack;
 
   @override
@@ -448,23 +544,27 @@ class _PhotoHeader extends StatelessWidget {
     final t = context.fs;
     final top = MediaQuery.paddingOf(context).top;
     final height = 200 + top;
+    final photo = this.photo;
     return Stack(
       children: [
-        Semantics(
-          image: true,
-          label: 'Your meal photo',
-          child: Image.memory(
-            photo.bytes,
-            key: const Key('snap.photo'),
-            height: height,
-            width: double.infinity,
-            fit: BoxFit.cover,
-            gaplessPlayback: true,
-            excludeFromSemantics: true,
-            // A photo that won't decode still leaves the screen usable.
-            errorBuilder: (_, _, _) => Container(height: height, color: t.surface2),
+        if (photo == null)
+          _NoPhoto(height: height, top: top)
+        else
+          Semantics(
+            image: true,
+            label: 'Your meal photo',
+            child: Image.memory(
+              photo.bytes,
+              key: const Key('snap.photo'),
+              height: height,
+              width: double.infinity,
+              fit: BoxFit.cover,
+              gaplessPlayback: true,
+              excludeFromSemantics: true,
+              // A photo that won't decode still leaves the screen usable.
+              errorBuilder: (_, _, _) => Container(height: height, color: t.surface2),
+            ),
           ),
-        ),
         Positioned(
           top: top + 8,
           left: 12,
@@ -482,6 +582,51 @@ class _PhotoHeader extends StatelessWidget {
         ),
         Positioned(top: top + 18, right: 16, child: const FsTag('Pro')),
       ],
+    );
+  }
+}
+
+/// A reopened photo's header: the photo is never stored, so a plain block
+/// the photo's height says so.
+class _NoPhoto extends StatelessWidget {
+  const _NoPhoto({required this.height, required this.top});
+
+  final double height;
+
+  /// The status bar's height, already part of [height].
+  final double top;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+    return Container(
+      key: const Key('snap.noPhoto'),
+      height: height,
+      width: double.infinity,
+      color: t.surface2,
+      // Starts below the back button's row, so a long caption at large text
+      // never runs under it.
+      padding: EdgeInsets.fromLTRB(24, top + 56, 24, 12),
+      alignment: Alignment.center,
+      child: Semantics(
+        container: true,
+        label: "Your photo isn't kept",
+        excludeSemantics: true,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.no_photography_outlined, size: 28, color: t.text3),
+            const SizedBox(height: 8),
+            Text(
+              "Your photo isn't kept",
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: t.text3, fontSize: 12),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

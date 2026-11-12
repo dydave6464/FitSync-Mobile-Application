@@ -53,6 +53,7 @@ dependencies:
   font_awesome_flutter: ^11.0.0
   # Snap a meal: the camera or the photo library, resized on the phone before upload.
   image_picker: ^1.2.4
+  share_plus: ^13.3.1
 
 dev_dependencies:
   flutter_test:
@@ -68,6 +69,7 @@ dev_dependencies:
   # picker's request (size, quality) and its temp-file cleanup can be checked.
   image_picker_platform_interface: ^2.11.2
   plugin_platform_interface: ^2.1.8
+  flutter_launcher_icons: ^0.14.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -122,3 +124,16 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# Launcher icons (a dev tool): `dart run flutter_launcher_icons` regenerates the
+# iPhone and Android icons from the two sources in assets/icon/. Both were
+# rendered once from FsBrandMark's FitBladesPainter (logo concept 12, "Motion
+# blades"): green blades on the dark tile, the same mark as the sign-in screen.
+# Re-render them if the blades change (see the FsBrandMark doc comment).
+flutter_launcher_icons:
+  image_path: "assets/icon/app_icon.png"
+  ios: true
+  remove_alpha_ios: true
+  android: true
+  adaptive_icon_background: "#161D25"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"

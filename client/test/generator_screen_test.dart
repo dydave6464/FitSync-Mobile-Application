@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:ui' show CheckedState, SemanticsAction, Tristate;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show SemanticsData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -16,7 +18,11 @@ import 'package:fitsync/features/plans/presentation/widgets/training_days_row.da
 import 'package:fitsync/features/profile/data/profile_repository.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
+import 'package:fitsync/features/sessions/domain/active_session.dart';
+import 'package:fitsync/features/sessions/presentation/providers.dart';
+import 'package:fitsync/features/sessions/presentation/session_logger_screen.dart';
 
+import 'helpers/a11y.dart';
 import 'helpers/dialog_buttons.dart';
 
 const _pplPlan = WorkoutPlan(
@@ -138,7 +144,7 @@ class _FakeProfileNotifier extends ProfileNotifier {
       trainingDays: trainingDays,
     ),
     _ProfileLoad.pending => Completer<Profile>().future,
-    // A plain Exception, not ApiException(NETWORK_ERROR): that is the one
+    // A plain Exception, not ApiException(NETWORK_ERROR): that is a
     // code apiRetryPolicy retries on its own, which would leave the
     // provider looping rather than settling into the error state.
     _ProfileLoad.failed => throw Exception('profile down'),
@@ -195,6 +201,32 @@ class FakeProfileRepository implements ProfileRepository {
   );
 }
 
+/// The workout in progress, or none: the generator reads it to say up front
+/// that a plan cannot be replaced mid-workout.
+class _SessionController extends ActiveSessionController {
+  _SessionController(this.session);
+
+  final ActiveSession? session;
+
+  @override
+  Future<ActiveSession?> build() async {
+    _sessionLoads += 1;
+    return _sessionLoads > 1 ? (_sessionOnReload ?? session) : session;
+  }
+}
+
+/// How many times the running test's activeSessionProvider has loaded, and
+/// what it finds from the second load on (null: the same as the first).
+/// Top-level, as a reload may build a fresh controller.
+int _sessionLoads = 0;
+ActiveSession? _sessionOnReload;
+
+const _inProgress = ActiveSession(
+  sessionId: 31,
+  status: 'in_progress',
+  sessionDate: '2026-11-06',
+);
+
 /// The profile notifier fake the running test's `_pump` installed. Set fresh
 /// on every call so a test can assert what it recorded -- `_profile.
 /// lastTrainingDays` -- without threading the fake through by hand.
@@ -216,7 +248,11 @@ Future<void> _pump(
   List<int> trainingDays = const [],
   bool failTrainingDays = false,
   _ProfileLoad profileLoad = _ProfileLoad.loaded,
+  ActiveSession? session,
+  bool dark = false,
 }) async {
+  _sessionLoads = 0;
+  _sessionOnReload = null;
   _profile = _FakeProfileNotifier(
     injuries,
     goal: goal,
@@ -237,12 +273,16 @@ Future<void> _pump(
         if (profileRepo != null)
           profileRepositoryProvider.overrideWithValue(profileRepo),
         profileProvider.overrideWith(() => _profile),
+        activeSessionProvider.overrideWith(() => _SessionController(session)),
         injuryOptionsProvider.overrideWith((ref) async {
           if (injuryOptionsFail) throw Exception('catalogue down');
           return injuryOptions;
         }),
       ],
-      child: MaterialApp(theme: fsLightTheme(), home: const GeneratorScreen()),
+      child: MaterialApp(
+        theme: dark ? fsDarkTheme() : fsLightTheme(),
+        home: const GeneratorScreen(),
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -270,6 +310,211 @@ int _ticked(WidgetTester tester) => tester
 const _generatedMessage = 'New plan generated';
 
 void main() {
+  group('a workout in progress (PT-20)', () {
+    testWidgets('is said before Generate, which waits for it', (tester) async {
+      // The server refuses a new plan mid-workout. Saying so only after the
+      // building screen had come up, and gone again, was a wait for nothing.
+      await _pump(tester, plan: _pplPlan, session: _inProgress);
+
+      expect(
+        find.text(
+          'You have a workout in progress. Finish or discard it first.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Generating replaces your current plan.'), findsNothing);
+      final generate = find.byKey(const Key('gen.generate'));
+      await tester.ensureVisible(generate);
+      expect(tester.widget<FsButton>(generate).onPressed, isNull);
+
+      await tester.tap(generate, warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(_plans.regenerateCalls, 0);
+      expect(find.byType(GeneratingView), findsNothing);
+    });
+
+    testWidgets('offers to resume it', (tester) async {
+      await _pump(tester, plan: _pplPlan, session: _inProgress);
+
+      final resume = find.byKey(const Key('gen.resume'));
+      await tester.scrollUntilVisible(
+        resume,
+        200,
+        scrollable: find
+            .descendant(
+              of: find.byType(ListView),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.tap(resume);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      final logger = tester.widget<SessionLoggerScreen>(
+        find.byType(SessionLoggerScreen),
+      );
+      expect(logger.resume, isTrue);
+    });
+
+    // Refused at Generate anyway: the provider was stale, or another phone
+    // started a workout. The snack offers the way in, and the screen reloads
+    // the session so its own note and Resume button appear in place.
+    testWidgets('a refusal at Generate offers Resume and reloads the session', (
+      tester,
+    ) async {
+      final repo = FakePlanRepository(
+        error: const ApiException(
+          'SESSION_IN_PROGRESS',
+          'You have a workout in progress. Finish or discard it before '
+              'changing your plan.',
+          details: [
+            {'sessionId': 31, 'startedAt': '2026-11-06T01:02:03.000Z'},
+          ],
+        ),
+      );
+      await _pump(tester, plan: _pplPlan, repo: repo);
+      expect(_sessionLoads, 1);
+      _sessionOnReload = _inProgress;
+
+      final generate = find.byKey(const Key('gen.generate'));
+      await tester.ensureVisible(generate);
+      await tester.pumpAndSettle();
+      await tester.tap(generate);
+      await tester.pumpAndSettle();
+
+      expect(_sessionLoads, greaterThan(1));
+      expect(find.byType(GeneratingView), findsNothing);
+      final snack = find.byType(SnackBar);
+      expect(
+        find.descendant(
+          of: snack,
+          matching: find.text(
+            'You have a workout in progress. Finish or discard it before '
+            'changing your plan.',
+          ),
+        ),
+        findsOneWidget,
+      );
+      // The reloaded session brings the screen's own note and button back.
+      expect(
+        find.text(
+          'You have a workout in progress. Finish or discard it first.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('gen.resume')), findsOneWidget);
+
+      await tester.tap(
+        find.descendant(of: snack, matching: find.text('Resume')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      final logger = tester.widget<SessionLoggerScreen>(
+        find.byType(SessionLoggerScreen),
+      );
+      expect(logger.resume, isTrue);
+    });
+
+    // P-18: a disabled button that only looks faded leaves a screen reader
+    // user hearing "Generate plan, dimmed" with no why. The note above it is
+    // the why, so the button carries it.
+    testWidgets('the disabled Generate carries its reason as a hint', (
+      tester,
+    ) async {
+      final h = tester.ensureSemantics();
+      await _pump(tester, plan: _pplPlan, session: _inProgress);
+
+      final generate = find.byKey(const Key('gen.generate'));
+      await tester.ensureVisible(generate);
+      await tester.pumpAndSettle();
+      expect(
+        tester.getSemantics(generate),
+        matchesSemantics(
+          label: 'Generate plan',
+          hint: 'You have a workout in progress. Finish or discard it first.',
+          isButton: true,
+          hasEnabledState: true,
+          isEnabled: false,
+        ),
+      );
+      h.dispose();
+    });
+
+    testWidgets('an enabled Generate carries no hint', (tester) async {
+      final h = tester.ensureSemantics();
+      await _pump(tester, plan: _pplPlan);
+
+      final generate = find.byKey(const Key('gen.generate'));
+      await tester.ensureVisible(generate);
+      await tester.pumpAndSettle();
+      final data = tester.getSemantics(generate).getSemanticsData();
+      expect(data.label, 'Generate plan');
+      expect(data.hint, isEmpty);
+      expect(data.hasAction(SemanticsAction.tap), isTrue);
+      h.dispose();
+    });
+
+    // P-18: the note, Generate and Resume at 2x text on small phones, in
+    // both themes: nothing overflows, the note wraps whole, and it stays
+    // readable text.
+    for (final width in [320.0, 360.0]) {
+      for (final dark in [false, true]) {
+        testWidgets('fits at 2x text, $width dp, ${dark ? 'dark' : 'light'}', (
+          tester,
+        ) async {
+          tester.view.physicalSize = Size(width, 720);
+          tester.view.devicePixelRatio = 1;
+          tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+          addTearDown(tester.view.reset);
+          addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+          await _pump(tester, plan: _pplPlan, session: _inProgress, dark: dark);
+
+          const note =
+              'You have a workout in progress. Finish or discard it first.';
+          final noteFinder = find.text(note);
+          await tester.scrollUntilVisible(
+            find.byKey(const Key('gen.resume')),
+            200,
+            scrollable: find
+                .descendant(
+                  of: find.byType(ListView),
+                  matching: find.byType(Scrollable),
+                )
+                .first,
+          );
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+
+          final noteRect = tester.getRect(noteFinder);
+          expect(noteRect.left, greaterThanOrEqualTo(0));
+          expect(noteRect.right, lessThanOrEqualTo(width));
+          final style = tester.widget<Text>(noteFinder).style!;
+          final t = dark ? FsTokens.dark : FsTokens.light;
+          expect(contrast(style.color!, t.bg), greaterThanOrEqualTo(4.5));
+          for (final key in ['gen.generate', 'gen.resume']) {
+            final r = tester.getRect(find.byKey(Key(key)));
+            expect(r.height, greaterThanOrEqualTo(48), reason: key);
+            expect(r.right, lessThanOrEqualTo(width), reason: key);
+          }
+        });
+      }
+    }
+
+    testWidgets('with none, Generate is offered as before', (tester) async {
+      await _pump(tester, plan: _pplPlan);
+
+      expect(
+        find.text('Generating replaces your current plan.'),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('gen.resume')), findsNothing);
+      final generate = find.byKey(const Key('gen.generate'));
+      expect(tester.widget<FsButton>(generate).onPressed, isNotNull);
+    });
+  });
+
   testWidgets('the four split styles are offered', (tester) async {
     await _pump(tester, plan: _pplPlan);
 
@@ -330,6 +575,25 @@ void main() {
 
   // One row of chips is only as tall as a chip, and this one sits straight
   // in the list: the room around it has to be the row's own.
+  // P-1b: one split at a time, so a screen reader hears radio buttons,
+  // checked or not checked, rather than a row of independent toggles.
+  testWidgets('the splits are announced as one single-choice group', (
+    tester,
+  ) async {
+    final h = tester.ensureSemantics();
+    await _pump(tester, plan: _pplPlan);
+
+    SemanticsData chip(String label) =>
+        tester.getSemantics(find.text(label)).getSemanticsData();
+    final on = chip('Push / Pull / Legs');
+    final off = chip('Full body');
+    expect(on.flagsCollection.isInMutuallyExclusiveGroup, isTrue);
+    expect(on.flagsCollection.isChecked, CheckedState.isTrue);
+    expect(off.flagsCollection.isInMutuallyExclusiveGroup, isTrue);
+    expect(off.flagsCollection.isChecked, CheckedState.isFalse);
+    h.dispose();
+  });
+
   testWidgets('a split chip takes a tap just above or below its pill', (
     tester,
   ) async {
@@ -356,22 +620,21 @@ void main() {
     expect(_chipOn(tester, label(bottom)), isTrue);
   });
 
-  testWidgets(
-    'a new plan does not carry the old plan\'s session length',
-    (tester) async {
-      // The generator derives the length from today's level, goal and health
-      // check. Sending the current plan's 60 would pin it there, so a user who
-      // moved up from New to training, or added a condition, kept the old one.
-      final repo = FakePlanRepository();
-      await _pump(tester, plan: _pplPlan, repo: repo);
+  testWidgets('a new plan does not carry the old plan\'s session length', (
+    tester,
+  ) async {
+    // The generator derives the length from today's level, goal and health
+    // check. Sending the current plan's 60 would pin it there, so a user who
+    // moved up from New to training, or added a condition, kept the old one.
+    final repo = FakePlanRepository();
+    await _pump(tester, plan: _pplPlan, repo: repo);
 
-      await tester.tap(find.byKey(const Key('gen.generate')));
-      await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('gen.generate')));
+    await tester.pumpAndSettle();
 
-      expect(repo.regenerateCalls, 1);
-      expect(repo.sent!.containsKey('sessionLengthMin'), isFalse);
-    },
-  );
+    expect(repo.regenerateCalls, 1);
+    expect(repo.sent!.containsKey('sessionLengthMin'), isFalse);
+  });
 
   testWidgets('ticking a weekday adds just that day', (tester) async {
     // The behaviour fill-to-N could not express: days are chosen
@@ -479,10 +742,13 @@ void main() {
     await tester.pump();
 
     expect(_profile.lastTrainingDays, isNull);
+    // The kit's error line: red with its icon, and announced.
     expect(
       tester
-          .widget<Text>(find.byKey(const Key('gen.trainingDays.unavailable')))
-          .data,
+          .widget<FsErrorLine>(
+            find.byKey(const Key('gen.trainingDays.unavailable')),
+          )
+          .message,
       contains("Couldn't load"),
     );
     expect(
@@ -688,6 +954,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            // Off the network: no workout in progress, as _pump's default.
+            activeSessionProvider.overrideWith(() => _SessionController(null)),
             activePlanProvider.overrideWith(
               (ref) => Completer<WorkoutPlan?>().future,
             ),
@@ -716,9 +984,11 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          // Off the network: no workout in progress, as _pump's default.
+          activeSessionProvider.overrideWith(() => _SessionController(null)),
           activePlanProvider.overrideWith((ref) async {
             calls += 1;
-            // A plain Exception, not ApiException(NETWORK_ERROR) -- the one
+            // A plain Exception, not ApiException(NETWORK_ERROR) -- a
             // code apiRetryPolicy treats as transient and would retry on its
             // own, which would hide the very state this test is checking.
             if (calls == 1) throw Exception('boom');
@@ -735,9 +1005,17 @@ void main() {
 
     expect(find.byType(FsChip), findsNothing);
     expect(find.text('Generating replaces your current plan.'), findsNothing);
-    expect(find.text('Retry'), findsOneWidget);
+    // The kit's retry, in the app's words (L-46).
+    expect(
+      find.widgetWithText(
+        FsRetry,
+        "Couldn't load your current plan. Something went wrong. "
+        'Please try again.',
+      ),
+      findsOneWidget,
+    );
 
-    await tester.tap(find.text('Retry'));
+    await tester.tap(find.text('Try again'));
     await tester.pumpAndSettle();
 
     expect(calls, 2, reason: 'retry must actually refetch');
@@ -758,10 +1036,7 @@ void main() {
     await tester.tap(find.byKey(const Key('gen.generate')));
     await tester.pumpAndSettle();
 
-    expect(repo.sent, {
-      'splitStyle': 'upper_lower',
-      'daysPerWeek': 5,
-    });
+    expect(repo.sent, {'splitStyle': 'upper_lower', 'daysPerWeek': 5});
   });
 
   testWidgets('a session in progress is refused with a reason', (tester) async {
@@ -775,7 +1050,33 @@ void main() {
     await tester.tap(find.byKey(const Key('gen.generate')));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Finish or discard'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(SnackBar),
+        matching: find.textContaining('Finish or discard'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a broken reply is reported in plain words', (tester) async {
+    final repo = FakePlanRepository(
+      error: const ApiException(
+        'INVALID_RESPONSE',
+        'Server returned a non-JSON body (HTTP 502).',
+      ),
+    );
+    await _pump(tester, plan: _pplPlan, repo: repo);
+
+    await tester.tap(find.byKey(const Key('gen.generate')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Something went wrong on our side. Please try again.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('HTTP'), findsNothing);
+    expect(find.textContaining('adb'), findsNothing);
   });
 
   testWidgets('a failed generation leaves the screen open', (tester) async {
@@ -882,6 +1183,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          // Off the network: no workout in progress, as _pump's default.
+          activeSessionProvider.overrideWith(() => _SessionController(null)),
           activePlanProvider.overrideWith((ref) async {
             calls += 1;
             return _pplPlan;
@@ -924,6 +1227,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          // Off the network: no workout in progress, as _pump's default.
+          activeSessionProvider.overrideWith(() => _SessionController(null)),
           activePlanProvider.overrideWith((ref) async => _pplPlan),
           planRepositoryProvider.overrideWithValue(repo),
           // These three tests are about generate, refresh and pop, not about
@@ -980,6 +1285,8 @@ void main() {
       var calls = 0;
       final container = ProviderContainer(
         overrides: [
+          // Off the network: no workout in progress, as _pump's default.
+          activeSessionProvider.overrideWith(() => _SessionController(null)),
           activePlanProvider.overrideWith((ref) async {
             calls += 1;
             return _pplPlan;
@@ -1318,7 +1625,10 @@ void main() {
         await apply(tester);
 
         expect(
-          find.byKey(const Key('gen.describe.catalogueError')),
+          find.descendant(
+            of: find.byKey(const Key('gen.describe.catalogueError')),
+            matching: find.byType(FsErrorLine),
+          ),
           findsOneWidget,
         );
         expect(find.byKey(const Key('gen.describe.add.3')), findsNothing);
@@ -1546,5 +1856,85 @@ void main() {
     );
 
     expect(find.text('Working around: Shoulder'), findsOneWidget);
+  });
+
+  testWidgets('weekday taps say they save as they go (PT-16)', (tester) async {
+    await _pump(tester, plan: _pplPlan, trainingDays: const [1, 3]);
+
+    final caption = find.byKey(const Key('gen.trainingDays.saved'));
+    expect(caption, findsOneWidget);
+    expect(
+      tester.widget<Text>(caption).data,
+      'Saved to your schedule as you tap. Used by reminders and the '
+      'calendar.',
+    );
+    // Under the row it describes.
+    expect(
+      tester.getTopLeft(caption).dy,
+      greaterThan(tester.getBottomLeft(find.byType(TrainingDaysRow)).dy),
+    );
+  });
+
+  testWidgets('the tapped weekday reads Saved once its write lands (PT-16)', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester, plan: _pplPlan, trainingDays: const [1, 3]);
+
+    await tester.tap(find.byKey(const Key('weekday.5')));
+    await tester.pumpAndSettle();
+
+    String value(int weekday) => tester
+        .getSemantics(find.byKey(Key('weekday.$weekday')))
+        .getSemanticsData()
+        .value;
+    expect(value(5), 'Saved');
+    expect(value(1), '');
+
+    // The next tap moves it: only the latest write is the one just saved.
+    await tester.tap(find.byKey(const Key('weekday.1')));
+    await tester.pumpAndSettle();
+    expect(value(1), 'Saved');
+    expect(value(5), '');
+    handle.dispose();
+  });
+
+  testWidgets('a failed weekday write never reads Saved (PT-16)', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(
+      tester,
+      plan: _pplPlan,
+      trainingDays: const [1, 3],
+      failTrainingDays: true,
+    );
+
+    await tester.tap(find.byKey(const Key('weekday.5')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .getSemantics(find.byKey(const Key('weekday.5')))
+          .getSemanticsData()
+          .value,
+      '',
+    );
+    handle.dispose();
+  });
+
+  testWidgets('Apply is an action, not a chip stuck selected (PT-19)', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester, plan: _pplPlan);
+
+    final apply = find.byKey(const Key('gen.describe.apply'));
+    final chip = tester.widget<FsChip>(apply);
+    expect(chip.selected, isFalse);
+    final data = tester.getSemantics(apply).getSemanticsData();
+    expect(data.flagsCollection.isButton, isTrue);
+    expect(data.flagsCollection.isSelected, Tristate.none);
+    handle.dispose();
   });
 }

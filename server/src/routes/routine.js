@@ -3,7 +3,7 @@ const express = require('express');
 const requireAuth = require('../middleware/require-auth');
 const AppError = require('../lib/app-error');
 const {
-  readDay, listHabits, createHabit, updateHabit, deactivateHabit, setCheck,
+  readDay, listHabits, createHabit, updateHabit, deactivateHabit, reactivateHabit, setCheck,
 } = require('../db/routine');
 
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -109,6 +109,17 @@ module.exports = function buildRoutineRouter(deps) {
       const id = habitIdOr404(req.params.habitId);
       if (!(await deactivateHabit(deps.pool, req.user.userId, id))) throw notFound();
       res.json({ data: { deleted: true } });
+    } catch (err) { next(err); }
+  });
+
+  // Undo for the delete above. 200, not 201: nothing is created. Any body is
+  // ignored.
+  router.post('/habits/:habitId/restore', auth, async (req, res, next) => {
+    try {
+      const id = habitIdOr404(req.params.habitId);
+      const habit = await reactivateHabit(deps.pool, req.user.userId, id);
+      if (!habit) throw notFound();
+      res.json({ data: { habit } });
     } catch (err) { next(err); }
   });
 

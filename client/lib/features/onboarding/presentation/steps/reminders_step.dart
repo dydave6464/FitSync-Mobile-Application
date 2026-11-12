@@ -11,6 +11,9 @@ import '../../../../core/widgets/fs_kit.dart';
 /// reminder is what brings the morning check-ins in, and the injury-risk
 /// estimate is only as good as those.
 class RemindersStep extends StatelessWidget {
+  /// The step's heading, also said when onboarding moves to it.
+  static const title = 'Stay on track';
+
   const RemindersStep({
     super.key,
     required this.habits,
@@ -33,7 +36,15 @@ class RemindersStep extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text('Stay on track', style: theme.textTheme.headlineSmall),
+        // A heading, so a screen reader can jump to it and hears it as the
+        // title of the step.
+        Semantics(
+          header: true,
+          child: Text(
+            RemindersStep.title,
+            style: theme.textTheme.headlineSmall,
+          ),
+        ),
         const SizedBox(height: 8),
         Text(
           'Pick what to be reminded about. You can change these any time in '

@@ -31,6 +31,7 @@ class _FakeRepo implements RoutineRepository {
   int todayCalls = 0;
   int allCalls = 0;
   final added = <HabitDraft>[];
+  final restored = <int>[];
   final checkDates = <String?>[];
 
   @override
@@ -79,6 +80,12 @@ class _FakeRepo implements RoutineRepository {
   Future<Habit> edit(int habitId, HabitDraft draft) async => _habit;
   @override
   Future<void> remove(int habitId) async {}
+  @override
+  Future<Habit> restore(int habitId) async {
+    await _maybeFail();
+    restored.add(habitId);
+    return _habit;
+  }
 }
 
 ProviderContainer _container(RoutineRepository repo) {
@@ -127,6 +134,8 @@ class _ControlledRepo implements RoutineRepository {
       throw UnimplementedError();
   @override
   Future<void> remove(int habitId) async => throw UnimplementedError();
+  @override
+  Future<Habit> restore(int habitId) async => throw UnimplementedError();
 }
 
 void main() {
@@ -369,6 +378,39 @@ void main() {
     await notifier.remove(1);
     await c.read(allHabitsProvider.future);
     expect(repo.allCalls, 4, reason: 'after remove');
+  });
+
+  test('restore brings the habit back, reloads today and refetches the full '
+      'list', () async {
+    final repo = _FakeRepo();
+    final c = _container(repo);
+    await c.read(routineTodayProvider.future);
+    // Held open, as the All habits screen holds it; autoDispose otherwise.
+    final sub = c.listen(allHabitsProvider, (_, _) {});
+    addTearDown(sub.close);
+    await c.read(allHabitsProvider.future);
+    expect(repo.allCalls, 1);
+    final todayBefore = repo.todayCalls;
+
+    await c.read(routineTodayProvider.notifier).restore(1);
+
+    expect(repo.restored, [1]);
+    expect(repo.todayCalls, greaterThan(todayBefore));
+    await c.read(allHabitsProvider.future);
+    expect(repo.allCalls, 2);
+  });
+
+  test('a failed restore rethrows so Undo can say so', () async {
+    final repo = _FakeRepo();
+    final c = _container(repo);
+    await c.read(routineTodayProvider.future);
+    repo.failNext = true;
+
+    await expectLater(
+      c.read(routineTodayProvider.notifier).restore(1),
+      throwsA(isA<ApiException>()),
+    );
+    expect(repo.restored, isEmpty);
   });
 
   test(

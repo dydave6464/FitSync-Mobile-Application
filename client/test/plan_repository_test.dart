@@ -190,14 +190,61 @@ void main() {
   test('a swap PATCHes the row and returns the updated plan', () async {
     final seen = <http.Request>[];
     final repo = _repoCapturing({
-      'data': {'plan': _planJson},
+      'data': {
+        'plan': _planJson,
+        'previous': {'exerciseId': 41, 'name': 'barbell bench press'},
+      },
     }, seen);
 
-    final plan = await repo.swap(701, 12);
+    final result = await repo.swap(701, 12);
 
     expect(seen.single.method, 'PATCH');
     expect(seen.single.url.path, '/api/v1/plans/exercises/701');
     expect(jsonDecode(seen.single.body), {'exerciseId': 12});
+    expect(result.plan.planId, 42);
+  });
+
+  test('a swap parses the exercise it replaced (PT-26)', () async {
+    final repo = _repoReturning({
+      'data': {
+        'plan': _planJson,
+        'previous': {'exerciseId': 41, 'name': 'barbell bench press'},
+      },
+    });
+
+    final result = await repo.swap(701, 12);
+
+    expect(result.previousExerciseId, 41);
+    expect(result.previousName, 'barbell bench press');
+  });
+
+  test('a swap from a server that does not name the previous exercise still '
+      'lands, with nothing to undo to', () async {
+    final repo = _repoReturning({
+      'data': {'plan': _planJson},
+    });
+
+    final result = await repo.swap(701, 12);
+
+    expect(result.plan.planId, 42);
+    expect(result.previousExerciseId, isNull);
+    expect(result.previousName, isNull);
+  });
+
+  test('undoSwap PATCHes the row back with revert: true', () async {
+    final seen = <http.Request>[];
+    final repo = _repoCapturing({
+      'data': {
+        'plan': _planJson,
+        'previous': {'exerciseId': 12, 'name': 'push-up'},
+      },
+    }, seen);
+
+    final plan = await repo.undoSwap(701, 41);
+
+    expect(seen.single.method, 'PATCH');
+    expect(seen.single.url.path, '/api/v1/plans/exercises/701');
+    expect(jsonDecode(seen.single.body), {'exerciseId': 41, 'revert': true});
     expect(plan.planId, 42);
   });
 

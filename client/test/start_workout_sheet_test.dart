@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/exercises/presentation/exercise_list_screen.dart';
 
 import 'package:fitsync/core/api_client.dart';
@@ -36,7 +37,9 @@ import 'package:fitsync/features/sessions/presentation/widgets/outcome_sheet.dar
 import 'package:fitsync/features/sessions/presentation/workout_draft.dart';
 import 'package:fitsync/features/sessions/presentation/workout_review_screen.dart';
 
+import 'helpers/a11y.dart' show contrast;
 import 'helpers/no_recent_exercises.dart';
+import 'helpers/sheet_insets.dart';
 
 /// The real face, not the test harness's. The default test font renders
 /// FsTag('Recommended') at 136dp against Space Grotesk's ~62dp, which is
@@ -119,6 +122,7 @@ Future<ProviderContainer> _open(
   Future<PendingOutcome?> Function(int call)? lookup,
   // Resolves one lookup before the tap, as NavShell does when it mounts.
   bool prefetch = false,
+  bool dark = false,
 }) async {
   var lookups = 0;
   final container = ProviderContainer(
@@ -157,7 +161,7 @@ Future<ProviderContainer> _open(
     UncontrolledProviderScope(
       container: container,
       child: MaterialApp(
-        theme: fsLightTheme(),
+        theme: dark ? fsDarkTheme() : fsLightTheme(),
         // Above the Navigator on purpose: the sheet is a route, so a
         // MediaQuery under `home` would not reach it.
         builder: (context, child) => MediaQuery(
@@ -180,8 +184,72 @@ Future<ProviderContainer> _open(
   return container;
 }
 
+/// Runs [body] with `debugPrint` captured rather than printed: a pending-
+/// outcome lookup that fails or times out logs why it was skipped. Restored
+/// inside the test, as flutter_test requires.
+Future<List<String?>> _capturingLogs(Future<void> Function() body) async {
+  final logs = <String?>[];
+  final original = debugPrint;
+  debugPrint = (message, {wrapWidth}) => logs.add(message);
+  try {
+    await body();
+  } finally {
+    debugPrint = original;
+  }
+  return logs;
+}
+
 void main() {
   setUpAll(_loadFont);
+
+  // P-21: the × and the title sit at the one sheet inset every sheet uses.
+  testWidgets('the header sits at the shared sheet inset', (tester) async {
+    await _open(tester);
+    expectSheetHeaderAtSideInset(tester, title: 'Start a workout');
+  });
+
+  // PT-22: no guard to slip past here, so the sheet takes the theme's whole
+  // chrome -- Material's handle in the kit's 38 x 4 line2, the surface and
+  // the 22 dp corners -- rather than drawing its own on a see-through sheet.
+  testWidgets(
+    'takes the theme chrome: one handle, the surface, 22 dp corners',
+    (tester) async {
+      await _open(tester);
+
+      final sheet = tester.widget<BottomSheet>(find.byType(BottomSheet));
+      expect(sheet.showDragHandle, isTrue);
+      expect(find.byType(FsSheetHandle), findsNothing);
+      // Material draws the theme's handle as a 38 x 4 box too: one in all,
+      // so none hand-drawn beside it.
+      expect(
+        find.byWidgetPredicate(
+          (w) =>
+              w is Container &&
+              w.constraints ==
+                  const BoxConstraints.tightFor(width: 38, height: 4),
+        ),
+        findsOneWidget,
+        reason: 'no hand-drawn handle beside the theme one',
+      );
+      final material = tester.widget<Material>(
+        find
+            .descendant(
+              of: find.byType(BottomSheet),
+              matching: find.byType(Material),
+            )
+            .first,
+      );
+      expect(material.color, FsTokens.light.surface);
+      expect(
+        material.shape,
+        const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(FsRadius.card),
+          ),
+        ),
+      );
+    },
+  );
 
   /// Both rows visible and hit-testable, which is what a clipped sheet
   /// costs: `showModalBottomSheet` caps its child at 9/16 of the screen and
@@ -505,25 +573,31 @@ void main() {
     });
 
     testWidgets('a failed lookup still opens the start sheet', (tester) async {
-      await _open(
-        tester,
-        pendingError: const ApiException('NETWORK_ERROR', 'unreachable'),
-      );
+      final logs = await _capturingLogs(() async {
+        await _open(
+          tester,
+          pendingError: const ApiException('NETWORK_ERROR', 'unreachable'),
+        );
+      });
       expect(find.text(question), findsNothing);
       expect(find.text('Start a workout'), findsOneWidget);
+      expect(logs, [startsWith('Pending-outcome lookup skipped')]);
     });
 
     testWidgets('a lookup that never answers gives up after three seconds', (
       tester,
     ) async {
-      await _open(tester, pendingFuture: Completer<PendingOutcome?>().future);
-      expect(find.text('Start a workout'), findsNothing);
+      final logs = await _capturingLogs(() async {
+        await _open(tester, pendingFuture: Completer<PendingOutcome?>().future);
+        expect(find.text('Start a workout'), findsNothing);
 
-      await tester.pump(const Duration(seconds: 3));
-      await tester.pumpAndSettle();
+        await tester.pump(const Duration(seconds: 3));
+        await tester.pumpAndSettle();
+      });
 
       expect(find.text(question), findsNothing);
       expect(find.text('Start a workout'), findsOneWidget);
+      expect(logs, [startsWith('Pending-outcome lookup skipped')]);
     });
 
     testWidgets(
@@ -611,6 +685,10 @@ void main() {
 
         expect(find.text('Start a workout'), findsOneWidget);
         expect(find.text(outcomeNotSavedMessage).hitTestable(), findsOneWidget);
+        expect(
+          find.widgetWithText(FsErrorLine, outcomeNotSavedMessage),
+          findsOneWidget,
+        );
       },
     );
 
@@ -650,5 +728,53 @@ void main() {
       expect(find.text(question), findsNothing);
       expect(find.text('Start a workout'), findsOneWidget);
     });
+  });
+
+  for (final dark in [false, true]) {
+    testWidgets("the generator row's description reads at 4.5:1 "
+        '(${dark ? 'dark' : 'light'}) (PT-15)', (tester) async {
+      await _open(tester, dark: dark);
+      final t = dark ? FsTokens.dark : FsTokens.light;
+
+      final body = tester.widget<Text>(
+        find.text('Auto-build a plan from your profile, goals & recovery.'),
+      );
+      final row = Color.alphaBlend(t.accentDim, t.surface);
+      expect(contrast(body.style!.color!, row), greaterThanOrEqualTo(4.5));
+    });
+  }
+
+  testWidgets('the close button is named (PT-8)', (tester) async {
+    final handle = tester.ensureSemantics();
+    await _open(tester);
+
+    expect(
+      tester.getSemantics(find.byKey(const Key('start.close'))),
+      isSemantics(tooltip: 'Close', isButton: true, hasTapAction: true),
+    );
+    handle.dispose();
+  });
+
+  testWidgets('Log a workout carries no price-like tag (PT-14)', (
+    tester,
+  ) async {
+    await _open(tester);
+
+    expect(find.text('Free'), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('start.manual')),
+        matching: find.byType(FsTag),
+      ),
+      findsNothing,
+    );
+    // The recommendation stays on the generator.
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('start.generator')),
+        matching: find.text('Recommended'),
+      ),
+      findsOneWidget,
+    );
   });
 }

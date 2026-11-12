@@ -1,12 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart';
+import '../../../core/client_id.dart';
+import '../../../core/manila_day.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
-import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
 import '../domain/nutrition.dart';
 import 'add_food_manually_screen.dart';
 import 'error_snack_bar.dart';
@@ -14,16 +15,22 @@ import 'meal_photo/snap_meal.dart';
 import 'providers.dart';
 import 'widgets/fatsecret_attribution.dart';
 import 'widgets/log_food_sheet.dart';
+import 'widgets/text_limits.dart';
 
 const foodSearchDebounce = Duration(milliseconds: 300);
 
-/// The server refuses a longer q with INVALID_FOOD_QUERY.
+/// The server refuses a longer q with INVALID_FOOD_QUERY, counting UTF-16
+/// units.
 const _maxQuery = 60;
 
 class LogFoodScreen extends ConsumerStatefulWidget {
-  const LogFoodScreen({super.key, required this.mealType, this.onLogged, this.pick = false, this.initialQuery});
+  const LogFoodScreen({super.key, required String this.mealType, this.onLogged, this.initialQuery}) : pick = false;
 
-  final String mealType;
+  /// Choosing a food, not logging one: see [pickFood].
+  const LogFoodScreen.pick({super.key, this.initialQuery}) : mealType = null, onLogged = null, pick = true;
+
+  /// The meal the food goes into; null when choosing, which shows no meal.
+  final String? mealType;
 
   /// Called once a food logged from here (or from Add manually) is saved,
   /// with the day it went to, after this screen has closed.
@@ -44,9 +51,11 @@ class LogFoodScreen extends ConsumerStatefulWidget {
 /// FitSync, FatSecret or manual one, per serving) comes back, or null. Snap a
 /// meal's Search and "+ Add an item" use it; [query] is typed in and searched
 /// at once.
-Future<Food?> pickFood(BuildContext context, {required String mealType, String? query}) =>
+/// No meal is asked for: the confirm screen picks it, and choosing shows
+/// none.
+Future<Food?> pickFood(BuildContext context, {String? query}) =>
     Navigator.of(context).push<Food>(MaterialPageRoute(
-      builder: (_) => LogFoodScreen(mealType: mealType, pick: true, initialQuery: query),
+      builder: (_) => LogFoodScreen.pick(initialQuery: query),
     ));
 
 class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
@@ -57,15 +66,16 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
 
   /// The meal the food goes into: the one whose Add row or + was tapped,
   /// shown at the top and changeable before anything is searched. It used
-  /// to be fixed in the title and changeable only in the last step.
-  late String _meal = widget.mealType;
+  /// to be fixed in the title and changeable only in the last step. Null
+  /// only when choosing, which never logs.
+  late String? _meal = widget.mealType;
 
   @override
   void initState() {
     super.initState();
     final q = widget.initialQuery?.trim() ?? '';
     if (q.isNotEmpty) {
-      final clipped = q.length > _maxQuery ? q.substring(0, _maxQuery).trim() : q;
+      final clipped = clipUtf16(q, _maxQuery);
       _search.text = clipped;
       _query = clipped;
     }
@@ -104,8 +114,9 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
       setState(() => _loadingFood = true);
       try {
         food = await ref.read(nutritionRepositoryProvider).fatsecretFood(listed.externalId!);
-      } catch (_) {
-        if (mounted) showErrorSnackBar(ScaffoldMessenger.of(context), "Couldn't load this food. Try again.");
+      } catch (e) {
+        // The server says what went wrong, and what to do instead.
+        if (mounted) showErrorSnackBar(ScaffoldMessenger.of(context), userMessage(e));
         return;
       } finally {
         if (mounted) setState(() => _loadingFood = false);
@@ -116,35 +127,39 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
       Navigator.of(context).pop(food);
       return;
     }
-    final choice = await showLogFoodSheet(context, food, mealType: _meal);
+    final choice = await showLogFoodSheet(context, food, mealType: _meal!);
     if (choice == null || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     final controller = ref.read(nutritionDayProvider.notifier);
     final date = ref.read(nutritionDayProvider).value?.date;
     final onLogged = widget.onLogged;
+    final persist = MediaQuery.accessibleNavigationOf(context);
     Navigator.of(context).pop();
-    final FoodEntry saved;
-    try {
-      // Edited numbers are saved as the user's own entry; the listed food
-      // itself is never changed.
-      saved = await controller.log(choice.edited ?? food, mealType: choice.mealType, servings: choice.servings, date: date);
-    } catch (_) {
-      showErrorSnackBar(messenger, "Couldn't save — try again.");
-      return;
-    }
-    onLogged?.call(saved, date!);
+    // Edited numbers are saved as the user's own entry; the listed food
+    // itself is never changed. Try again sends the same food, meal and
+    // servings, so nothing has to be found or set twice.
+    final logged = choice.edited ?? food;
+    // One key for this log, sent again by every Try again (NU-4).
+    final clientId = newClientId();
+    await saveOrOfferRetry(
+      messenger,
+      save: () => controller.log(logged, mealType: choice.mealType, servings: choice.servings, date: date, clientId: clientId),
+      failure: "Couldn't save ${logged.name}.",
+      persist: persist,
+      onSaved: (saved) => onLogged?.call(saved, date!),
+    );
   }
 
   Future<void> _manual() async {
     if (widget.pick) {
       final food = await Navigator.of(context).push<Food>(MaterialPageRoute(
-        builder: (_) => AddFoodManuallyScreen(mealType: _meal, pick: true),
+        builder: (_) => const AddFoodManuallyScreen.pick(),
       ));
       if (food != null && mounted) Navigator.of(context).pop(food);
       return;
     }
     final logged = await Navigator.of(context).push<bool>(MaterialPageRoute(
-      builder: (_) => AddFoodManuallyScreen(mealType: _meal, onLogged: widget.onLogged),
+      builder: (_) => AddFoodManuallyScreen(mealType: _meal!, onLogged: widget.onLogged),
     ));
     if (logged == true && mounted) Navigator.of(context).pop();
   }
@@ -153,12 +168,12 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
     final logged = await startSnapMeal(
       context,
       ref,
-      mealType: _meal,
+      mealType: _meal!,
       date: ref.read(nutritionDayProvider).value?.date,
       // Log food is right behind the photo screen: going back is the search,
       // for the meal the photo screen had.
       onSearchInstead: (photoContext, meal) {
-        if (mounted) setState(() => _meal = meal);
+        if (mounted && meal != null) setState(() => _meal = meal);
         Navigator.of(photoContext).pop(false);
       },
     );
@@ -168,6 +183,13 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
+    // The day the food goes to, named when it is not today (NU-7): "Adding
+    // to yesterday", "Adding to Oct 14". Short, with no dot or weekday, so
+    // it stays one line on a 320 dp phone at 2x text: a second line pushed
+    // the first food behind the bottom bar.
+    final date = ref.watch(nutritionDayProvider).value?.date;
+    final today = manilaDayOf(ref.watch(nutritionClockProvider)());
+    final adding = date == null || date == today ? 'Adding to' : 'Adding to ${shortDayLabel(date, today)}';
     return Scaffold(
       backgroundColor: t.bg,
       appBar: AppBar(title: Text(widget.pick ? 'Choose a food' : 'Log food')),
@@ -231,8 +253,8 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   spacing: 10,
                   children: [
-                    const FsEyebrow('Adding to'),
-                    _MealPicker(meal: _meal, onPicked: (m) => setState(() => _meal = m)),
+                    FsEyebrow(adding, maxLines: 2),
+                    _MealPicker(meal: _meal!, onPicked: (m) => setState(() => _meal = m)),
                   ],
                 ),
               ),
@@ -247,7 +269,7 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
               icon: Icons.search,
               onChanged: _onChanged,
               textInputAction: TextInputAction.search,
-              inputFormatters: [LengthLimitingTextInputFormatter(_maxQuery)],
+              inputFormatters: const [Utf16LengthLimit(_maxQuery)],
             ),
           ),
           Padding(
@@ -272,7 +294,13 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
     if (_query.length < 2) return const SizedBox.shrink();
     return ref.watch(foodSearchProvider(_query)).when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => _Hint(describeError(e)),
+      error: (e, _) => _LoadError(
+        message: userMessage(e),
+        // Keyed by the query, so the same words again would show the same
+        // cached error: Try again asks afresh.
+        onRetry: () => ref.invalidate(foodSearchProvider(_query)),
+        buttonKey: const Key('food.search.retry'),
+      ),
       data: (r) => _FoodList(
         foods: r.foods,
         onTap: _choose,
@@ -286,7 +314,11 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
 
   Widget _recents() => ref.watch(recentFoodsProvider).when(
     loading: () => const Center(child: CircularProgressIndicator()),
-    error: (e, _) => _Hint(describeError(e)),
+    error: (e, _) => _LoadError(
+      message: userMessage(e),
+      onRetry: () => ref.invalidate(recentFoodsProvider),
+      buttonKey: const Key('food.recents.retry'),
+    ),
     data: (foods) => _FoodList(foods: foods, onTap: _choose, empty: 'Foods you log show up here.'),
   );
 }
@@ -435,6 +467,22 @@ class _Hint extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.all(24),
     child: Text(text, textAlign: TextAlign.center, style: TextStyle(color: context.fs.text2)),
+  );
+}
+
+/// Search or Recents could not load: why, and Try again. Scrollable, so
+/// large text never overflows the space under the search box.
+class _LoadError extends StatelessWidget {
+  const _LoadError({required this.message, required this.onRetry, required this.buttonKey});
+
+  final String message;
+  final VoidCallback onRetry;
+  final Key buttonKey;
+
+  @override
+  Widget build(BuildContext context) => ListView(
+    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+    children: [FsRetry(message: message, onRetry: onRetry, buttonKey: buttonKey)],
   );
 }
 

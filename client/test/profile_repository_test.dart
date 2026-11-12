@@ -513,5 +513,40 @@ void main() {
       expect(point.loggedOn, '2026-09-16');
       expect(jsonDecode(captured.requests.single.body), {'weightKg': 71.4});
     });
+
+    // PS-20: a past day is sent as that day; the server replaces its entry.
+    test('sends the day a weigh-in is for, when one is given', () async {
+      final (repo, captured) = _repoReturning({
+        'data': {'loggedOn': '2026-11-04', 'weightKg': 70.0},
+      });
+
+      final point = await repo.logBodyWeight(70, loggedOn: '2026-11-04');
+
+      expect(point.loggedOn, '2026-11-04');
+      expect(jsonDecode(captured.requests.single.body), {
+        'weightKg': 70,
+        'loggedOn': '2026-11-04',
+      });
+    });
+  });
+
+  group('deleteBodyWeight', () {
+    // PS-20: a mistaken weigh-in comes off by its day.
+    test("sends DELETE to the day's weigh-in", () async {
+      final (repo, captured) = _repoReturning({
+        'data': {
+          'deleted': {'loggedOn': '2026-11-04', 'weightKg': 72.5},
+          'start': {'loggedOn': '2026-10-01', 'weightKg': 74.0},
+          'entries': 2,
+          'weightKg': 73.0,
+        },
+      });
+
+      await repo.deleteBodyWeight('2026-11-04');
+
+      final request = captured.requests.single;
+      expect(request.method, 'DELETE');
+      expect(request.url.path, '/api/v1/profile/body-weight/2026-11-04');
+    });
   });
 }

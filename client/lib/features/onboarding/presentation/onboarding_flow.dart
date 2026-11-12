@@ -1,24 +1,26 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
+import 'package:flutter/semantics.dart' show SemanticsService;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
+import '../../../core/theme.dart';
+import '../../../core/widgets/fs_kit.dart';
 import '../../auth/presentation/auth_controller.dart';
-import '../../exercises/presentation/exercise_list_screen.dart'
-    show describeError;
 import '../../health/domain/health_answers.dart';
 import '../../health/presentation/providers.dart';
 import '../../home/presentation/plan_ready.dart';
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
+import '../../profile/presentation/weight_unit_switch.dart';
 import '../../reminders/data/reminder_prompt_store.dart';
 import '../../reminders/data/reminder_scheduler.dart';
 import '../../reminders/presentation/providers.dart'
     show reminderRepositoryProvider, reminderSettingsProvider;
 import 'generating_view.dart';
 import 'onboarding_scaffold.dart';
+import 'steps/about_checks.dart';
 import 'steps/about_step.dart';
 import 'steps/goal_step.dart';
 import 'steps/health_step.dart';
@@ -38,7 +40,8 @@ class OnboardingFlow extends ConsumerStatefulWidget {
   ConsumerState<OnboardingFlow> createState() => _OnboardingFlowState();
 }
 
-class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
+class _OnboardingFlowState extends ConsumerState<OnboardingFlow>
+    with WeightUnitSwitch {
   static const _total = 6;
 
   /// The health check: no Skip, and Continue only once it is answered.
@@ -46,8 +49,17 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
 
   int _index = 0;
   bool _busy = false;
+
   String? _error;
   bool _seeded = false;
+
+  /// About-step answers to check, by API field name, shown under each one.
+  Map<String, String> _fieldErrors = const {};
+
+  /// The About answers [_fieldErrors] describe. A Continue with the same
+  /// numbers keeps them -- the range check is a question, not a rule -- and
+  /// editing one of them takes its message away.
+  AboutAnswers? _queried;
 
   /// Whether the last attempt at building the plan failed. Turns the last
   /// step's Continue into "Try again": the reminder question was answered on
@@ -124,11 +136,12 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
   /// Skip's save: the answers already given on this step, and nothing else.
   ///
   /// Skip used to advance without saving, which threw away whatever had been
-  /// typed before the user decided to move on. This sends the same patch as
-  /// Continue -- [_patchForCurrentStep] already leaves out fields that are
-  /// empty or did not parse -- plus the step's own lists when anything is
-  /// picked in them. An empty list stays unsent here, unlike on Continue:
-  /// skipping is not an answer of "none".
+  /// typed before the user decided to move on. This sends Continue's patch --
+  /// [_patchForCurrentStep] already leaves out fields that are empty or did
+  /// not parse -- less any number Continue would stop on (see below), plus
+  /// the step's own lists when anything is picked in them. An empty list
+  /// stays unsent here, unlike on Continue: skipping is not an answer of
+  /// "none".
   Future<void> _saveTypedAnswers() async {
     final notifier = ref.read(profileProvider.notifier);
 
@@ -136,8 +149,15 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     // FsStatField's formatter already stops anything from 1000 up. A typed 0
     // is the one value left that it would reject, and a rejection would keep
     // Skip on the step, so it is dropped like any other unusable answer.
+    // So is a number Continue would query as a likely slip (17 cm): Skip
+    // asks nothing, and saving it would feed it to the plan and the targets.
+    final slips = _index == 1
+        ? aboutRangeProblems(_about, ref.read(weightUnitProvider)).keys
+        : const <String>[];
     final fields = {..._patchForCurrentStep()}
-      ..removeWhere((_, value) => value is num && value <= 0);
+      ..removeWhere(
+        (key, value) => (value is num && value <= 0) || slips.contains(key),
+      );
     if (fields.isNotEmpty) await notifier.patch(fields);
 
     if (_index == 0 && _goals.goals.isNotEmpty) {
@@ -265,7 +285,45 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     ];
   }
 
-  Future<void> _continue() => _save(_saveCurrentStep);
+  Future<void> _continue() {
+    if (_index == 1 && _queryImplausible()) return Future.value();
+    return _save(_saveCurrentStep);
+  }
+
+  /// Stops the About step's Continue once to ask about a number that looks
+  /// like a slip (17 cm, 7 kg). True when it asked; a second Continue with
+  /// the same numbers goes ahead.
+  bool _queryImplausible() {
+    final problems = aboutRangeProblems(_about, ref.read(weightUnitProvider));
+    if (problems.isEmpty) return false;
+    final queried = _queried;
+    if (queried != null && sameAboutAnswers(problems.keys, queried, _about)) {
+      return false;
+    }
+    setState(() {
+      _fieldErrors = problems;
+      _queried = _about;
+      _error = rangeQueryMessage(problems.keys, button: 'Continue');
+    });
+    return true;
+  }
+
+  /// The About step reports every edit here. An answer the user has changed
+  /// since it was queried loses its message; once none is left, so does the
+  /// line above Continue that pointed at them.
+  void _onAboutChanged(AboutAnswers value) {
+    _about = value;
+    final queried = _queried;
+    if (_fieldErrors.isEmpty || queried == null) return;
+    final left = standingFieldErrors(_fieldErrors, queried, value);
+    if (left.length == _fieldErrors.length) return;
+    // Never mid-build: the step reports a kg/lb switch's rewritten weights
+    // after the frame (AboutStep.didUpdateWidget).
+    setState(() {
+      _fieldErrors = left;
+      if (left.isEmpty) _error = null;
+    });
+  }
 
   Future<void> _skip() => _save(_saveTypedAnswers);
 
@@ -291,19 +349,24 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
       // failure is caught, not only the API's own, because one that escaped
       // would leave the flow busy -- on the last step, a "Building your
       // plan…" screen with no way off it.
-      final message = _plainError(error);
+      // The message appears by the buttons, in an FsErrorLine: a live
+      // region, so someone not looking there, or not looking at all, hears
+      // that the tap did not work without a second announcement here.
       setState(() {
-        _error = message;
+        _error = plainProfileError(error);
         _busy = false;
         if (_index == _total - 1) _buildFailed = true;
+        // A rejected About answer is also flagged under its own card.
+        final field = rejectedProfileField(error);
+        if (_index == 1 && field != null && aboutValue(_about, field) != null) {
+          // The server's limit in the unit on screen, when it sends one.
+          final unit = shownUnit(ref.read(weightUnitProvider));
+          _fieldErrors = {
+            field: rangeFieldMessage(error, unit) ?? rejectedFieldMessage,
+          };
+          _queried = _about;
+        }
       });
-      // The message appears by the buttons, but someone not looking there,
-      // or not looking at all, needs to hear that the tap did not work.
-      SemanticsService.sendAnnouncement(
-        View.of(context),
-        message,
-        Directionality.of(context),
-      );
       return;
     }
     if (!mounted) return;
@@ -311,22 +374,6 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
 
     _advance();
   }
-
-  /// A failure in words a user can act on. The client's own messages are
-  /// written for whoever is running the server -- an address, an adb command
-  /// -- so those are replaced. So are the server's rejections of a profile
-  /// answer, which name the API field ("goalWeightKg must be ...") rather
-  /// than anything on screen. Its other messages are already plain and kept.
-  static String _plainError(Object error) => switch (error) {
-    ApiException(code: 'NETWORK_ERROR') =>
-      "Couldn't reach FitSync. Check your connection and try again.",
-    ApiException(code: 'INVALID_PROFILE_FIELD') =>
-      "One of these answers can't be saved as it is. Check it and try again.",
-    ApiException(code: 'INVALID_RESPONSE' || 'UNKNOWN_ERROR') =>
-      'Something went wrong on our side. Please try again.',
-    ApiException() => describeError(error),
-    _ => 'Something went wrong. Please try again.',
-  };
 
   /// The last step's Continue: unlike every earlier step, this one has
   /// something to do before `_continue()` -- show the system permission
@@ -372,16 +419,40 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     );
   }
 
-  void _advance() => setState(() {
-    _error = null;
-    if (_index < _total - 1) _index++;
-  });
+  void _advance() => _moveTo(_index + 1);
 
-  void _back() => setState(() {
-    _error = null;
-    _buildFailed = false;
-    if (_index > 0) _index--;
-  });
+  void _back() => _moveTo(_index - 1, back: true);
+
+  /// The steps' headings, in order, for [_announceStep].
+  static const _titles = [
+    GoalStep.title,
+    AboutStep.title,
+    LevelStep.title,
+    InjuriesStep.title,
+    HealthStep.title,
+    RemindersStep.title,
+  ];
+
+  void _moveTo(int index, {bool back = false}) {
+    final before = _index;
+    setState(() {
+      _error = null;
+      _fieldErrors = const {};
+      _queried = null;
+      if (back) _buildFailed = false;
+      _index = index.clamp(0, _total - 1);
+    });
+    if (_index != before) _announceStep();
+  }
+
+  /// Says where the user now is. Focus stays on Continue (or Back) across a
+  /// step change, so without this a screen reader hears nothing new and the
+  /// user cannot tell the step changed.
+  void _announceStep() => SemanticsService.sendAnnouncement(
+    View.of(context),
+    'Step ${_index + 1} of $_total: ${_titles[_index]}',
+    Directionality.of(context),
+  );
 
   Widget _stepContent() => switch (_index) {
     0 => GoalStep(
@@ -390,14 +461,16 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     ),
     1 => AboutStep(
       value: _about,
-      onChanged: (value) => _about = value,
+      onChanged: _onAboutChanged,
       goals: _goals.goals,
+      mainGoal: _goals.mainGoal,
+      fieldErrors: _fieldErrors,
       // Saved to the account as it is tapped rather than held with the
       // rest of the step: it changes what the two cards on screen say
       // right now, so it cannot wait for Continue.
-      unit: ref.watch(weightUnitProvider),
-      onUnitChanged: (unit) =>
-          ref.read(profileProvider.notifier).patch({'weightUnit': unit.api}),
+      // Shown at once and saved as Settings does (WeightUnitSwitch).
+      unit: shownUnit(ref.watch(weightUnitProvider)),
+      onUnitChanged: switchUnit,
     ),
     2 => LevelStep(
       value: _level,
@@ -426,21 +499,22 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     return profile.when(
       loading: () =>
           const Scaffold(body: Center(child: CircularProgressIndicator())),
+      // Sign out as well as Try again: someone who signed in with the wrong
+      // account, or whose account cannot load, must not be stuck retrying.
       error: (error, _) => Scaffold(
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(describeError(error), textAlign: TextAlign.center),
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: () => ref.invalidate(profileProvider),
-                  child: const Text('Retry'),
-                ),
-              ],
-            ),
+        backgroundColor: context.fs.bg,
+        body: FsRetry(
+          fullScreen: true,
+          message: userMessage(error),
+          onRetry: () => ref.invalidate(profileProvider),
+          buttonKey: const Key('onboarding.retry'),
+          secondary: FsButton(
+            key: const Key('signOut'),
+            label: 'Sign out',
+            kind: FsButtonKind.ghost,
+            small: true,
+            onPressed: () =>
+                ref.read(authControllerProvider.notifier).signOut(),
           ),
         ),
       ),
@@ -456,6 +530,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
                 'Matching exercises to your goals, equipment, '
                 'and injury history.',
             leadLabel: 'Profile saved',
+            leadPendingLabel: 'Saving your profile',
             leadDone: _saved,
             avoiding: _avoidingNames(),
             planReady: _planReady,

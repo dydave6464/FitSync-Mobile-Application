@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/app_settings.dart';
 import '../../../../core/widgets/fs_kit.dart';
+import '../../../profile/presentation/providers.dart' show profileProvider;
 import '../../../reminders/data/reminder_prompt_store.dart';
 import '../../../reminders/data/reminder_scheduler.dart';
+import '../../../reminders/presentation/reminders_screen.dart'
+    show remindersBlockedText;
 
 /// Home's one-time nudge to turn reminders on.
 ///
@@ -25,6 +29,11 @@ class _ReminderPromptCardState extends ConsumerState<ReminderPromptCard> {
   /// already granted" and "already answered" -- the card treats them the
   /// same, so nothing downstream needs to tell them apart.
   bool? _show;
+
+  /// Turn on is on its way: the permission prompt, then the switch-on save.
+  /// Both buttons wait for it, so a slow answer sends one request, not one
+  /// per impatient tap, and Not now cannot hide the card mid-request.
+  bool _busy = false;
 
   @override
   void initState() {
@@ -75,12 +84,77 @@ class _ReminderPromptCardState extends ConsumerState<ReminderPromptCard> {
     setState(() => _show = false);
   }
 
+  /// Asks the phone, then says what came of it before the card goes: the
+  /// phone may show no dialog at all (iOS after a denial, Android after two),
+  /// and a card that just vanished read as "reminders are on" when they were
+  /// not.
   Future<void> _turnOn() async {
-    await ref.read(reminderSchedulerProvider).requestPermission();
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await _askAndSwitchOn();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Turn on's work, held by [_busy] so a second tap sends nothing more.
+  Future<void> _askAndSwitchOn() async {
+    final granted = await ref
+        .read(reminderSchedulerProvider)
+        .requestPermission();
     // The system prompt this just awaited can outlive the card -- Home
     // rebuilding out from under it, or the app backgrounding -- so nothing
     // below may touch ref once it is gone.
     if (!mounted) return;
+    // The phone's permission is only half of it: with the app's own master
+    // switch (the profile's notificationsEnabled) off, nothing is scheduled.
+    // The tap meant "remind me", so it switches that on too (D-2), as the
+    // Reminders screen's master switch would: the profile only changes once
+    // the save lands, so a failed one leaves the switch off, and says so.
+    var masterOn = false;
+    if (granted) {
+      try {
+        masterOn = (await ref.read(profileProvider.future))
+            .notificationsEnabled;
+      } catch (_) {
+        // A profile that cannot be read counts as off: the save below sets
+        // the switch either way.
+      }
+      if (!mounted) return;
+      if (!masterOn) {
+        try {
+          await ref.read(profileProvider.notifier).patch({
+            'notificationsEnabled': true,
+          });
+          masterOn = true;
+        } catch (_) {
+          // The profile keeps its old value; the SnackBar says so.
+        }
+        if (!mounted) return;
+      }
+    }
+    final openSettings = ref.read(appSettingsOpenerProvider);
+    ScaffoldMessenger.of(context).showSnackBar(
+      granted
+          ? SnackBar(
+              content: Text(
+                masterOn
+                    ? 'Reminders on. Change them in Profile › Notifications '
+                          '& reminders.'
+                    : "Notifications allowed, but reminders couldn't be "
+                          'switched on. Turn them on in Profile › '
+                          'Notifications & reminders.',
+              ),
+            )
+          : SnackBar(
+              content: const Text(remindersBlockedText),
+              action: SnackBarAction(
+                label: 'Open settings',
+                onPressed: () => openSettings(),
+              ),
+            ),
+    );
     await _hide();
   }
 
@@ -98,9 +172,13 @@ class _ReminderPromptCardState extends ConsumerState<ReminderPromptCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Get reminders for your habits',
-                style: theme.textTheme.titleMedium,
+              Semantics(
+                container: true,
+                header: true,
+                child: Text(
+                  'Get reminders for your habits',
+                  style: theme.textTheme.titleMedium,
+                ),
               ),
               const SizedBox(height: 12),
               Wrap(
@@ -111,6 +189,7 @@ class _ReminderPromptCardState extends ConsumerState<ReminderPromptCard> {
                     key: const Key('home.reminderPrompt.turnOn'),
                     label: 'Turn on',
                     small: true,
+                    busy: _busy,
                     onPressed: _turnOn,
                   ),
                   FsButton(
@@ -118,7 +197,7 @@ class _ReminderPromptCardState extends ConsumerState<ReminderPromptCard> {
                     label: 'Not now',
                     small: true,
                     kind: FsButtonKind.secondary,
-                    onPressed: _hide,
+                    onPressed: _busy ? null : _hide,
                   ),
                 ],
               ),

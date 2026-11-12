@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
+import '../../exercises/domain/exercise_labels.dart';
 import '../../exercises/presentation/exercise_thumb.dart';
 import '../../exercises/presentation/widgets/coaching_tag.dart';
 import '../../exercises/presentation/exercise_detail_screen.dart';
 import '../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
+import '../../nutrition/presentation/error_snack_bar.dart'
+    show saveOrOfferRetry;
 import '../../profile/presentation/providers.dart';
 import '../../sessions/presentation/providers.dart';
 import '../../sessions/presentation/session_logger_screen.dart';
@@ -37,22 +41,10 @@ class PlanScreen extends ConsumerWidget {
 
     return plan.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(describeError(error), textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              FsButton(
-                label: 'Retry',
-                small: true,
-                onPressed: () => ref.invalidate(activePlanProvider),
-              ),
-            ],
-          ),
-        ),
+      error: (error, _) => FsRetry(
+        fullScreen: true,
+        message: userMessage(error),
+        onRetry: () => ref.invalidate(activePlanProvider),
       ),
       data: (loaded) => loaded == null
           ? const _NoPlanYet()
@@ -183,6 +175,12 @@ class _PlanViewState extends ConsumerState<_PlanView> {
     final baseUrl = ref.watch(planRepositoryProvider).baseUrl;
     final completedDays =
         ref.watch(completedDaysProvider).value ?? const <String>{};
+    // No `?? const []`: an empty list means the user chose no days, which is
+    // an answer. While the profile is loading or its fetch has failed the
+    // truth is "not known", and neither the strip nor the card may report a
+    // schedule -- or a target -- off a request that never landed. Read once,
+    // so the two cannot be handed different answers.
+    final trainingDays = ref.watch(profileProvider).value?.trainingDays;
 
     // The rule itself lives on WorkoutPlan.todayDayNo, with the caveat about
     // distinct dates: the Home tab's plan card needs the same number, and two
@@ -208,16 +206,13 @@ class _PlanViewState extends ConsumerState<_PlanView> {
           daysPerWeek: plan.daysPerWeek,
           completedDates: completedDays,
           today: DateTime.now(),
-          // No `?? const []`: an empty list means the user chose no days,
-          // which is an answer. While the profile is loading or its fetch has
-          // failed the truth is "not known", and the strip must not report a
-          // schedule -- or a target -- off a request that never landed.
-          trainingDays: ref.watch(profileProvider).value?.trainingDays,
+          trainingDays: trainingDays,
         ),
         const SizedBox(height: 14),
         SessionCard(
           plan: plan,
           dayNo: todayDayNo,
+          trainingDays: trainingDays,
           hasActiveSession: ref.watch(activeSessionProvider).value != null,
           starting: _starting && !_asking,
           onStart: _startOrResume,
@@ -261,10 +256,73 @@ class _PlanExerciseCard extends StatelessWidget {
   final String baseUrl;
   final VoidCallback? onGoToProfile;
 
+  /// Opens the swap sheet, then says what a swap that landed did, with Undo
+  /// for about five seconds (PT-26). Undo puts the exercise it replaced back
+  /// and takes the swap out of the ranker's history, so nothing is counted
+  /// against the old exercise. The bar replaces any that is up, so only the
+  /// latest swap is undoable; with a screen reader it waits, since reaching
+  /// its action by swiping takes longer than that. Nothing is said when Undo
+  /// lands: the card changing back is the feedback.
+  Future<void> _change(BuildContext context, String name) async {
+    final swapped = await showExerciseSwapSheet(
+      context,
+      planExerciseId: exercise.planExerciseId,
+      exerciseName: name,
+      onGoToProfile: onGoToProfile,
+    );
+    if (swapped == null || !context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final container = ProviderScope.containerOf(context, listen: false);
+    final screenReader = MediaQuery.accessibleNavigationOf(context);
+    final planExerciseId = exercise.planExerciseId;
+    final previousExerciseId = swapped.previousExerciseId;
+    final previousName = swapped.previousName;
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 5),
+        persist: screenReader,
+        content: Text('Swapped to ${swapped.swappedTo}'),
+        // None from a server that does not say what the swap replaced.
+        action: previousExerciseId == null
+            ? null
+            : SnackBarAction(
+                label: 'Undo',
+                onPressed: () => saveOrOfferRetry(
+                  messenger,
+                  save: () => container
+                      .read(planRepositoryProvider)
+                      .undoSwap(planExerciseId, previousExerciseId),
+                  failure: "Couldn't switch back to $previousName.",
+                  persist: screenReader,
+                  onSaved: (_) {
+                    container.invalidate(activePlanProvider);
+                    // Which exercises the plan holds changed for every row.
+                    container.invalidate(alternativesProvider);
+                  },
+                ),
+              ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
     final theme = Theme.of(context);
+    // At large text the button beside the name left it about 95 dp and broke
+    // names mid-word; there it goes under the prescription instead, and the
+    // name takes the card's full width.
+    final stacked = MediaQuery.textScalerOf(context).scale(15) > 20;
+    // As the library and the logger name it, not the catalogue's lowercase.
+    final name = exerciseDisplayName(exercise.name);
+    final change = TextButton(
+      key: Key('swap.open.${exercise.planExerciseId}'),
+      onPressed: () => _change(context, name),
+      // Says which exercise: a list of bare "Change" buttons reads the same
+      // on every card.
+      child: Text('Change', semanticsLabel: 'Change $name'),
+    );
 
     return FsCard(
       small: true,
@@ -286,47 +344,32 @@ class _PlanExerciseCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        exercise.name,
-                        style: theme.textTheme.titleMedium,
+                if (stacked)
+                  Text(name, style: theme.textTheme.titleMedium)
+                else
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(name, style: theme.textTheme.titleMedium),
                       ),
-                    ),
-                    TextButton(
-                      key: Key('swap.open.${exercise.planExerciseId}'),
-                      onPressed: () =>
-                          showModalBottomSheet<String>(
-                            context: context,
-                            isScrollControlled: true,
-                            builder: (_) => ExerciseSwapSheet(
-                              planExerciseId: exercise.planExerciseId,
-                              exerciseName: exercise.name,
-                              onGoToProfile: onGoToProfile,
-                            ),
-                          ).then((swappedTo) {
-                            if (swappedTo != null && context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Swapped to $swappedTo'),
-                                ),
-                              );
-                            }
-                          }),
-                      child: const Text('Change'),
-                    ),
-                  ],
-                ),
+                      change,
+                    ],
+                  ),
                 const SizedBox(height: 3),
                 Text(
-                  '${exercise.muscleGroup} · ${exercise.prescription}',
+                  '${muscleLabel(exercise.muscleGroup)} · '
+                  '${exercise.prescription}',
                   style: TextStyle(
                     fontFamily: fsMonoFamily,
                     fontSize: 11,
                     color: t.text3,
                   ),
                 ),
+                if (stacked)
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: change,
+                  ),
                 if (exercise.coaching != null) ...[
                   const SizedBox(height: 6),
                   Align(

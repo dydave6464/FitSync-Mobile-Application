@@ -8,6 +8,7 @@ import 'package:fitsync/core/api_client.dart';
 import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/features/sessions/data/session_repository.dart';
 import 'package:fitsync/features/sessions/domain/session_history.dart';
+import 'package:fitsync/features/sessions/domain/session_outcome.dart';
 
 SessionRepository _repo(MockClient client) => SessionRepository(
   ApiClient(
@@ -308,6 +309,37 @@ void main() {
         'totalVolumeKg': 8420,
       });
       expect(s.newPrCount, 0);
+    });
+  });
+
+  // SE-18: the pain question must name a session exactly as History does.
+  // One rule, shared: these pin the rule and that the pain prompt goes through it.
+  group('sessionTitle', () {
+    const cases = <(String?, List<String>)>[
+      ('Upper Body · Push', ['pectorals']),
+      (null, ['pectorals', 'lats']),
+      (null, []),
+    ];
+
+    test('names by plan, then worked areas, then the fallback', () {
+      expect(
+        sessionTitle('Upper Body · Push', ['pectorals']),
+        'Upper Body · Push',
+      );
+      expect(sessionTitle(null, ['pectorals', 'lats']), 'Chest & Back workout');
+      expect(sessionTitle(null, const []), 'Your own workout');
+    });
+
+    test('the pain prompt titles a session with the same rule', () {
+      for (final (plan, groups) in cases) {
+        final pending = PendingOutcome(
+          sessionId: 1,
+          sessionDate: '2026-11-06',
+          planName: plan,
+          muscleGroups: groups,
+        );
+        expect(pending.title, sessionTitle(plan, groups));
+      }
     });
   });
 }

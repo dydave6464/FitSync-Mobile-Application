@@ -1,4 +1,7 @@
+import 'dart:ui' show CheckedState;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show SemanticsData;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
@@ -56,6 +59,34 @@ FsButton _button(WidgetTester tester, String key) =>
     tester.widget<FsButton>(find.byKey(Key(key)));
 
 void main() {
+  // PT-22: the theme's chrome -- its handle, the surface and the kit's
+  // 22 dp corners rather than Material's 28.
+  testWidgets('takes the theme chrome', (tester) async {
+    await _open(tester);
+
+    expect(
+      tester.widget<BottomSheet>(find.byType(BottomSheet)).showDragHandle,
+      isTrue,
+    );
+    final material = tester.widget<Material>(
+      find
+          .descendant(
+            of: find.byType(BottomSheet),
+            matching: find.byType(Material),
+          )
+          .first,
+    );
+    expect(material.color, FsTokens.light.surface);
+    expect(
+      material.shape,
+      const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(FsRadius.card),
+        ),
+      ),
+    );
+  });
+
   group('over a plan the user did not build', () {
     testWidgets('names the plan that goes', (tester) async {
       await _open(tester, replacing: _generated);
@@ -185,6 +216,25 @@ void main() {
     expect(selected('cardio_core'), isTrue);
     expect(selected('full_body'), isFalse);
     expect(find.text('Names your plan and its days.'), findsOneWidget);
+  });
+
+  // P-1b: one split at a time, so a screen reader hears radio buttons,
+  // checked or not checked, rather than a row of independent toggles.
+  testWidgets('the splits are announced as one single-choice group', (
+    tester,
+  ) async {
+    final h = tester.ensureSemantics();
+    await _open(tester);
+
+    SemanticsData chip(String label) =>
+        tester.getSemantics(find.text(label)).getSemanticsData();
+    final on = chip('Full body');
+    final off = chip('Upper / Lower');
+    expect(on.flagsCollection.isInMutuallyExclusiveGroup, isTrue);
+    expect(on.flagsCollection.isChecked, CheckedState.isTrue);
+    expect(off.flagsCollection.isInMutuallyExclusiveGroup, isTrue);
+    expect(off.flagsCollection.isChecked, CheckedState.isFalse);
+    h.dispose();
   });
 
   // At 1.0x text, where a chip is painted shorter than 48 dp, so the band

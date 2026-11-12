@@ -1,6 +1,7 @@
 'use strict';
 const AppError = require('./app-error');
 const { manilaDay } = require('./manila-day');
+const { isRealDay } = require('./days');
 
 /// What a food log request may contain, checked the one way every log route
 /// checks it (POST /nutrition/entries, PATCH /nutrition/entries/:id, and
@@ -8,8 +9,10 @@ const { manilaDay } = require('./manila-day');
 const MAX_SERVINGS = 20;
 const MAX_GRAMS = 500;
 const MAX_SODIUM_MG = 20000;
+const MAX_KCAL = 5000;
 const MAX_NAME = 100;
 const MAX_SERVING_DESC = 60;
+const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const round1 = (n) => Math.round(n * 10) / 10;
 const round2 = (n) => Math.round(n * 100) / 100;
 
@@ -21,11 +24,7 @@ function invalid(field, message) {
 function checkDate(value) {
   const today = manilaDay();
   if (value === undefined) return today;
-  // A month or day out of range (2026-13-01) parses to an Invalid Date, whose
-  // toISOString() throws; February 30th parses, rolls over, and fails the compare.
-  const d = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00Z`) : null;
-  const ok = d !== null && !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
-  if (!ok) throw AppError.badRequest('INVALID_DATE', 'date must be a real date as YYYY-MM-DD.');
+  if (!isRealDay(value)) throw AppError.badRequest('INVALID_DATE', 'date must be a real date as YYYY-MM-DD.');
   if (value > today) throw AppError.badRequest('INVALID_DATE', 'date cannot be in the future.');
   return value;
 }
@@ -35,6 +34,14 @@ function checkServings(s) {
     throw invalid('servings', `servings must be 0.5 to ${MAX_SERVINGS}, in steps of 0.5.`);
   }
   return s;
+}
+
+/// A log's optional clientId, the key that makes Try again safe: absent or
+/// null is none (null); otherwise a v4 UUID, any case, returned lower-case.
+function checkClientId(value) {
+  if (value == null) return null;
+  if (typeof value !== 'string' || !UUID_V4.test(value)) throw invalid('clientId', 'clientId must be a UUID.');
+  return value.toLowerCase();
 }
 
 /// An optional manual value: absent or null is unknown (null); otherwise a
@@ -48,7 +55,14 @@ function optional(food, key, max, round) {
   return round(v);
 }
 
-function checkManual(food) {
+/// A manual food's per-serving numbers. kcal is the label's, when the app
+/// sends one (food.kcal, 0 to MAX_KCAL, rounded to a whole number). Otherwise
+/// it is 4-4-9 from protein, carbs and fat -- unless [basedOn], the
+/// per-serving numbers it was edited from (a listed food, or the entry being
+/// edited), has the same protein, carbs and fat: then that kcal is kept, since
+/// it may count what 4-4-9 can't (a beer's alcohol). 0/0/0 is fine when the
+/// kcal so chosen is above 0 (a drink label, a spirit), never with none.
+function checkManual(food, { basedOn = null } = {}) {
   const name = typeof food.name === 'string' ? food.name.trim() : '';
   if (name.length < 1 || name.length > MAX_NAME) throw invalid('name', `name must be 1 to ${MAX_NAME} characters.`);
   let servingDesc = null;
@@ -67,14 +81,47 @@ function checkManual(food) {
     }
     grams[k] = round2(g);
   }
-  if (grams.proteinG + grams.carbsG + grams.fatG === 0) {
+  let label = null;
+  if (food.kcal != null) {
+    if (typeof food.kcal !== 'number' || !Number.isFinite(food.kcal) || food.kcal < 0 || food.kcal > MAX_KCAL) {
+      throw invalid('kcal', `kcal must be 0 to ${MAX_KCAL}.`);
+    }
+    label = Math.round(food.kcal);
+  }
+  const listed = basedOn !== null && ['proteinG', 'carbsG', 'fatG'].every((k) => round2(basedOn[k]) === grams[k]);
+  let kcal;
+  if (label !== null) kcal = label;
+  else if (listed) kcal = basedOn.kcal;
+  else kcal = Math.round(4 * grams.proteinG + 4 * grams.carbsG + 9 * grams.fatG);
+  if (grams.proteinG + grams.carbsG + grams.fatG === 0 && !(kcal > 0)) {
     throw invalid('food', 'A manual food needs some protein, carbs or fat.');
   }
-  const kcal = Math.round(4 * grams.proteinG + 4 * grams.carbsG + 9 * grams.fatG);
   const fiberG = optional(food, 'fiberG', MAX_GRAMS, round2);
   const sugarG = optional(food, 'sugarG', MAX_GRAMS, round2);
   const sodiumMg = optional(food, 'sodiumMg', MAX_SODIUM_MG, round1);
   return { name, servingDesc, kcal, fiberG, sugarG, sodiumMg, ...grams };
+}
+
+/// [food][key] -- basedOnFoodId or basedOnEntryId -- as an id: absent or null
+/// is none (null); anything but a positive integer is refused like any other
+/// bad field, never quietly read as "no basis".
+function basisId(food, key) {
+  const v = food[key];
+  if (v == null) return null;
+  if (!Number.isInteger(v) || v <= 0) throw invalid(key, `${key} must be a positive whole number.`);
+  return v;
+}
+
+/// One serving of a stored entry (getStoredEntry's shape): each total over its
+/// servings, unknown staying unknown. Unrounded, like the entry itself.
+function perServingOf(stored) {
+  const n = stored.servings;
+  return {
+    kcal: stored.kcal / n, proteinG: stored.proteinG / n, carbsG: stored.carbsG / n, fatG: stored.fatG / n,
+    fiberG: stored.fiberG == null ? null : stored.fiberG / n,
+    sugarG: stored.sugarG == null ? null : stored.sugarG / n,
+    sodiumMg: stored.sodiumMg == null ? null : stored.sodiumMg / n,
+  };
 }
 
 /// Per-serving numbers [base] times [servings], rounded the one way every
@@ -91,4 +138,7 @@ function scaled(base, servings) {
   };
 }
 
-module.exports = { invalid, checkDate, checkServings, checkManual, scaled, round1, round2 };
+module.exports = {
+  invalid, checkDate, checkServings, checkClientId, checkManual, basisId, perServingOf, scaled, round1, round2,
+  MAX_NAME, MAX_SERVING_DESC,
+};

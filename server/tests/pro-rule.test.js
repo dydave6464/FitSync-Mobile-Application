@@ -73,14 +73,22 @@ test('who is Pro, and paying for it', async (t) => {
 
   await t.test('proStatus says how the user is Pro', async () => {
     const free = await freshUser();
-    assert.deepEqual(await proStatus(pool, free.userId),
-      { pro: false, source: null, until: null, plan: null, method: null, endsSoon: false });
+    assert.deepEqual(await proStatus(pool, free.userId), {
+      pro: false, source: null, until: null, plan: null, method: null, endsSoon: false, nextPeriodStartsAt: null,
+    });
 
+    // Granted Pro has no end, but a paid period it also holds still decides
+    // when a payment made now would begin.
     const granted = await freshUser();
     await pool.query('UPDATE users SET is_premium = 1 WHERE user_id = ?', [granted.userId]);
     await period(granted.userId, 2);
-    assert.deepEqual(await proStatus(pool, granted.userId),
-      { pro: true, source: 'granted', until: null, plan: null, method: null, endsSoon: false });
+    const [[sub]] = await pool.query(
+      'SELECT UNIX_TIMESTAMP(MAX(expires_at)) AS e FROM subscriptions WHERE user_id = ?', [granted.userId],
+    );
+    assert.deepEqual(await proStatus(pool, granted.userId), {
+      pro: true, source: 'granted', until: null, plan: null, method: null, endsSoon: false,
+      nextPeriodStartsAt: new Date(Number(sub.e) * 1000).toISOString(),
+    });
 
     const paid = await freshUser();
     const paymentId = await createPayment(pool, { userId: paid.userId, plan: 'annual', amountPhp: 1788 });
@@ -91,6 +99,7 @@ test('who is Pro, and paying for it', async (t) => {
     assert.equal(s.plan, 'annual');
     assert.equal(s.method, 'gcash');
     assert.equal(s.endsSoon, false);
+    assert.equal(s.nextPeriodStartsAt, s.until);
     const days = (Date.parse(s.until) - Date.now()) / 86400000;
     assert.ok(days > 360 && days < 370, `a year from now, got ${days} days`);
 

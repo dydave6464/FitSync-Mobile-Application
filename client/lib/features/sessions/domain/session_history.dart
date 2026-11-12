@@ -1,3 +1,5 @@
+import '../../../core/numbers.dart';
+import '../../../core/units.dart';
 import '../../exercises/domain/exercise.dart';
 import '../../exercises/domain/muscle_regions.dart';
 
@@ -5,8 +7,27 @@ import '../../exercises/domain/muscle_regions.dart';
 /// areas it worked ("Chest & Back workout"). "Your own workout" only when
 /// there is nothing to name it by -- a column of identical titles tells the
 /// user nothing.
-String _titleFor(String? planName, Iterable<String> muscleGroups) =>
+String sessionTitle(String? planName, Iterable<String> muscleGroups) =>
     planName ?? manualWorkoutName(muscleGroups) ?? 'Your own workout';
+
+/// A finished workout's numbers on one line: '12 sets · 2,954 kg · 52 min'.
+///
+/// Shared by the History row and the session detail, so the two never read
+/// differently. A bodyweight-only session has no volume, and "0 kg" would read
+/// as a failure to record rather than as a fact about the workout, so it is
+/// left out; so is a duration from before durations were stamped. The volume
+/// is stored in kilograms and read out in [unit].
+String sessionFactsLine({
+  required int setCount,
+  required double? totalVolumeKg,
+  required int? durationMin,
+  required WeightUnit unit,
+}) => [
+  '$setCount ${setCount == 1 ? 'set' : 'sets'}',
+  if (totalVolumeKg != null && totalVolumeKg > 0)
+    '${groupThousands(convertFromKg(totalVolumeKg, unit))} ${unit.api}',
+  if (durationMin != null) '$durationMin min',
+].join(' · ');
 
 /// One finished workout, as the Progress tab lists it.
 ///
@@ -56,7 +77,7 @@ class SessionHistoryEntry {
 
   /// What to call it. A hand-picked session has no plan to borrow a name
   /// from, and "Session 32" tells the user nothing they wanted to know.
-  String get title => _titleFor(planName, muscleGroups);
+  String get title => sessionTitle(planName, muscleGroups);
 
   factory SessionHistoryEntry.fromJson(Map<String, dynamic> json) =>
       SessionHistoryEntry(
@@ -129,7 +150,8 @@ class LastWorkout {
   final String? planName;
 
   /// What to call it, the same way [SessionHistoryEntry] does.
-  String get title => _titleFor(planName, exercises.map((e) => e.muscleGroup));
+  String get title =>
+      sessionTitle(planName, exercises.map((e) => e.muscleGroup));
 
   /// "2 exercises", for the sheet's subtitle.
   String get describeCount =>

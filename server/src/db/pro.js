@@ -17,6 +17,11 @@ const ENDS_SOON_SECONDS = 3 * 24 * 60 * 60;
 /// (with the plan and payment method of the period that ends last), or not
 /// at all. Times come from the database's clock -- the same one that ends the
 /// period. null for a missing user.
+///
+/// nextPeriodStartsAt is when the months of a payment made now would begin:
+/// the end of the latest paid period still running (completePayment's
+/// GREATEST(NOW(), MAX(expires_at))), whatever the source, or null when a
+/// payment now would start at once.
 async function proStatus(pool, userId) {
   const [[row]] = await pool.query(
     `SELECT u.is_premium AS granted, UNIX_TIMESTAMP(NOW()) AS now_epoch,
@@ -26,8 +31,13 @@ async function proStatus(pool, userId) {
     [userId],
   );
   if (!row) return null;
-  if (row.granted) return { pro: true, source: 'granted', until: null, plan: null, method: null, endsSoon: false };
-  if (row.until_epoch == null) return { pro: false, source: null, until: null, plan: null, method: null, endsSoon: false };
+  const nextPeriodStartsAt = row.until_epoch == null ? null : new Date(Number(row.until_epoch) * 1000).toISOString();
+  if (row.granted) {
+    return { pro: true, source: 'granted', until: null, plan: null, method: null, endsSoon: false, nextPeriodStartsAt };
+  }
+  if (row.until_epoch == null) {
+    return { pro: false, source: null, until: null, plan: null, method: null, endsSoon: false, nextPeriodStartsAt };
+  }
   const [[latest]] = await pool.query(
     `SELECT s.plan, p.method FROM subscriptions s
        LEFT JOIN pro_payments p ON p.subscription_id = s.subscription_id
@@ -39,10 +49,11 @@ async function proStatus(pool, userId) {
   return {
     pro: true,
     source: 'paid',
-    until: new Date(until * 1000).toISOString(),
+    until: nextPeriodStartsAt,
     plan: latest?.plan ?? null,
     method: latest?.method ?? null,
     endsSoon: until - Number(row.now_epoch) <= ENDS_SOON_SECONDS,
+    nextPeriodStartsAt,
   };
 }
 
@@ -113,6 +124,12 @@ async function completePayment(pool, { userId, paymentId, months, method }) {
     await conn.query(
       "UPDATE pro_payments SET status = 'paid', method = ?, paid_at = NOW(), subscription_id = ? WHERE payment_id = ?",
       [method, sub.insertId, paymentId],
+    );
+    // Anonymous copy for revenue (spec 2026-11-07 §6): survives account deletion.
+    await conn.query(
+      `INSERT IGNORE INTO revenue_payments (payment_id, plan, amount_php, method, paid_on)
+       VALUES (?, ?, ?, ?, CURDATE())`,
+      [paymentId, p.plan, p.amount_php, method ?? null],
     );
     await conn.commit();
     return { subscriptionId: sub.insertId, added: true };

@@ -43,6 +43,8 @@ class RegionFilterBar extends ConsumerWidget {
                 key: Key('library.region.${option?.name ?? 'all'}'),
                 label: option?.label ?? 'All',
                 selected: option == selected,
+                // One area at a time: announced as a radio group.
+                exclusive: true,
                 onTap: () => choose(option),
                 // Small, as the design draws them; the band around each chip
                 // keeps the tap target at full size.

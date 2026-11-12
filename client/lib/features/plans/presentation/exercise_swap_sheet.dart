@@ -4,8 +4,10 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
+import '../../exercises/domain/exercise_labels.dart';
 import '../../exercises/presentation/equipment_icon.dart';
 import '../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
@@ -14,11 +16,51 @@ import '../../exercises/presentation/providers.dart'
 import '../domain/exercise_alternative.dart';
 import 'providers.dart';
 
+/// An alternative's second line: its equipment, else its muscle, each in
+/// the library's words.
+String _altSubtitle(ExerciseAlternative alt) => switch (alt.equipment) {
+  final equipment? => equipmentLabel(equipment),
+  null => muscleLabel(alt.muscleGroup),
+};
+
+/// What a swap that landed tells the screen that opened the sheet: the name
+/// swapped to, and the exercise it replaced, for Undo. Both names are in the
+/// library's words. The previous exercise is null only from a server that
+/// predates Undo; then there is nothing to switch back to.
+typedef SwapOutcome = ({
+  String swappedTo,
+  int? previousExerciseId,
+  String? previousName,
+});
+
 /// Replaces one exercise in the active plan.
 ///
 /// Alternatives lead and the search field starts empty: the catalogue's names
 /// are not guessable (one exercise is named `quads`, and the plain bodyweight
 /// squat is filed under glutes), so most swaps should need no typing.
+/// Opens [ExerciseSwapSheet], the one way the app does: from the Plan tab
+/// and from the logger. Resolves to the swap that landed, or null.
+///
+/// Material's handle is off: it sits outside the sheet's child, where a drag
+/// on it would close the sheet mid-swap past the hold below, and it would
+/// add its 48 dp on top of the height the sheet is tuned to. The sheet draws
+/// the kit's handle itself instead (PT-22).
+Future<SwapOutcome?> showExerciseSwapSheet(
+  BuildContext context, {
+  required int planExerciseId,
+  required String exerciseName,
+  VoidCallback? onGoToProfile,
+}) => showModalBottomSheet<SwapOutcome>(
+  context: context,
+  isScrollControlled: true,
+  showDragHandle: false,
+  builder: (_) => ExerciseSwapSheet(
+    planExerciseId: planExerciseId,
+    exerciseName: exerciseName,
+    onGoToProfile: onGoToProfile,
+  ),
+);
+
 class ExerciseSwapSheet extends ConsumerStatefulWidget {
   const ExerciseSwapSheet({
     super.key,
@@ -58,6 +100,10 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
   /// covered the screen while one with two barely showed — the same action
   /// looking like two different screens.
   static const _heightFraction = 0.52;
+
+  /// What the sheet spends above and below its panes: 10 dp, the handle,
+  /// 10 dp, and 16 dp at the bottom.
+  static const _chromeHeight = 10.0 + 4 + 10 + 16;
 
   /// How tall the list pane has to be, at 1x text, for its heading, search
   /// field and equipment note to stay put with the list scrolling between
@@ -109,6 +155,14 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
     });
   }
 
+  void _clearSearch() {
+    // Cancelled, or a debounce still pending from the last keystroke would
+    // put the old query back a moment after the box emptied.
+    _timer?.cancel();
+    _controller.clear();
+    setState(() => _query = '');
+  }
+
   Future<void> _choose(ExerciseAlternative alt) async {
     if (_busy) return;
     setState(() {
@@ -123,7 +177,7 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
     final container = ProviderScope.containerOf(context, listen: false);
 
     try {
-      await ref
+      final result = await ref
           .read(planRepositoryProvider)
           .swap(widget.planExerciseId, alt.exerciseId);
       container.invalidate(activePlanProvider);
@@ -134,7 +188,14 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
       // invalidates every element of it, not one keyed instance.
       container.invalidate(alternativesProvider);
       if (!mounted) return;
-      Navigator.of(context).pop(alt.name);
+      final previousName = result.previousName;
+      Navigator.of(context).pop((
+        swappedTo: exerciseDisplayName(alt.name),
+        previousExerciseId: result.previousExerciseId,
+        previousName: previousName == null
+            ? null
+            : exerciseDisplayName(previousName),
+      ));
     } catch (err) {
       // Stay open with the message: closing would throw away the choice they
       // just made, exactly as onboarding stays on a rejected step.
@@ -172,7 +233,7 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
         children: [
           const TextSpan(text: "Don't see your equipment? "),
           TextSpan(
-            text: 'Update it in Profile \u2192 Equipment & location.',
+            text: 'Update it in Profile \u2192 Level, equipment & location.',
             style: TextStyle(color: linked ? t.accentText : t.text3),
           ),
         ],
@@ -212,6 +273,7 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
           children: [
             IconButton(
               key: const Key('swap.preview.back'),
+              tooltip: 'Back to alternatives',
               icon: const Icon(Icons.arrow_back, size: 20),
               padding: EdgeInsets.zero,
               // A full target: the way back is the one control here that
@@ -226,9 +288,12 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(alt.name, style: theme.textTheme.titleLarge),
                   Text(
-                    alt.equipment ?? alt.muscleGroup,
+                    exerciseDisplayName(alt.name),
+                    style: theme.textTheme.titleLarge,
+                  ),
+                  Text(
+                    _altSubtitle(alt),
                     style: TextStyle(fontSize: 11.5, color: t.text3),
                   ),
                 ],
@@ -241,19 +306,10 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
           child: detail.when(
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (err, _) => Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(describeError(err), textAlign: TextAlign.center),
-                  const SizedBox(height: 12),
-                  FsButton(
-                    label: 'Retry',
-                    small: true,
-                    kind: FsButtonKind.secondary,
-                    onPressed: () =>
-                        ref.invalidate(exerciseDetailProvider(alt.exerciseId)),
-                  ),
-                ],
+              child: FsRetry(
+                message: userMessage(err),
+                onRetry: () =>
+                    ref.invalidate(exerciseDetailProvider(alt.exerciseId)),
               ),
             ),
             data: (exercise) => exercise.animationUrl == null
@@ -299,10 +355,7 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
         ),
         if (_error != null) ...[
           const SizedBox(height: 12),
-          Text(
-            _error!,
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
-          ),
+          FsErrorLine(_error!),
         ],
         const SizedBox(height: 12),
         FsButton(
@@ -336,7 +389,7 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
     final screen = MediaQuery.sizeOf(context).height;
     final paneHeight =
         screen * _heightFraction -
-        32 -
+        _chromeHeight -
         MediaQuery.viewPaddingOf(context).bottom;
     // A body-size factor rather than scaling the bar itself: a phone's
     // nonlinear text scaling grows a 360 "font size" far less than text.
@@ -356,22 +409,28 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
         style: TextStyle(fontSize: 12.5, color: t.text2),
       ),
       const SizedBox(height: 12),
-      TextField(
-        key: const Key('swap.search'),
-        controller: _controller,
-        onChanged: _onChanged,
-        decoration: const InputDecoration(
-          prefixIcon: Icon(Icons.search),
-          hintText: 'Search all exercises',
+      // The kit's search box, as the library's: filled, rounded, and with a
+      // one-tap clear once something is typed.
+      ValueListenableBuilder<TextEditingValue>(
+        valueListenable: _controller,
+        builder: (context, value, _) => FsField(
+          fieldKey: const Key('swap.search'),
+          controller: _controller,
+          hint: 'Search all exercises',
+          icon: Icons.search,
+          onChanged: _onChanged,
+          textInputAction: TextInputAction.search,
+          trailing: value.text.isEmpty
+              ? null
+              : IconButton(
+                  key: const Key('swap.search.clear'),
+                  icon: const Icon(Icons.close, size: 18),
+                  tooltip: 'Clear search',
+                  onPressed: _clearSearch,
+                ),
         ),
       ),
-      if (_error != null) ...[
-        const SizedBox(height: 12),
-        Text(
-          _error!,
-          style: TextStyle(color: Theme.of(context).colorScheme.error),
-        ),
-      ],
+      if (_error != null) ...[const SizedBox(height: 12), FsErrorLine(_error!)],
       const SizedBox(height: 16),
     ];
     final foot = <Widget>[
@@ -382,8 +441,8 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
     Widget tile(ExerciseAlternative alt) => ListTile(
       key: Key('swap.alt.${alt.exerciseId}'),
       contentPadding: EdgeInsets.zero,
-      title: Text(alt.name),
-      subtitle: Text(alt.equipment ?? alt.muscleGroup),
+      title: Text(exerciseDisplayName(alt.name)),
+      subtitle: Text(_altSubtitle(alt)),
       trailing: Icon(Icons.chevron_right, size: 16, color: t.text3),
       // Opens a look at it. The swap itself now waits for the confirm button
       // on the preview: a tap here used to replace an exercise outright,
@@ -401,7 +460,18 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
           ),
           error: (err, _) => Padding(
             padding: const EdgeInsets.all(16),
-            child: Text(describeError(err)),
+            // A way to try again in place: closing the sheet and tapping
+            // Change again was the only one.
+            child: FsRetry(
+              message: userMessage(err),
+              buttonKey: const Key('swap.alternatives.retry'),
+              onRetry: () => ref.invalidate(
+                alternativesProvider((
+                  planExerciseId: widget.planExerciseId,
+                  query: _query,
+                )),
+              ),
+            ),
           ),
           data: (rows) => rows.isEmpty
               ? Padding(
@@ -478,15 +548,25 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
           padding: EdgeInsets.only(
             left: 20,
             right: 20,
-            top: 16,
+            top: 10,
             bottom: insets + 16,
           ),
-          // The list pane is replaced rather than covered, so its query, its
-          // filter and its scroll offset are all still here when the preview
-          // is dismissed.
-          child: previewing != null
-              ? _preview(t, previewing)
-              : _listPane(t, alternatives),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Inside the drag hold below, unlike Material's handle.
+              const Center(child: FsSheetHandle()),
+              const SizedBox(height: 10),
+              // The list pane is replaced rather than covered, so its query,
+              // its filter and its scroll offset are all still here when the
+              // preview is dismissed.
+              Expanded(
+                child: previewing != null
+                    ? _preview(t, previewing)
+                    : _listPane(t, alternatives),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -498,8 +578,17 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
     // the bottom sheet pops its route itself once the drag ends. So while
     // busy, a drag is claimed here first -- the innermost vertical-drag
     // recognizer wins the gesture arena -- and the sheet's own never starts.
+    //
+    // On a preview, back (system back, or a tap on the barrier) returns to
+    // the list that found it, as the arrow does, rather than closing the
+    // sheet and losing the search.
     return PopScope(
-      canPop: !_busy,
+      canPop: !_busy && _previewing == null,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && !_busy && _previewing != null) {
+          setState(() => _previewing = null);
+        }
+      },
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onVerticalDragStart: _busy ? (_) {} : null,

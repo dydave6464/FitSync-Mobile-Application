@@ -12,7 +12,40 @@ double _contrast(Color a, Color b) {
   return (max(la, lb) + 0.05) / (min(la, lb) + 0.05);
 }
 
+/// What an AlertDialog really draws on in [theme]: the dialog theme's
+/// colour, else M3's surfaceContainerHigh, which the colour scheme leaves
+/// to default to its surface (t.surface). The rows used to call t.elev the
+/// dialog's; t.elev is the snack bar's.
+Color _dialogSurface(String theme) {
+  final data = theme == 'light' ? fsLightTheme() : fsDarkTheme();
+  return data.dialogTheme.backgroundColor ??
+      data.colorScheme.surfaceContainerHigh;
+}
+
 void main() {
+  // P-30: the 'dialog' rows below check the colour a dialog is drawn on.
+  for (final theme in ['light', 'dark']) {
+    testWidgets('the dialog rows use what an AlertDialog draws on ($theme)', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: theme == 'light' ? fsLightTheme() : fsDarkTheme(),
+          home: const AlertDialog(title: Text('Sign out?')),
+        ),
+      );
+      final material = tester.widget<Material>(
+        find
+            .descendant(
+              of: find.byType(AlertDialog),
+              matching: find.byType(Material),
+            )
+            .first,
+      );
+      expect(material.color, _dialogSurface(theme));
+    });
+  }
+
   // Red is read, not just seen: the destructive choice in every "are you
   // sure" dialog, Sign out, and error messages. Those are normal-size labels,
   // so WCAG AA's 4.5:1 applies, on the page, cards and dialogs alike.
@@ -24,7 +57,8 @@ void main() {
       for (final (name, background) in [
         ('page', t.bg),
         ('card', t.surface),
-        ('dialog', t.elev),
+        ('dialog', _dialogSurface(theme)),
+        ('snack bar', t.elev),
       ]) {
         expect(
           _contrast(t.red, background),
@@ -46,7 +80,8 @@ void main() {
         ('page', t.bg),
         ('card', t.surface),
         ('chip', t.surface2),
-        ('dialog', t.elev),
+        ('dialog', _dialogSurface(theme)),
+        ('snack bar', t.elev),
       ]) {
         expect(
           _contrast(t.text3, background),
@@ -75,7 +110,8 @@ void main() {
         ('page', t.bg),
         ('card', t.surface),
         ('chip', t.surface2),
-        ('dialog', t.elev),
+        ('dialog', _dialogSurface(theme)),
+        ('snack bar', t.elev),
         ('green tint on the page', Color.alphaBlend(t.accentDim, t.bg)),
         ('green tint on a card', Color.alphaBlend(t.accentDim, t.surface)),
       ]) {
@@ -117,6 +153,106 @@ void main() {
         t.accentText,
       );
     });
+  }
+
+  for (final (theme, t) in [
+    ('light', FsTokens.light),
+    ('dark', FsTokens.dark),
+  ]) {
+    // An unticked checkbox or radio ring is the only sign a control is
+    // there: WCAG 1.4.11 asks 3:1 for that boundary. line2 was about 1.4:1.
+    test('control outlines read at 3:1 in the $theme theme', () {
+      for (final (name, bg) in [
+        ('page', t.bg),
+        ('card', t.surface),
+        ('chip', t.surface2),
+        ('dialog', _dialogSurface(theme)),
+        ('snack bar', t.elev),
+      ]) {
+        expect(
+          _contrast(Color.alphaBlend(t.control, bg), bg),
+          greaterThanOrEqualTo(3.0),
+          reason: 'control on the $name background',
+        );
+      }
+    });
+
+    // Progress and chart bars are the data itself: 3:1 against what they
+    // sit on. The light brand green is 2.45:1 on surface2.
+    test('data fills read at 3:1 in the $theme theme', () {
+      for (final (name, bg) in [
+        ('page', t.bg),
+        ('card', t.surface),
+        ('chip', t.surface2),
+        ('dialog', _dialogSurface(theme)),
+        ('snack bar', t.elev),
+      ]) {
+        expect(
+          _contrast(t.accentFill, bg),
+          greaterThanOrEqualTo(3.0),
+          reason: 'accentFill on the $name background',
+        );
+      }
+    });
+
+    // Unset, M3 drew an OutlinedButton's label in primary, the brand green:
+    // 2.87:1 on white.
+    test('outlined button text reads at 4.5:1 in the $theme theme', () {
+      final themeData = theme == 'light' ? fsLightTheme() : fsDarkTheme();
+      final style = themeData.outlinedButtonTheme.style!;
+      final fg = style.foregroundColor!.resolve({})!;
+      expect(fg, t.accentText);
+      expect(_contrast(fg, t.surface), greaterThanOrEqualTo(4.5));
+      expect(style.side!.resolve({})!.color, t.control);
+    });
+
+    // L-5: one outline for every state drew a disabled button as boldly as
+    // a live one, and gave focus no change of its own.
+    test(
+      'an outlined button outline follows its state in the $theme theme',
+      () {
+        final themeData = theme == 'light' ? fsLightTheme() : fsDarkTheme();
+        final side = themeData.outlinedButtonTheme.style!.side!;
+        // Disabled: M3's own dim outline, onSurface at 12%.
+        expect(
+          side.resolve({WidgetState.disabled})!.color,
+          themeData.colorScheme.onSurface.withValues(alpha: 0.12),
+        );
+        // Focused: a visible change, at 3:1 or better on a card.
+        final focused = side.resolve({WidgetState.focused})!.color;
+        expect(focused, isNot(t.control));
+        expect(_contrast(focused, t.surface), greaterThanOrEqualTo(3.0));
+        // Pressed alone keeps the control outline.
+        expect(side.resolve({WidgetState.pressed})!.color, t.control);
+      },
+    );
+
+    test(
+      'an unticked checkbox is outlined in the control colour in the $theme theme',
+      () {
+        final themeData = theme == 'light' ? fsLightTheme() : fsDarkTheme();
+        expect(themeData.checkboxTheme.side!.color, t.control);
+      },
+    );
+
+    // FsCard(accent: true) fades the accent from 0.16 at its top-left corner
+    // to 0.03, over the page or a card. Secondary text there takes text2.
+    test(
+      'text2 reads at 4.5:1 on the strongest accent tint in the $theme theme',
+      () {
+        for (final (name, under) in [('page', t.bg), ('card', t.surface)]) {
+          final tint = Color.alphaBlend(
+            t.accent.withValues(alpha: 0.16),
+            under,
+          );
+          expect(
+            _contrast(t.text2, tint),
+            greaterThanOrEqualTo(4.5),
+            reason: 'text2 on the tint over the $name background',
+          );
+        }
+      },
+    );
   }
 
   test('the brand green stays as it is; only its text form darkens', () {

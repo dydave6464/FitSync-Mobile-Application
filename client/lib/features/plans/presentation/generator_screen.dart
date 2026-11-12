@@ -9,6 +9,8 @@ import '../../exercises/presentation/exercise_list_screen.dart'
 import '../../onboarding/presentation/generating_view.dart';
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
+import '../../sessions/presentation/providers.dart' show activeSessionProvider;
+import '../../sessions/presentation/session_logger_screen.dart';
 import '../domain/split_style.dart';
 import '../domain/week_description.dart';
 import '../domain/workout_plan.dart';
@@ -17,6 +19,11 @@ import 'widgets/training_days_row.dart';
 
 const _defaultSplit = 'full_body';
 const _defaultDays = 3;
+
+/// Why Generate is off while a workout runs: the note above the button, and
+/// the button's own hint.
+const _inProgressNote =
+    'You have a workout in progress. Finish or discard it first.';
 
 class GeneratorScreen extends ConsumerStatefulWidget {
   const GeneratorScreen({super.key});
@@ -30,6 +37,10 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   int? _daysPerWeek;
   bool _busy = false;
   int? _savingWeekday;
+
+  /// The weekday whose write last landed, read out as "Saved" on its cell.
+  /// Cleared when the next tap starts, and never set by a failed write.
+  int? _savedWeekday;
 
   /// True once /regenerate has answered. Separate from [_busy], which flips
   /// before anything has been asked for: the building screen's last row
@@ -46,9 +57,13 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   /// day looking chosen.
   Future<void> _setTrainingDays(List<int> next, int tapped) async {
     final messenger = ScaffoldMessenger.of(context);
-    setState(() => _savingWeekday = tapped);
+    setState(() {
+      _savingWeekday = tapped;
+      _savedWeekday = null;
+    });
     try {
       await ref.read(profileProvider.notifier).setTrainingDays(next);
+      if (mounted) setState(() => _savedWeekday = tapped);
     } catch (error) {
       if (!mounted) return;
       messenger.showSnackBar(
@@ -132,10 +147,33 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
       );
       if (mounted) navigator.pop();
     } on ApiException catch (error) {
+      if (error.code == 'SESSION_IN_PROGRESS') {
+        // The screen thought nothing was open: its read was stale, or another
+        // phone started a workout. Reloading it brings the in-progress note,
+        // the held Generate and Resume back in place; the snack's own Resume
+        // is the way in even if that reload fails.
+        container.invalidate(activeSessionProvider);
+        if (!mounted) return;
+        setState(() => _busy = false);
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(userMessage(error)),
+            action: SnackBarAction(
+              label: 'Resume',
+              onPressed: () => navigator.push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const SessionLoggerScreen(resume: true),
+                ),
+              ),
+            ),
+          ),
+        );
+        return;
+      }
       if (error.code != 'CUSTOM_PLAN_WOULD_BE_LOST') {
         if (!mounted) return;
         setState(() => _busy = false);
-        messenger.showSnackBar(SnackBar(content: Text(error.message)));
+        messenger.showSnackBar(SnackBar(content: Text(userMessage(error))));
         return;
       }
       // Reset before the dialog, not after: nothing has actually started
@@ -175,12 +213,7 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
         // request inline, so the confirmed attempt gets the identical busy
         // state and hold as the first -- there is exactly one place that
         // logic lives.
-        await _generate(
-          split,
-          days,
-          trainingDays,
-          replaceCustomPlan: true,
-        );
+        await _generate(split, days, trainingDays, replaceCustomPlan: true);
       }
     } catch (_) {
       if (!mounted) return;
@@ -221,15 +254,8 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   /// a count only when there are none, because a count is then all there is
   /// to say.
   static String _describeChoice(String split, List<int> days, int count) {
-    final label = splitStyles
-        .firstWhere(
-          (s) => s.value == split,
-          orElse: () => (value: split, label: describeSplit(split)),
-        )
-        .label;
-    if (days.isEmpty) {
-      return '$label, $count day${count == 1 ? '' : 's'} a week';
-    }
+    final label = splitLabel(split);
+    if (days.isEmpty) return '$label, ${daysAWeek(count)}';
     const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     return '$label, ${(days.toList()..sort()).map((d) => names[d - 1]).join(' · ')}';
   }
@@ -309,28 +335,11 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
             )
           : asyncPlan.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        "Couldn't load your current plan.",
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 6),
-                      Text(describeError(error), textAlign: TextAlign.center),
-                      const SizedBox(height: 12),
-                      FsButton(
-                        label: 'Retry',
-                        small: true,
-                        kind: FsButtonKind.secondary,
-                        onPressed: () => ref.invalidate(activePlanProvider),
-                      ),
-                    ],
-                  ),
-                ),
+              error: (error, _) => FsRetry(
+                fullScreen: true,
+                message:
+                    "Couldn't load your current plan. ${userMessage(error)}",
+                onRetry: () => ref.invalidate(activePlanProvider),
               ),
               data: (plan) => _buildControls(context, plan, avoiding),
             ),
@@ -364,6 +373,14 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
     // catalogue it would state that nothing the user typed matched.
     final asyncOptions = ref.watch(injuryOptionsProvider);
     final options = asyncOptions.value ?? const <InjuryOption>[];
+
+    // The server refuses a new plan while a workout is under way
+    // (SESSION_IN_PROGRESS). Known here already, so it is said before
+    // Generate rather than after the building screen has come and gone.
+    // Only a session that has loaded counts: while the lookup is pending or
+    // has failed, Generate stays offered and the server's refusal still
+    // stands behind it.
+    final inProgress = ref.watch(activeSessionProvider).value != null;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
@@ -413,6 +430,7 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
                   FsChip(
                     label: s.label,
                     selected: s.value == split,
+                    exclusive: true,
                     onTap: () => setState(() => _splitStyle = s.value),
                   ),
               ],
@@ -425,6 +443,7 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
         TrainingDaysRow(
           selected: trainingDays,
           busyWeekday: _savingWeekday,
+          savedWeekday: _savedWeekday,
           enabled: daysKnown,
           onChanged: (next) {
             // The tapped day is the one that differs between the two sets.
@@ -441,20 +460,31 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
             _setTrainingDays(next, changed.first);
           },
         ),
-        if (!daysKnown) ...[
+        // The split chips wait for Generate; these do not. Said where it
+        // happens, so backing out without generating surprises nobody.
+        if (daysKnown) ...[
           const SizedBox(height: 8),
           Text(
-            asyncProfile.hasError
-                ? "Couldn't load your training days, so they can't be changed "
-                      'here. ${describeError(asyncProfile.error!)}'
-                : 'Loading your training days…',
-            key: const Key('gen.trainingDays.unavailable'),
-            style: TextStyle(
-              fontSize: 12,
-              color: asyncProfile.hasError ? t.red : t.text3,
-              height: 1.35,
-            ),
+            'Saved to your schedule as you tap. Used by reminders and the '
+            'calendar.',
+            key: const Key('gen.trainingDays.saved'),
+            style: TextStyle(fontSize: 12, color: t.text3, height: 1.35),
           ),
+        ],
+        if (!daysKnown) ...[
+          const SizedBox(height: 8),
+          if (asyncProfile.hasError)
+            FsErrorLine(
+              "Couldn't load your training days, so they can't be changed "
+              'here. ${describeError(asyncProfile.error!)}',
+              key: const Key('gen.trainingDays.unavailable'),
+            )
+          else
+            Text(
+              'Loading your training days…',
+              key: const Key('gen.trainingDays.unavailable'),
+              style: TextStyle(fontSize: 12, color: t.text3, height: 1.35),
+            ),
         ],
         // Session length is deliberately not shown. The service derives it
         // from goal, fitness level and health check, so it is neither chosen
@@ -485,17 +515,47 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
         ],
         const SizedBox(height: 22),
         Text(
-          'Generating replaces your current plan.',
-          style: TextStyle(fontSize: 12, color: t.text3, height: 1.4),
+          inProgress
+              ? _inProgressNote
+              : 'Generating replaces your current plan.',
+          style: TextStyle(
+            fontSize: 12,
+            color: inProgress ? t.text2 : t.text3,
+            height: 1.4,
+          ),
         ),
         const SizedBox(height: 18),
-        FsButton(
-          key: const Key('gen.generate'),
-          label: 'Generate plan',
-          // No in-button spinner: `_busy` takes the whole body over with the
-          // building screen, so this button is not on screen to spin.
-          onPressed: () => _generate(split, days, trainingDays),
+        // While a workout runs, the dimmed button says why as its hint, so a
+        // screen reader hears the reason on the button and not only in the
+        // note a swipe before it. Merged so the hint lands on the button's
+        // own node rather than splitting off one of its own.
+        MergeSemantics(
+          child: Semantics(
+            hint: inProgress ? _inProgressNote : null,
+            child: FsButton(
+              key: const Key('gen.generate'),
+              label: 'Generate plan',
+              // No in-button spinner: `_busy` takes the whole body over with
+              // the building screen, so this button is not on screen to spin.
+              onPressed: inProgress
+                  ? null
+                  : () => _generate(split, days, trainingDays),
+            ),
+          ),
         ),
+        if (inProgress) ...[
+          const SizedBox(height: 10),
+          FsButton(
+            key: const Key('gen.resume'),
+            label: 'Resume workout',
+            kind: FsButtonKind.secondary,
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const SessionLoggerScreen(resume: true),
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -655,16 +715,21 @@ class _DescribeCardState extends ConsumerState<_DescribeCard> {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
+                  // Actions, not choices: as the prototype's sm chips, off,
+                  // and announced with no selected state. Apply used to be
+                  // drawn and read as permanently "selected".
                   FsChip(
                     key: const Key('gen.describe.apply'),
                     label: 'Apply',
-                    selected: true,
+                    selected: false,
+                    toggle: false,
                     onTap: _apply,
                   ),
                   FsChip(
                     key: const Key('gen.describe.fromProfile'),
                     label: 'From profile',
                     selected: false,
+                    toggle: false,
                     onTap: () => setState(() {
                       _controller.text = widget.composed;
                       _applied = null;
@@ -715,10 +780,9 @@ class _DescribeCardState extends ConsumerState<_DescribeCard> {
           Padding(
             key: const Key('gen.describe.catalogueError'),
             padding: const EdgeInsets.only(bottom: 6),
-            child: Text(
+            child: const FsErrorLine(
               "Couldn't check that against your injuries. Anything you wrote "
               'about them has been left alone.',
-              style: note.copyWith(color: t.red),
             ),
           ),
 

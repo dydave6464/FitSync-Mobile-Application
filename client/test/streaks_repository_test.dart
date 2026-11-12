@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:fitsync/core/api_client.dart';
 import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/features/streaks/data/streaks_repository.dart';
+import 'package:fitsync/features/streaks/domain/streaks.dart';
 
 ApiClient _api(MockClient client) => ApiClient(
   baseUrl: 'http://test.local',
@@ -156,4 +157,64 @@ void main() {
       expect(seen, ['POST /api/v1/goals', 'DELETE /api/v1/goals/9']);
     },
   );
+
+  test('changeTarget() patches the goal in kilograms and parses it', () async {
+    final seen = <String>[];
+    final repo = GoalsRepository(
+      _api(
+        MockClient((request) async {
+          seen.add('${request.method} ${request.url.path}');
+          expect(jsonDecode(request.body), {'targetKg': 100.0});
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'goal': {
+                  'goalId': 7,
+                  'exerciseId': 3,
+                  'exerciseName': 'Bench Press',
+                  'targetKg': 100,
+                  'bestKg': 52.5,
+                  'reachedOn': null,
+                },
+              },
+            }),
+            200,
+          );
+        }),
+      ),
+    );
+
+    final goal = await repo.changeTarget(goalId: 7, targetKg: 100.0);
+
+    expect(seen, ['PATCH /api/v1/goals/7']);
+    expect(goal.goalId, 7);
+    expect(goal.targetKg, 100.0);
+    expect(goal.bestKg, 52.5);
+  });
+
+  group('GoalOption.fromJson', () {
+    test('reads hasOpenGoal and goalId', () {
+      final o = GoalOption.fromJson({
+        'exerciseId': 3,
+        'name': 'Bench Press',
+        'bestKg': 42.5,
+        'sets': 4,
+        'hasOpenGoal': true,
+        'goalId': 11,
+      });
+      expect(o.hasOpenGoal, isTrue);
+      expect(o.goalId, 11);
+    });
+
+    test('an older server without them means no open goal', () {
+      final o = GoalOption.fromJson({
+        'exerciseId': 3,
+        'name': 'Bench Press',
+        'bestKg': 42.5,
+        'sets': 4,
+      });
+      expect(o.hasOpenGoal, isFalse);
+      expect(o.goalId, isNull);
+    });
+  });
 }

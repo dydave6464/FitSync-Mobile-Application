@@ -41,6 +41,19 @@ class GoalsRepository {
         as Map<String, dynamic>,
   );
 
+  /// A new target for an unreached goal, [targetKg] in kilograms. The
+  /// server refuses a reached goal (GOAL_REACHED) and a target at or below
+  /// the best (GOAL_ALREADY_MET).
+  Future<LiftGoal> changeTarget({
+    required int goalId,
+    required double targetKg,
+  }) async => LiftGoal.fromJson(
+    (await _api.patchJson('/api/v1/goals/$goalId', {
+          'targetKg': targetKg,
+        }))['goal']
+        as Map<String, dynamic>,
+  );
+
   Future<void> remove(int goalId) async {
     await _api.deleteJson('/api/v1/goals/$goalId');
   }

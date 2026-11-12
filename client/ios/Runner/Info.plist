@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Fitsync</string>
+	<string>FitSync</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -78,6 +78,21 @@
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>GIDClientID</key>
+	<string>734437290988-f71o72a4m6cgcgn45u1otr69rrfltea9.apps.googleusercontent.com</string>
+	<key>GIDServerClientID</key>
+	<string>734437290988-linajing79gvf62eq1v8i0i9st1e1mt7.apps.googleusercontent.com</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.734437290988-f71o72a4m6cgcgn45u1otr69rrfltea9</string>
+			</array>
+		</dict>
 	</array>
 </dict>
 </plist>

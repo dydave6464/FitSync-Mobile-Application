@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/app_settings.dart';
 import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
 import '../../../pro/presentation/pro_screen.dart';
@@ -12,59 +13,80 @@ import 'meal_photo_screen.dart';
 import 'providers.dart';
 
 /// Snap a meal from either door. A free account sees the Pro screen; a Pro
-/// one picks camera or library, then the photo screen. True once a meal was
-/// logged (Log food then closes as well).
+/// one picks camera or library, then the photo screen -- or reopens today's
+/// unlogged photo, straight to its list. True once a meal was
+/// logged (Log food then closes as well). A null [mealType] opens the
+/// confirm list with no meal picked.
 Future<bool> startSnapMeal(
   BuildContext context,
   WidgetRef ref, {
-  required String mealType,
+  required String? mealType,
   String? date,
-  required void Function(BuildContext context, String mealType) onSearchInstead,
+  required void Function(BuildContext context, String? mealType) onSearchInstead,
 }) async {
   final messenger = ScaffoldMessenger.of(context);
   bool pro;
   try {
     pro = (await ref.read(profileProvider.future)).isPremium;
   } catch (_) {
-    // No profile to go by: the server would refuse anyway (403).
-    pro = false;
+    // No profile to go by (offline, a timeout): let the server decide. A
+    // free account's photo is refused with PRO_REQUIRED, which the photo
+    // screen turns into the Pro screen; a Pro one is not sent to the
+    // purchase page as if it had lost Pro.
+    pro = true;
   }
   if (!context.mounted) return false;
   if (!pro) {
     await openProScreen(context);
     return false;
   }
-  final captured = await _capture(context, ref, messenger);
-  if (captured == null || !context.mounted) return false;
-  final logged = await Navigator.of(context).push<bool>(MaterialPageRoute(
-    builder: (_) => MealPhotoScreen(
-      photo: captured.photo,
-      source: captured.source,
-      mealType: mealType,
-      date: date,
-      onSearchInstead: onSearchInstead,
-    ),
-  ));
+  // Asked now and not waited for: the sheet opens at once and adds the
+  // answer when it comes. A failure only means the sheet adds nothing.
+  final today = ref.read(mealPhotoRepositoryProvider).today();
+  final choice = await showCaptureChoiceSheet(context, today: today);
+  if (choice == null || !context.mounted) return false;
+  final Widget screen;
+  switch (choice) {
+    case CaptureResume(:final recognition):
+      screen = MealPhotoScreen.resume(
+        recognition: recognition,
+        mealType: mealType,
+        date: date,
+        onSearchInstead: onSearchInstead,
+      );
+    case CapturePhoto(:final source):
+      final captured = await _capture(context, ref, messenger, source);
+      if (captured == null || !context.mounted) return false;
+      screen = MealPhotoScreen(
+        photo: captured.photo,
+        source: captured.source,
+        mealType: mealType,
+        date: date,
+        onSearchInstead: onSearchInstead,
+      );
+  }
+  final logged = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => screen));
   return logged == true;
 }
 
-/// Camera or library. A refused camera offers Settings or the library; a
-/// photo that isn't a JPEG or PNG, or a picker failure, says so. Null when
-/// the user backed out or nothing usable came back.
+/// The photo from [first], the camera or the library. A refused camera
+/// offers Settings or the library; a photo that isn't a JPEG or PNG, or a
+/// picker failure, says so. Null when the user backed out or nothing usable
+/// came back.
 Future<({PickedPhoto photo, PhotoSource source})?> _capture(
   BuildContext context,
   WidgetRef ref,
   ScaffoldMessengerState messenger,
+  PhotoSource first,
 ) async {
-  var source = await showCaptureChoiceSheet(context);
-  if (source == null || !context.mounted) return null;
+  var source = first;
   final picker = ref.read(mealPhotoPickerProvider);
   final openSettings = ref.read(appSettingsOpenerProvider);
   // At most twice: the camera, then -- if it was refused -- the library,
   // which never raises CameraAccessDenied.
   while (true) {
     try {
-      final photo = await picker.pick(source!);
+      final photo = await picker.pick(source);
       return photo == null ? null : (photo: photo, source: source);
     } on CameraAccessDenied {
       if (!context.mounted) return null;
@@ -91,44 +113,50 @@ class SnapMealCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
-    return FsCard(
-      key: const Key('snap.card'),
-      small: true,
-      accent: true,
-      onTap: onTap,
-      child: Row(
-        children: [
-          ExcludeSemantics(
-            child: Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(color: t.accent, borderRadius: BorderRadius.circular(FsRadius.sm)),
-              child: Icon(Icons.photo_camera_outlined, size: 20, color: t.onAccent),
+    // Faded like a disabled FsButton while the tab is busy, as the
+    // suggestion rows below it are.
+    return AnimatedOpacity(
+      opacity: onTap == null ? fsDisabledOpacity : 1,
+      duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 150),
+      child: FsCard(
+        key: const Key('snap.card'),
+        small: true,
+        accent: true,
+        onTap: onTap,
+        child: Row(
+          children: [
+            ExcludeSemantics(
+              child: Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(color: t.accent, borderRadius: BorderRadius.circular(FsRadius.sm)),
+                child: Icon(Icons.photo_camera_outlined, size: 20, color: t.onAccent),
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // The tag drops under the title at large text rather than
-                // squeezing it.
-                Wrap(
-                  spacing: 7,
-                  runSpacing: 4,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    Text('Snap a meal', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: t.text)),
-                    const FsTag('Pro'),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text('AI suggests the food — you confirm & log.', style: TextStyle(fontSize: 12, color: t.text2)),
-              ],
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // The tag drops under the title at large text rather than
+                  // squeezing it.
+                  Wrap(
+                    spacing: 7,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text('Snap a meal', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: t.text)),
+                      const FsTag('Pro'),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text('AI suggests the food — you confirm & log.', style: TextStyle(fontSize: 12, color: t.text2)),
+                ],
+              ),
             ),
-          ),
-          ExcludeSemantics(child: Icon(Icons.chevron_right, size: 18, color: t.accentText)),
-        ],
+            ExcludeSemantics(child: Icon(Icons.chevron_right, size: 18, color: t.accentText)),
+          ],
+        ),
       ),
     );
   }

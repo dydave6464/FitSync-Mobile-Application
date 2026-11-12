@@ -9,6 +9,7 @@ const { buildTestApp } = require('./helpers/test-app');
 const { markEmailVerified } = require('../src/db/users');
 const { createPaymentsService } = require('../src/services/payments');
 const { PaymentsError } = require('../src/services/payments/errors');
+const { PLANS } = require('../src/lib/pro-plans');
 
 test('/api/v1/pro', async (t) => {
   const pool = createPool(testDbConfig());
@@ -56,7 +57,31 @@ test('/api/v1/pro', async (t) => {
     assert.deepEqual(res.body.data, {
       pro: false, source: null, until: null, plan: null, method: null, endsSoon: false,
       prices: { monthly: 249, annual: 1788 },
+      plans: { monthly: { pricePhp: 249, months: 1 }, annual: { pricePhp: 1788, months: 12 } },
+      renews: false,
+      nextPeriodStartsAt: null,
     });
+  });
+
+  // The app reads each plan's terms instead of inferring them; PayMongo's
+  // line-item name stays on the server.
+  await t.test('the plans are the server plans without their PayMongo name', async () => {
+    const u = await freshUser();
+    const { plans } = (await u.status().expect(200)).body.data;
+    const expected = Object.fromEntries(
+      Object.entries(PLANS).map(([key, { name, ...terms }]) => [key, terms]),
+    );
+    assert.deepEqual(plans, expected);
+    for (const terms of Object.values(plans)) assert.equal(Object.hasOwn(terms, 'name'), false);
+  });
+
+  await t.test('a user granted Pro with no paid period has no next period start', async () => {
+    const u = await freshUser();
+    await pool.query('UPDATE users SET is_premium = 1 WHERE user_id = ?', [u.userId]);
+    const res = await u.status().expect(200);
+    assert.equal(res.body.data.source, 'granted');
+    assert.equal(res.body.data.nextPeriodStartsAt, null);
+    assert.equal(res.body.data.renews, false);
   });
 
   await t.test('checkout refuses an unknown plan', async () => {
@@ -131,6 +156,20 @@ test('/api/v1/pro', async (t) => {
 
     await u.confirm(paymentId).expect(200);
     assert.equal((await subsOf(u.userId)).length, 1, 'confirming again adds nothing');
+  });
+
+  await t.test('after a paid month, a payment now would start when it ends', async () => {
+    const u = await freshUser();
+    const { paymentId, checkoutUrl } = (await u.checkout({ plan: 'monthly' }).expect(201)).body.data;
+    await stubClick(checkoutUrl, 'authorize').expect(303);
+    const confirmed = (await u.confirm(paymentId).expect(200)).body.data.pro;
+    assert.deepEqual(confirmed.plans, { monthly: { pricePhp: 249, months: 1 }, annual: { pricePhp: 1788, months: 12 } });
+    assert.equal(confirmed.renews, false);
+    assert.equal(confirmed.nextPeriodStartsAt, confirmed.until);
+
+    const status = (await u.status().expect(200)).body.data;
+    assert.ok(status.until, 'a paid period has an end');
+    assert.equal(status.nextPeriodStartsAt, status.until);
   });
 
   await t.test('paying for a year early extends from the current end date', async () => {

@@ -26,12 +26,14 @@ function renderPage({ title, body }) {
   main { background: #fff; border-radius: 8px; padding: 32px; max-width: 420px;
          width: 100%; box-shadow: 0 1px 3px rgba(0,0,0,0.1); box-sizing: border-box; }
   h1 { font-size: 1.25rem; margin: 0 0 16px; }
-  p { color: #333; line-height: 1.5; }
+  p, ul { color: #333; line-height: 1.5; }
   label { display: block; font-size: 0.875rem; color: #333; margin-bottom: 4px; }
   input { display: block; width: 100%; box-sizing: border-box; padding: 8px;
           margin: 0 0 16px; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem; }
   button { background: #2563eb; color: #fff; border: none; padding: 10px 16px;
            border-radius: 4px; cursor: pointer; font-size: 1rem; }
+  input, button { min-height: 48px; }
+  button.danger { background: #b91c1c; }
 </style>
 </head>
 <body>

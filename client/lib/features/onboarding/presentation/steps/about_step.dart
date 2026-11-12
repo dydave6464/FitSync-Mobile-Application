@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show SemanticsService;
 
 import '../../../../core/theme.dart';
 import '../../../../core/units.dart';
@@ -31,6 +32,61 @@ class AboutAnswers {
   final String? activityLevel;
 }
 
+/// Heights and body weights a person can plausibly have. Outside them a
+/// typed number is far more likely a slip -- 17 for 170 -- than a fact, and
+/// it would drive the plan and the calorie target. Soft limits: the step
+/// asks once, and a second Continue keeps the number. The server refuses
+/// heights outside 50-275 cm and weights outside 20-500 kg, so these must
+/// stay inside those, or the second Continue would be refused.
+const heightRangeCm = (min: 100.0, max: 250.0);
+const weightRangeKg = (min: 25.0, max: 300.0);
+
+/// The answers on this step that look like typos, by API field name, each
+/// with what to say under its card. Weights are worded in [unit], the one the
+/// user typed in.
+Map<String, String> aboutRangeProblems(AboutAnswers value, WeightUnit unit) {
+  String number(double n) =>
+      n == n.roundToDouble() ? n.toStringAsFixed(0) : n.toString();
+
+  String? query(
+    double? measured,
+    String name,
+    ({double min, double max}) range, {
+    WeightUnit? weightUnit,
+  }) {
+    if (measured == null || (measured >= range.min && measured <= range.max)) {
+      return null;
+    }
+    final shown = weightUnit == null
+        ? '${number(measured)} cm'
+        : formatWeightWithUnit(measured, weightUnit);
+    final min = weightUnit == null
+        ? number(range.min)
+        : convertFromKg(range.min, weightUnit).round().toString();
+    final max = weightUnit == null
+        ? number(range.max)
+        : convertFromKg(range.max, weightUnit).round().toString();
+    final suffix = weightUnit?.api ?? 'cm';
+    return 'Check this: $shown? $name is usually $min–$max $suffix.';
+  }
+
+  return {
+    'heightCm': ?query(value.heightCm, 'Height', heightRangeCm),
+    'weightKg': ?query(
+      value.weightKg,
+      'Weight',
+      weightRangeKg,
+      weightUnit: unit,
+    ),
+    'goalWeightKg': ?query(
+      value.goalWeightKg,
+      'Goal weight',
+      weightRangeKg,
+      weightUnit: unit,
+    ),
+  };
+}
+
 /// The two `sex` values the design offers.
 ///
 /// The schema also has `prefer_not_to_say`, and profiles answered under the
@@ -52,6 +108,24 @@ const _activityLevels = <({String value, String label})>[
   (value: 'active', label: 'Active'),
   (value: 'very_active', label: 'Very active'),
 ];
+
+/// What each activity level means, in a usual week rather than a
+/// multiplier: the five steps run from 1.2 to 1.9 times the resting burn
+/// (daily_targets.dart), the biggest swing in the estimate below, so the
+/// choice should not be a guess. The same pattern as the Level step's hint.
+String _activityHint(String? level) => switch (level) {
+  'sedentary' => 'Mostly sitting, with little or no exercise.',
+  'light' => 'On your feet some of the day, or 1 to 3 workouts a week.',
+  'moderate' => '3 to 5 workouts a week, or a job that keeps you moving.',
+  'active' => '6 or 7 workouts a week, or a physical job.',
+  'very_active' => 'Hard training most days, or a very physical job.',
+  _ => 'Pick the one closest to a usual week, work included.',
+};
+
+/// The youngest age the date picker offers. The calorie estimate uses an
+/// adult equation (Mifflin-St Jeor), and a birthday this year or last is a
+/// slip, not a user.
+const _minimumAge = 13;
 
 const _months = <String>[
   'January',
@@ -100,6 +174,9 @@ String _grouped(int value) {
 ///
 /// Like [GoalStep], it reads no providers and saves nothing.
 class AboutStep extends StatefulWidget {
+  /// The step's heading, also said when onboarding moves to it.
+  static const title = 'A bit about you';
+
   const AboutStep({
     super.key,
     required this.value,
@@ -107,9 +184,22 @@ class AboutStep extends StatefulWidget {
     this.unit = WeightUnit.kg,
     this.onUnitChanged,
     required this.goals,
+    this.fieldErrors = const {},
+    this.mainGoal,
   });
 
+  /// The main goal from step 1, which moves the estimate below the way the
+  /// food log's own target moves (-500 kcal to lose weight, +250 to build
+  /// muscle), so the two screens show one number. Null is maintenance.
+  final String? mainGoal;
+
   final AboutAnswers value;
+
+  /// What to say under an answer that needs checking, by API field name
+  /// (`heightCm`, `weightKg`, ...): a typo [aboutRangeProblems] caught, or a
+  /// value the server turned down. Shown right under that answer's card, so
+  /// the user does not have to guess which of six to fix.
+  final Map<String, String> fieldErrors;
   final ValueChanged<AboutAnswers> onChanged;
 
   /// The goals step 1 collected, or the saved ones in Settings. Goal weight
@@ -170,18 +260,33 @@ class _AboutStepState extends State<AboutStep> {
   /// Carries whatever is already typed across a unit change, so a number does
   /// not silently start meaning something else. See SetRow's own
   /// didUpdateWidget -- same hazard, same resolution.
+  ///
+  /// The listeners are off while the fields are rewritten: this runs inside
+  /// the owner's rebuild, where reporting upwards would have the owner ask
+  /// for a rebuild mid-build. The rounded figure now shown is reported once
+  /// the frame is done, and the build that follows this redraws the step.
   @override
   void didUpdateWidget(AboutStep oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.unit == widget.unit) return;
+    var rewritten = false;
     for (final controller in [_weight, _goalWeight]) {
       final kg = parseWeight(controller.text, oldWidget.unit);
       if (kg == null) continue;
       final converted = formatWeight(kg, widget.unit);
-      controller.value = TextEditingValue(
-        text: converted,
-        selection: TextSelection.collapsed(offset: converted.length),
-      );
+      controller
+        ..removeListener(_onNumberChanged)
+        ..value = TextEditingValue(
+          text: converted,
+          selection: TextSelection.collapsed(offset: converted.length),
+        )
+        ..addListener(_onNumberChanged);
+      rewritten = true;
+    }
+    if (rewritten) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _emit();
+      });
     }
   }
 
@@ -236,15 +341,22 @@ class _AboutStepState extends State<AboutStep> {
 
   Future<void> _pickDate() async {
     final now = DateTime.now();
-    final initial = _dateOfBirth == null
+    final last = DateTime(now.year - _minimumAge, now.month, now.day);
+    var initial = _dateOfBirth == null
         ? DateTime(now.year - 25)
         : DateTime.tryParse(_dateOfBirth!) ?? DateTime(now.year - 25);
+    // A date saved before the limit existed must still open the picker,
+    // which refuses an initial date past its last one.
+    if (initial.isAfter(last)) initial = last;
 
     final picked = await showDatePicker(
       context: context,
       initialDate: initial,
       firstDate: DateTime(now.year - 100),
-      lastDate: now,
+      lastDate: last,
+      // A birth year is decades back: start on the years rather than make
+      // the user page back month by month.
+      initialDatePickerMode: DatePickerMode.year,
     );
     if (picked == null) return;
 
@@ -268,8 +380,9 @@ class _AboutStepState extends State<AboutStep> {
   static double _weightCardMinWidth(TextScaler scaler) =>
       64 + 52 * scaler.scale(12) / 12;
 
+  /// A number card for [field], its API name, which also keys its editable.
   Widget _statField(
-    Key key,
+    String field,
     TextEditingController controller,
     String label,
     String unit, {
@@ -277,14 +390,28 @@ class _AboutStepState extends State<AboutStep> {
     Widget? unitControl,
     FocusNode? focusNode,
   }) => FsStatField(
-    fieldKey: key,
+    fieldKey: Key(field),
     label: label,
     unit: unit,
     controller: controller,
     accent: accent,
     unitControl: unitControl,
     focusNode: focusNode,
+    // The card is marked as well as the message under it, so the answer
+    // that needs checking stands out among six.
+    error: widget.fieldErrors.containsKey(field),
   );
+
+  /// [AboutStep.fieldErrors]'s message for [field], under the answer it is
+  /// about; nothing when that answer is fine.
+  List<Widget> _errorFor(String field) {
+    final message = widget.fieldErrors[field];
+    if (message == null) return const [];
+    return [
+      const SizedBox(height: 8),
+      FsErrorLine(message, key: Key('error.$field')),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -298,13 +425,19 @@ class _AboutStepState extends State<AboutStep> {
       heightCm: _parse(_height.text),
       weightKg: _parseKg(_weight.text),
       activityLevel: _activityLevel,
+      mainGoal: widget.mainGoal,
     );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text('A bit about you', style: theme.textTheme.headlineSmall),
+        // A heading, so a screen reader can jump to it and hears it as the
+        // title of the step.
+        Semantics(
+          header: true,
+          child: Text(AboutStep.title, style: theme.textTheme.headlineSmall),
+        ),
         const SizedBox(height: 8),
         Text(
           'Powers your calorie targets, recovery and progress tracking.',
@@ -321,43 +454,57 @@ class _AboutStepState extends State<AboutStep> {
             _emit();
           },
         ),
+        ..._errorFor('sex'),
         const SizedBox(height: 18),
-        const FsEyebrow('Date of birth'),
+        // Said by the card below, as its name, rather than as a node of
+        // its own that touch exploration finds apart from the button.
+        const ExcludeSemantics(child: FsEyebrow('Date of birth')),
         const SizedBox(height: 10),
         FsCard(
           key: const Key('dateOfBirth'),
           small: true,
           onTap: _pickDate,
-          child: Row(
-            children: [
-              const FsIconTile(icon: Icons.calendar_today_outlined, size: 38),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  _readableDate(_dateOfBirth) ?? 'Not set',
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w600,
-                    color: _dateOfBirth == null ? t.text3 : t.text,
+          // Named for what it sets: on its own the date (or 'Not set') says
+          // nothing about what the button is for.
+          child: Semantics(
+            label: 'Date of birth',
+            value: switch (_readableDate(_dateOfBirth)) {
+              null => 'Not set',
+              final date when age != null => '$date, $age years old',
+              final date => date,
+            },
+            hint: 'Opens a date picker',
+            excludeSemantics: true,
+            child: Row(
+              children: [
+                const FsIconTile(icon: Icons.calendar_today_outlined, size: 38),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    _readableDate(_dateOfBirth) ?? 'Not set',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: _dateOfBirth == null ? t.text3 : t.text,
+                    ),
                   ),
                 ),
-              ),
-              if (age != null) ...[FsTag('$age yrs'), const SizedBox(width: 8)],
-              Icon(Icons.chevron_right, size: 16, color: t.text3),
-            ],
+                if (age != null) ...[
+                  FsTag('$age yrs'),
+                  const SizedBox(width: 8),
+                ],
+                Icon(Icons.chevron_right, size: 16, color: t.text3),
+              ],
+            ),
           ),
         ),
+        ..._errorFor('dateOfBirth'),
         const SizedBox(height: 14),
         LayoutBuilder(
           builder: (context, constraints) {
-            final height = _statField(
-              const Key('heightCm'),
-              _height,
-              'Height',
-              'cm',
-            );
+            final height = _statField('heightCm', _height, 'Height', 'cm');
             final weight = _statField(
-              const Key('weightKg'),
+              'weightKg',
               _weight,
               'Weight',
               widget.unit.api,
@@ -370,19 +517,34 @@ class _AboutStepState extends State<AboutStep> {
               ),
             );
 
+            // Stacked, each message goes under its own card; side by side,
+            // both go under the pair.
             if ((constraints.maxWidth - _pairGap) / 2 <
                 _weightCardMinWidth(MediaQuery.textScalerOf(context))) {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [height, const SizedBox(height: 10), weight],
+                children: [
+                  height,
+                  ..._errorFor('heightCm'),
+                  const SizedBox(height: 10),
+                  weight,
+                  ..._errorFor('weightKg'),
+                ],
               );
             }
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(child: height),
-                const SizedBox(width: _pairGap),
-                Expanded(child: weight),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: height),
+                    const SizedBox(width: _pairGap),
+                    Expanded(child: weight),
+                  ],
+                ),
+                ..._errorFor('heightCm'),
+                ..._errorFor('weightKg'),
               ],
             );
           },
@@ -390,7 +552,7 @@ class _AboutStepState extends State<AboutStep> {
         const SizedBox(height: 10),
         if (_showGoalWeight) ...[
           _statField(
-            const Key('goalWeightKg'),
+            'goalWeightKg',
             _goalWeight,
             'Goal weight',
             widget.unit.api,
@@ -398,6 +560,7 @@ class _AboutStepState extends State<AboutStep> {
             accent: widget.goals.contains('lose_weight'),
             focusNode: _goalWeightFocus,
           ),
+          ..._errorFor('goalWeightKg'),
           const SizedBox(height: 6),
           Text(
             'Optional. Shows as your target line on the weight chart.',
@@ -442,15 +605,32 @@ class _AboutStepState extends State<AboutStep> {
                     key: Key('activity.${option.value}'),
                     label: option.label,
                     selected: _activityLevel == option.value,
+                    exclusive: true,
                     onTap: () {
+                      final changed = _activityLevel != option.value;
                       setState(() => _activityLevel = option.value);
                       _emit();
+                      // Focus stays on the chip, so the explanation that just
+                      // changed below it is read out.
+                      if (changed) {
+                        SemanticsService.sendAnnouncement(
+                          View.of(context),
+                          _activityHint(option.value),
+                          Directionality.of(context),
+                        );
+                      }
                     },
                   ),
               ],
             ),
           ),
         ),
+        Text(
+          _activityHint(_activityLevel),
+          key: const Key('activity.hint'),
+          style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.4),
+        ),
+        ..._errorFor('activityLevel'),
         // Absent until every term of the equation is answered — the same rule
         // `estimateSessionKcal` follows for an unknown body weight. A card
         // that filled its gaps with population averages would show a

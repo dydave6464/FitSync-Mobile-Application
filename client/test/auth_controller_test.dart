@@ -7,10 +7,16 @@ import 'package:fitsync/features/activity/data/activity_repository.dart';
 import 'package:fitsync/features/activity/data/step_permission.dart';
 import 'package:fitsync/features/activity/domain/activity.dart';
 import 'package:fitsync/features/activity/presentation/providers.dart';
+import 'package:fitsync/features/admin/data/admin_repository.dart';
+import 'package:fitsync/features/admin/domain/admin_user.dart';
+import 'package:fitsync/features/admin/presentation/providers.dart';
 import 'package:fitsync/features/auth/data/auth_repository.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
+import 'package:fitsync/features/auth/domain/sign_in_outcome.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/home/presentation/plan_ready.dart';
+import 'package:fitsync/features/nutrition/presentation/providers.dart'
+    show mealSuggestionsProvider, nutritionRepositoryProvider;
 import 'package:fitsync/features/reminders/data/reminder_scheduler.dart';
 import 'package:fitsync/features/reminders/domain/reminders.dart';
 import 'package:fitsync/features/routine/data/routine_repository.dart';
@@ -18,6 +24,7 @@ import 'package:fitsync/features/routine/domain/routine.dart';
 import 'package:fitsync/features/routine/presentation/providers.dart';
 import 'package:fitsync/features/sessions/data/session_repository.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
+import 'package:fitsync/features/sessions/domain/session_detail.dart';
 import 'package:fitsync/features/sessions/domain/session_history.dart';
 import 'package:fitsync/features/sessions/domain/session_outcome.dart';
 import 'package:fitsync/features/sessions/domain/shared_report.dart';
@@ -26,6 +33,8 @@ import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/streaks/data/streaks_repository.dart';
 import 'package:fitsync/features/streaks/domain/streaks.dart';
 import 'package:fitsync/features/streaks/presentation/providers.dart';
+
+import 'nutrition_controller_test.dart' show FakeNutritionRepository;
 
 AuthUser _user({bool onboardingCompleted = false}) => AuthUser(
   userId: 7,
@@ -42,15 +51,19 @@ class FakeAuthRepository implements AuthRepository {
 
   final TokenStore tokens;
   final Future<AuthUser> Function()? onMe;
+  int meCalls = 0;
 
   @override
-  Future<AuthUser> me() => onMe!();
+  Future<AuthUser> me() {
+    meCalls++;
+    return onMe!();
+  }
 
   @override
   Future<void> signOut() => tokens.clear();
 
   @override
-  Future<AuthUser> login(String email, String password) =>
+  Future<SignInOutcome> login(String email, String password) =>
       throw UnimplementedError();
 
   @override
@@ -78,6 +91,16 @@ class FakeAuthRepository implements AuthRepository {
       throw UnimplementedError();
 
   @override
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> deleteAccount({String? password, String? idToken}) =>
+      throw UnimplementedError();
+
+  @override
   Future<void> resetPassword({
     required String email,
     required String code,
@@ -85,15 +108,43 @@ class FakeAuthRepository implements AuthRepository {
   }) => throw UnimplementedError();
 }
 
-ProviderContainer _containerWith(TokenStore tokens, FakeAuthRepository repo) {
+ProviderContainer _containerWith(
+  TokenStore tokens,
+  FakeAuthRepository repo, {
+  AdminRepository? admins,
+  ReminderScheduler? scheduler,
+}) {
   final container = ProviderContainer(
     overrides: [
       tokenStoreProvider.overrideWithValue(tokens),
       authRepositoryProvider.overrideWithValue(repo),
+      if (admins != null) adminRepositoryProvider.overrideWithValue(admins),
+      if (scheduler != null)
+        reminderSchedulerProvider.overrideWithValue(scheduler),
     ],
   );
   addTearDown(container.dispose);
   return container;
+}
+
+const _admin = AdminUser(id: 1, email: 'admin@fitsync.ph', fullName: 'Ana Reyes');
+
+/// An admin repository double: `me()` is supplied per test and counted.
+class _FakeAdminRepository implements AdminRepository {
+  _FakeAdminRepository(this.onMe);
+
+  final Future<AdminUser> Function() onMe;
+  int meCalls = 0;
+
+  @override
+  Future<AdminUser> me() {
+    meCalls++;
+    return onMe();
+  }
+
+  // The launch check reads only `me()`.
+  @override
+  dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
 }
 
 /// Hands out a different routine day on each call, so a cached one is
@@ -120,6 +171,8 @@ class _SequenceRoutineRepository implements RoutineRepository {
       throw UnimplementedError();
   @override
   Future<void> remove(int habitId) => throw UnimplementedError();
+  @override
+  Future<Habit> restore(int habitId) => throw UnimplementedError();
   @override
   Future<void> check(int habitId, {String? date}) => throw UnimplementedError();
   @override
@@ -162,6 +215,8 @@ class _SequenceSessionRepository implements SessionRepository {
   @override
   Future<SessionHistoryPage> history({int page = 1, int limit = 20}) =>
       throw UnimplementedError();
+  @override
+  Future<SessionDetail> detail(int sessionId) => throw UnimplementedError();
   @override
   Future<LastWorkout?> lastWorkout() => throw UnimplementedError();
   @override
@@ -257,6 +312,10 @@ class _SequenceActivityRepository implements ActivityRepository {
 
   @override
   Future<ActivityDay> saveDay(String date, int steps) =>
+      throw UnimplementedError();
+
+  @override
+  Future<ActivityWeek> saveDays(Map<String, int> days) =>
       throw UnimplementedError();
 }
 
@@ -537,6 +596,31 @@ void main() {
     );
   });
 
+  test("signing out drops the previous account's meal suggestions", () async {
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('tok');
+    final nutrition = FakeNutritionRepository();
+    final container = ProviderContainer(
+      overrides: [
+        tokenStoreProvider.overrideWithValue(tokens),
+        authRepositoryProvider.overrideWithValue(
+          FakeAuthRepository(tokens, onMe: () async => _user(onboardingCompleted: true)),
+        ),
+        nutritionRepositoryProvider.overrideWithValue(nutrition),
+      ],
+    );
+    addTearDown(container.dispose);
+    final sub = container.listen(mealSuggestionsProvider('lunch'), (_, _) {});
+    addTearDown(sub.close);
+
+    await container.read(authControllerProvider.future);
+    await container.read(mealSuggestionsProvider('lunch').future);
+    await container.read(authControllerProvider.notifier).signOut();
+    await container.read(mealSuggestionsProvider('lunch').future);
+
+    expect(nutrition.suggestionCalls, ['lunch', 'lunch'], reason: 'the suggestions were not asked for again');
+  });
+
   test("signing out drops the previous account's plan-ready welcome", () async {
     final tokens = TokenStore(backing: InMemorySecureStore());
     await tokens.write('tok');
@@ -599,10 +683,10 @@ void main() {
     () async {
       final tokens = TokenStore(backing: InMemorySecureStore());
       await tokens.write('tok');
+      // One week read per load: with no steps on this phone, a load is a
+      // single GET of the week.
       final activity = _SequenceActivityRepository([
         _activityWeek(6000),
-        _activityWeek(6000),
-        _activityWeek(0),
         _activityWeek(0),
       ]);
       final permission = _SequenceStepPermission([
@@ -647,7 +731,7 @@ void main() {
       );
       expect(
         activity.loads,
-        4,
+        2,
         reason: 'the activity week was not re-fetched',
       );
       expect(permission.loads, 2, reason: 'step access was not re-checked');
@@ -743,6 +827,209 @@ void main() {
       scheduler.cancels,
       1,
       reason: 'the next account must not inherit these reminders',
+    );
+  });
+
+  test('a deleted account signs out with its reason and cleans up', () async {
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('tok');
+    final scheduler = _RecordingScheduler();
+    final routines = _SequenceRoutineRepository([
+      const RoutineDay(date: '2026-09-24', habits: [], workout: null),
+      const RoutineDay(date: '2026-09-25', habits: [], workout: null),
+    ]);
+    final container = ProviderContainer(
+      overrides: [
+        tokenStoreProvider.overrideWithValue(tokens),
+        authRepositoryProvider.overrideWithValue(
+          FakeAuthRepository(
+            tokens,
+            onMe: () async => _user(onboardingCompleted: true),
+          ),
+        ),
+        reminderSchedulerProvider.overrideWithValue(scheduler),
+        routineRepositoryProvider.overrideWithValue(routines),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(authControllerProvider.future);
+    await container.read(routineTodayProvider.future);
+
+    await container.read(authControllerProvider.notifier).onAccountDeleted();
+
+    final state = container.read(authControllerProvider).value!;
+    expect(state.status, AuthStatus.signedOut);
+    expect(
+      state.reason,
+      SignOutReason.accountDeleted,
+      reason: 'the sign-in screen says why the user is back there',
+    );
+    expect(await tokens.read(), isNull);
+    expect(scheduler.cancels, 1, reason: 'the reminders belong to no one now');
+    expect(
+      (await container.read(routineTodayProvider.future)).date,
+      '2026-09-25',
+      reason: "the deleted account's cached data must go with it",
+    );
+  });
+
+  test('a plain sign-out gives no reason', () async {
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('tok');
+    final container = _containerWith(
+      tokens,
+      FakeAuthRepository(
+        tokens,
+        onMe: () async => _user(onboardingCompleted: true),
+      ),
+    );
+
+    await container.read(authControllerProvider.future);
+    await container.read(authControllerProvider.notifier).signOut();
+
+    expect(container.read(authControllerProvider).value!.reason, isNull);
+  });
+  test('a stored admin token resolves to the admin tabs', () async {
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('admin-tok');
+    await tokens.writeRole('admin');
+    final trainees = FakeAuthRepository(tokens);
+    final admins = _FakeAdminRepository(() async => _admin);
+    final container = _containerWith(tokens, trainees, admins: admins);
+
+    final state = await container.read(authControllerProvider.future);
+
+    expect(state.status, AuthStatus.admin);
+    expect(state.admin!.email, 'admin@fitsync.ph');
+    expect(state.user, isNull);
+    expect(admins.meCalls, 1, reason: 'an admin token is checked at launch');
+    expect(
+      trainees.meCalls,
+      0,
+      reason: 'an admin token is refused by /auth/me, which would sign out',
+    );
+  });
+
+  test('a refused admin token signs out and clears token and role', () async {
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('admin-tok');
+    await tokens.writeRole('admin');
+    final container = _containerWith(
+      tokens,
+      FakeAuthRepository(tokens),
+      admins: _FakeAdminRepository(
+        () async => throw const ApiException(
+          'UNAUTHENTICATED',
+          'Sign in again to continue.',
+        ),
+      ),
+    );
+
+    final state = await container.read(authControllerProvider.future);
+
+    expect(state.status, AuthStatus.signedOut);
+    expect(state.reason, isNull);
+    expect(await tokens.read(), isNull);
+    expect(await tokens.readRole(), isNull);
+  });
+
+  test('any other admin launch failure is an error to retry', () async {
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('admin-tok');
+    await tokens.writeRole('admin');
+    final container = _containerWith(
+      tokens,
+      FakeAuthRepository(tokens),
+      admins: _FakeAdminRepository(
+        // Not a retried code, so the load fails at once.
+        () async => throw const ApiException('UNKNOWN_ERROR', 'Server says no.'),
+      ),
+    );
+
+    await expectLater(
+      container.read(authControllerProvider.future),
+      throwsA(isA<ApiException>()),
+    );
+    expect(
+      await tokens.read(),
+      'admin-tok',
+      reason: 'only a refused token signs the admin out',
+    );
+  });
+
+  test('a suspended trainee at launch signs out and says why', () async {
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('tok');
+    await tokens.writeRole('trainee');
+    final scheduler = _RecordingScheduler();
+    final container = _containerWith(
+      tokens,
+      FakeAuthRepository(
+        tokens,
+        onMe: () async => throw const ApiException(
+          'ACCOUNT_SUSPENDED',
+          'This account is suspended.',
+        ),
+      ),
+      scheduler: scheduler,
+    );
+
+    final state = await container.read(authControllerProvider.future);
+
+    expect(state.status, AuthStatus.signedOut);
+    expect(
+      state.reason,
+      SignOutReason.suspended,
+      reason: 'the sign-in screen says the account is suspended',
+    );
+    expect(await tokens.read(), isNull);
+    expect(await tokens.readRole(), isNull);
+    expect(
+      scheduler.cancels,
+      1,
+      reason: "a suspended account's reminders must not go on firing",
+    );
+  });
+
+  test('onAdminAuthenticated opens the admin tabs', () async {
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    final container = _containerWith(tokens, FakeAuthRepository(tokens));
+    await container.read(authControllerProvider.future);
+
+    container.read(authControllerProvider.notifier).onAdminAuthenticated(_admin);
+
+    final state = container.read(authControllerProvider).value!;
+    expect(state.status, AuthStatus.admin);
+    expect(state.admin!.fullName, 'Ana Reyes');
+  });
+
+  test('an admin signing out clears token and role and gives no reason', () async {
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('admin-tok');
+    await tokens.writeRole('admin');
+    final scheduler = _RecordingScheduler();
+    final container = _containerWith(
+      tokens,
+      FakeAuthRepository(tokens),
+      admins: _FakeAdminRepository(() async => _admin),
+      scheduler: scheduler,
+    );
+    await container.read(authControllerProvider.future);
+
+    await container.read(authControllerProvider.notifier).signOut();
+
+    final state = container.read(authControllerProvider).value!;
+    expect(state.status, AuthStatus.signedOut);
+    expect(state.reason, isNull);
+    expect(state.admin, isNull);
+    expect(await tokens.read(), isNull);
+    expect(await tokens.readRole(), isNull);
+    expect(
+      scheduler.cancels,
+      0,
+      reason: "an admin has no reminders, and this phone's trainee ones are "
+          'not the admin\'s to touch',
     );
   });
 }

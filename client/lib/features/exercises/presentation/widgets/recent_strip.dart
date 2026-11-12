@@ -5,6 +5,7 @@ import '../../../../core/theme.dart';
 import '../../domain/exercise.dart';
 import '../exercise_thumb.dart';
 import '../providers.dart';
+import '../../domain/exercise_labels.dart';
 
 /// The exercises the user logged lately, as cards above the catalogue: as
 /// many as fit one row, the rest a tap away under "Show all".
@@ -235,8 +236,9 @@ class _RecentCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fs;
     final radius = BorderRadius.circular(FsRadius.md);
+    final name = exerciseDisplayName(exercise.name);
     final label = [
-      exercise.name,
+      name,
       'recent',
       if (exercise.contraindicated) 'loads an injury you reported',
       added ? 'added' : 'not added',
@@ -302,7 +304,7 @@ class _RecentCard extends StatelessWidget {
                       ],
                       Expanded(
                         child: Text(
-                          exercise.name,
+                          name,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(

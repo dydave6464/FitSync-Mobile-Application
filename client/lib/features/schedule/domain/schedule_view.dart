@@ -196,8 +196,8 @@ String? reminderLine(
   ).subtract(Duration(minutes: s.habitLeadMin));
   if (!fires.isAfter(now)) return null;
   return s.habitLeadMin == 0
-      ? 'Reminder at the time'
-      : 'Reminder ${s.habitLeadMin} min before';
+      ? 'Reminder around the time'
+      : 'Reminder about ${s.habitLeadMin} min before';
 }
 
 /// Whether any of the three kinds of reminder is on, whatever the master

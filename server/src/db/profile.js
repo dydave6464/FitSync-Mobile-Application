@@ -1,10 +1,9 @@
 'use strict';
-const AppError = require('../lib/app-error');
 // Top-level require, not inline: the chain body-weight.js -> sessions.js ->
 // lib/app-error.js never loops back to this module (route files and
 // plan-swap.js require profile.js, and nothing it requires reaches either),
 // so there is no cycle to dodge here.
-const { writeEntry, MIN_KG, MAX_KG } = require('./body-weight');
+const { writeEntry, outOfRange, MIN_KG, MAX_KG } = require('./body-weight');
 const { isProSql } = require('./pro');
 
 // API name -> column. Anything not in this map cannot be written, which is what
@@ -162,14 +161,12 @@ async function updateProfile(pool, userId, fields) {
     // enforces the same [MIN_KG, MAX_KG] bound, but only after that UPDATE
     // has already committed -- which would let a value like 600 persist to
     // users.weight_kg even though the request still comes back 400.
-    // validatePatch's shared NUMERIC check (0, 1000) is deliberately wider,
-    // since it also governs heightCm and goalWeightKg.
+    // validatePatch now refuses the same range first (as INVALID_PROFILE_FIELD),
+    // so a route request no longer reaches this: it is the backstop for any
+    // other caller.
     const weight = Number(fields.weightKg);
     if (!Number.isFinite(weight) || weight < MIN_KG || weight > MAX_KG) {
-      throw AppError.badRequest(
-        'WEIGHT_OUT_OF_RANGE',
-        `weightKg must be a number between ${MIN_KG} and ${MAX_KG}.`,
-      );
+      throw outOfRange('WEIGHT_OUT_OF_RANGE', 'weightKg');
     }
     const [[row]] = await pool.query(
       'SELECT weight_kg FROM users WHERE user_id = ?', [userId],

@@ -4,10 +4,15 @@ const requireAuth = require('../middleware/require-auth');
 const AppError = require('../lib/app-error');
 const { manilaDay } = require('../lib/manila-day');
 const { dailyTarget } = require('../lib/nutrition-target');
-const { invalid, checkDate, checkServings, checkManual, scaled, round1 } = require('../lib/nutrition-input');
-const { resolveFood } = require('../lib/resolve-food');
 const {
-  MEALS, insertEntry, getEntry, getStoredEntry, updateEntry, deleteEntry, listDayEntries, targetProfile,
+  invalid, checkDate, checkServings, checkClientId, checkManual, perServingOf, scaled, round1,
+} = require('../lib/nutrition-input');
+const { resolveFood } = require('../lib/resolve-food');
+const { pickSuggestions } = require('../lib/meal-suggestions');
+const { readSuggestionPool, readRice } = require('../db/meal-suggestions');
+const {
+  MEALS, insertEntry, insertEntryOnce, findEntryIdByClientId, getEntry, getStoredEntry, updateEntry, deleteEntry,
+  listDayEntries, targetProfile,
 } = require('../db/nutrition');
 
 function totalsOf(entries) {
@@ -39,21 +44,57 @@ module.exports = function buildNutritionRouter(deps) {
     } catch (err) { next(err); }
   });
 
+  // View Local Filipino Meal Suggestions (spec 2026-11-09): up to three
+  // dishes for [meal] that fit what is left of today. Always today in Manila,
+  // whatever else is asked: a suggestion is for the next thing eaten.
+  router.get('/suggestions', auth, async (req, res, next) => {
+    try {
+      const { meal } = req.query;
+      if (typeof meal !== 'string' || !MEALS.includes(meal)) {
+        throw AppError.badRequest('INVALID_MEAL', `meal must be one of: ${MEALS.join(', ')}.`, [{ field: 'meal' }]);
+      }
+      const date = manilaDay();
+      const userId = req.user.userId;
+      const [entries, profile, dishes, rice] = await Promise.all([
+        listDayEntries(pool, userId, date), targetProfile(pool, userId), readSuggestionPool(pool), readRice(pool),
+      ]);
+      const { target } = dailyTarget(profile, date);
+      const picked = pickSuggestions({
+        meal, date, target, totals: totalsOf(entries), entries, pool: dishes, rice,
+      });
+      res.json({ data: { date, meal, ...picked } });
+    } catch (err) { next(err); }
+  });
+
   router.post('/entries', auth, async (req, res, next) => {
     try {
       const b = req.body || {};
       const date = checkDate(b.date);
       if (!MEALS.includes(b.mealType)) throw invalid('mealType', `mealType must be one of: ${MEALS.join(', ')}.`);
       const servings = checkServings(b.servings);
-      const base = await resolveFood(deps, b.food);
+      const clientId = checkClientId(b.clientId);
+      const { userId } = req.user;
 
-      const id = await insertEntry(pool, req.user.userId, {
+      // Try again after a save that did land: the entry already saved, as it
+      // is now, and the body is not compared. Looked up before the food, so a
+      // repeat never asks FatSecret again.
+      if (clientId) {
+        const savedId = await findEntryIdByClientId(pool, userId, clientId);
+        const saved = savedId === null ? null : await getEntry(pool, userId, savedId);
+        if (saved) return res.json({ data: { entry: saved } });
+      }
+
+      const base = await resolveFood(deps, b.food, userId);
+      const e = {
         date, mealType: b.mealType, servings,
         foodId: base.foodId, customName: base.customName, servingDesc: base.servingDesc,
         ...scaled(base, servings),
         loggedVia: base.manual ? 'manual' : 'search',
-      });
-      res.status(201).json({ data: { entry: await getEntry(pool, req.user.userId, id) } });
+      };
+      const { id, created } = clientId
+        ? await insertEntryOnce(pool, userId, e, clientId)
+        : { id: await insertEntry(pool, userId, e), created: true };
+      res.status(created ? 201 : 200).json({ data: { entry: await getEntry(pool, userId, id) } });
     } catch (err) { next(err); }
   });
 
@@ -62,19 +103,21 @@ module.exports = function buildNutritionRouter(deps) {
       const b = req.body || {};
       if (!MEALS.includes(b.mealType)) throw invalid('mealType', `mealType must be one of: ${MEALS.join(', ')}.`);
       const servings = checkServings(b.servings);
-      let manual = null;
-      if (b.food !== undefined) {
-        // Only the user's own numbers: swapping in another catalogue or
-        // FatSecret food is a delete and a fresh log, not an edit.
-        if (b.food === null || typeof b.food !== 'object' || b.food.source !== 'manual') {
-          throw invalid('food', "food.source must be 'manual'.");
-        }
-        manual = checkManual(b.food);
+      // Only the user's own numbers: swapping in another catalogue or
+      // FatSecret food is a delete and a fresh log, not an edit.
+      if (b.food !== undefined && (b.food === null || typeof b.food !== 'object' || b.food.source !== 'manual')) {
+        throw invalid('food', "food.source must be 'manual'.");
       }
 
       const id = Number(req.params.id);
       const stored = Number.isInteger(id) && id > 0 ? await getStoredEntry(pool, req.user.userId, id) : null;
       if (!stored) throw AppError.notFound('ENTRY_NOT_FOUND', 'No such entry.');
+
+      // From the entry's own numbers, never the foods row: a later
+      // correction to the food list must not rewrite history.
+      const perServing = perServingOf(stored);
+      // The entry is the basis: unchanged protein, carbs and fat keep its kcal.
+      const manual = b.food === undefined ? null : checkManual(b.food, { basedOn: perServing });
 
       let food; // { foodId, customName, servingDesc, loggedVia } and the multiplied numbers
       if (manual) {
@@ -87,15 +130,6 @@ module.exports = function buildNutritionRouter(deps) {
         // can't alter what was logged.
         food = stored;
       } else {
-        // From the entry's own numbers, never the foods row: a later
-        // correction to the food list must not rewrite history.
-        const n = stored.servings;
-        const perServing = {
-          kcal: stored.kcal / n, proteinG: stored.proteinG / n, carbsG: stored.carbsG / n, fatG: stored.fatG / n,
-          fiberG: stored.fiberG == null ? null : stored.fiberG / n,
-          sugarG: stored.sugarG == null ? null : stored.sugarG / n,
-          sodiumMg: stored.sodiumMg == null ? null : stored.sodiumMg / n,
-        };
         food = { ...stored, ...scaled(perServing, servings) };
       }
 

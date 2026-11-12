@@ -5,11 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/nutrition/domain/nutrition.dart';
 import 'package:fitsync/features/nutrition/presentation/add_food_manually_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/log_food_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/providers.dart';
+import 'package:fitsync/features/nutrition/presentation/widgets/log_food_sheet.dart';
 
 import 'nutrition_controller_test.dart' show FakeNutritionRepository;
 
@@ -23,9 +25,19 @@ class _SearchRepo extends FakeNutritionRepository {
   /// What Recents lists instead of Turon, when a test sets it.
   List<Food>? recents;
 
+  /// Thrown by search, Recents or a FatSecret detail, when a test sets it.
+  Object? searchError, recentError, fatsecretError;
+
+  @override
+  Future<Food> fatsecretFood(String externalId) async {
+    if (fatsecretError != null) throw fatsecretError!;
+    return super.fatsecretFood(externalId);
+  }
+
   @override
   Future<FoodSearchResult> search(String q) async {
     queries.add(q);
+    if (searchError != null) throw searchError!;
     if (results != null) return FoodSearchResult(fatsecretUnavailable: unavailable, foods: results!);
     return FoodSearchResult(fatsecretUnavailable: unavailable, foods: [
       const Food(source: 'local', id: 6, name: 'Chicken adobo', servingDesc: '1 serving', kcal: 320, proteinG: 28, carbsG: 4, fatG: 21),
@@ -36,8 +48,12 @@ class _SearchRepo extends FakeNutritionRepository {
 
   @override
   Future<List<Food>> recent() async =>
-      recents ?? const [Food(source: 'manual', name: 'Turon', kcal: 198, proteinG: 2, carbsG: 34, fatG: 6)];
+      recentError != null ? throw recentError! : recents ?? const [Food(source: 'manual', name: 'Turon', kcal: 198, proteinG: 2, carbsG: 34, fatG: 6)];
 }
+
+/// What the server says when FatSecret is down (server/src/routes/foods.js).
+const _fatsecretDown =
+    ApiException('FATSECRET_UNAVAILABLE', "Couldn't reach FatSecret. Try again, or add the food manually.");
 
 /// "rice" across three of FitSync's food types, then an online food.
 const _mixedRice = [
@@ -107,6 +123,16 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pumpAndSettle();
     expect(repo.queries, ['a' * 60]);
+  });
+
+  // L-62: in the UTF-16 units the server counts, not characters.
+  testWidgets('the search stops at 60 UTF-16 units, whole characters only', (tester) async {
+    final repo = _SearchRepo();
+    await _pump(tester, repo);
+    await tester.enterText(find.byKey(const Key('food.search')), '🍚' * 40);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    expect(repo.queries, ['🍚' * 30]);
   });
 
   // The phone reached the server, so its connection is fine: the note says
@@ -208,6 +234,22 @@ void main() {
     await tester.tap(find.text('Recents'));
     await tester.pumpAndSettle();
     expect(find.text('Turon'), findsOneWidget);
+  });
+
+  testWidgets("a kept-kcal beer from Recents previews its 129 and is logged naming its entry", (tester) async {
+    final repo = _SearchRepo()
+      ..recents = const [
+        Food(source: 'manual', entryId: 55, name: 'Beer', kcal: 129, proteinG: 1.1, carbsG: 10.6, fatG: 0),
+      ];
+    await _pump(tester, repo);
+    await tester.tap(find.text('Recents'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Beer'));
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: find.byType(LogFoodSheet), matching: find.text('129 kcal')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
+    expect(repo.lastLogged!.toRef()['basedOnEntryId'], 55, reason: "so the server keeps 129, not 4·4·9's 47");
   });
 
   // The meal is shown, and can be changed, before anything is searched --
@@ -346,7 +388,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
-    expect(find.text("Couldn't save — try again."), findsOneWidget);
+    expect(find.text("Couldn't save Chicken adobo. Couldn't reach FitSync. Check your connection and try again."), findsOneWidget);
   });
 
   testWidgets('a food with edited numbers is saved as your own entry', (tester) async {
@@ -361,6 +403,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.protein')), matching: find.byType(TextField)), '30');
     await tester.pump();
+    // The boxes' names take two lines in the test font's full-em glyphs, which
+    // pushes Log below this short test screen; the sheet scrolls to it.
+    await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     expect(repo.lastLogged!.source, 'manual');
@@ -461,12 +507,12 @@ void main() {
   });
 
   testWidgets('if a FatSecret food can\'t be loaded, it says so and opens nothing', (tester) async {
-    final repo = _SearchRepo()..failFatsecret = true;
+    final repo = _SearchRepo()..fatsecretError = _fatsecretDown;
     await _pump(tester, repo);
     await searchAdobo(tester);
     await tester.tap(find.text('Adobo Flakes'));
     await tester.pumpAndSettle();
-    expect(find.text("Couldn't load this food. Try again."), findsOneWidget);
+    expect(find.text(_fatsecretDown.message), findsOneWidget);
     expect(find.byKey(const Key('logSheet.log')), findsNothing);
   });
 
@@ -477,7 +523,7 @@ void main() {
     tester.platformDispatcher.accessibilityFeaturesTestValue =
         const FakeAccessibilityFeatures(accessibleNavigation: true);
     addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
-    final repo = _SearchRepo()..failFatsecret = true;
+    final repo = _SearchRepo()..fatsecretError = _fatsecretDown;
     await _pump(tester, repo);
     tester.state<ScaffoldMessengerState>(find.byType(ScaffoldMessenger)).showSnackBar(SnackBar(
       persist: true,
@@ -488,7 +534,7 @@ void main() {
     await searchAdobo(tester);
     await tester.tap(find.text('Adobo Flakes'));
     await tester.pumpAndSettle();
-    expect(find.text("Couldn't load this food. Try again."), findsOneWidget);
+    expect(find.text(_fatsecretDown.message), findsOneWidget);
     expect(find.text('Added Rice to dinner'), findsNothing);
   });
 
@@ -516,5 +562,77 @@ void main() {
     await tester.pumpAndSettle();
     expect(repo.fatsecretCalls, isEmpty);
     expect(find.byKey(const Key('logSheet.log')), findsOneWidget);
+  });
+
+  group('errors with a way on (NU-5)', () {
+    testWidgets('a failed search says why and Try again searches again', (tester) async {
+      final repo = _SearchRepo()..searchError = const ApiException('NETWORK_ERROR', 'offline');
+      await _pump(tester, repo);
+      await tester.enterText(find.byKey(const Key('food.search')), 'adobo');
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+      expect(find.text("Couldn't reach FitSync. Check your connection and try again."), findsOneWidget);
+      expect(find.text('offline'), findsNothing, reason: 'never the raw error');
+
+      repo.searchError = null;
+      final tries = repo.queries.length;
+      await tester.tap(find.byKey(const Key('food.search.retry')));
+      await tester.pumpAndSettle();
+      expect(repo.queries.length, greaterThan(tries), reason: 'searched again');
+      expect(repo.queries.toSet(), {'adobo'});
+      expect(find.text('Chicken adobo'), findsOneWidget);
+    });
+
+    testWidgets('failed Recents say why and Try again loads them again', (tester) async {
+      final repo = _SearchRepo()..recentError = const ApiException('NETWORK_ERROR', 'offline');
+      await _pump(tester, repo);
+      await tester.tap(find.text('Recents'));
+      await tester.pumpAndSettle();
+      expect(find.text("Couldn't reach FitSync. Check your connection and try again."), findsOneWidget);
+
+      repo.recentError = null;
+      await tester.tap(find.byKey(const Key('food.recents.retry')));
+      await tester.pumpAndSettle();
+      expect(find.text('Turon'), findsOneWidget);
+    });
+  });
+
+  testWidgets('a failed save offers Try again, which sends the same food, meal and servings (NU-4)', (tester) async {
+    final repo = _SearchRepo();
+    await _pump(tester, repo);
+    await tester.enterText(find.byKey(const Key('food.search')), 'adobo');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    repo.failNext = true;
+    await tester.tap(find.text('Chicken adobo'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: find.byType(LogFoodSheet), matching: find.text('Dinner')));
+    await tester.tap(find.byKey(const Key('servings.plus')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
+    expect(find.text("Couldn't save Chicken adobo. Couldn't reach FitSync. Check your connection and try again."), findsOneWidget);
+
+    await tester.tap(find.text('Try again'));
+    await tester.pumpAndSettle();
+    expect(repo.calls.where((c) => c == 'log 2026-10-14 dinner Chicken adobo x1.5'), hasLength(2));
+    expect(find.text("Couldn't save Chicken adobo. Couldn't reach FitSync. Check your connection and try again."), findsNothing);
+    // The same key both times, so a first save that did land is not doubled.
+    expect(repo.clientIds, hasLength(2));
+    expect(repo.clientIds.first, isNotNull);
+    expect(repo.clientIds.last, repo.clientIds.first);
+
+    // A separate log is a new one, with its own key.
+    await tester.tap(find.text('go'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('food.search')), 'adobo');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Chicken adobo'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
+    expect(repo.clientIds, hasLength(3));
+    expect(repo.clientIds.last, isNot(repo.clientIds.first));
   });
 }

@@ -35,15 +35,23 @@ async function findFood(pool, foodId) {
   return rows.length ? asFood(rows[0]) : null;
 }
 
-/// FitSync's own foods (never FatSecret copies) matching [q]: by type
-/// (FOOD_TYPES order, untyped last), Filipino before international, names
-/// starting with [q], then the food list's own everyday-first order. LIKE
-/// wildcards in [q] are escaped.
+/// The foods with [ids] that still exist, in no particular order: one query
+/// in place of a findFood per id.
+async function findFoods(pool, ids) {
+  if (!ids.length) return [];
+  const [rows] = await pool.query(`${SELECT_FOOD} WHERE f.food_id IN (?)`, [ids]);
+  return rows.map(asFood);
+}
+
+/// FitSync's own foods (never FatSecret copies, never hidden ones) matching
+/// [q]: by type (FOOD_TYPES order, untyped last), Filipino before
+/// international, names starting with [q], then the food list's own
+/// everyday-first order. LIKE wildcards in [q] are escaped.
 async function searchOwnFoods(pool, q, limit = 30) {
   const esc = q.replace(/[\\%_]/g, (c) => `\\${c}`);
   const [rows] = await pool.query(
     `${SELECT_FOOD}
-      WHERE s.food_id IS NULL AND f.name LIKE ?
+      WHERE s.food_id IS NULL AND f.hidden_at IS NULL AND f.name LIKE ?
       ORDER BY f.food_type IS NULL, FIELD(f.food_type, ${FOOD_TYPES.map(() => '?').join(', ')}),
                f.category = 'international', (f.name LIKE ?) DESC,
                f.list_order IS NULL, f.list_order, f.name
@@ -107,4 +115,4 @@ async function upsertFatsecretFood(pool, food, retry = true) {
   }
 }
 
-module.exports = { FOOD_TYPES, findFood, searchOwnFoods, upsertFatsecretFood, asFood };
+module.exports = { FOOD_TYPES, findFood, findFoods, searchOwnFoods, upsertFatsecretFood, asFood };

@@ -5,10 +5,14 @@ import '../../../core/api_exception.dart';
 import '../../../core/token_store.dart';
 import '../../activity/presentation/providers.dart'
     show activityProvider, stepAccessProvider;
+import '../../admin/domain/admin_user.dart';
+import '../../ads/presentation/ad_slot.dart'
+    show adViewsReportedProvider, currentAdProvider;
+import '../../admin/presentation/providers.dart' show adminRepositoryProvider;
 import '../../exercises/presentation/providers.dart';
 import '../../home/presentation/plan_ready.dart';
 import '../../nutrition/presentation/providers.dart'
-    show nutritionDayProvider, nutritionDateProvider, recentFoodsProvider;
+    show mealSuggestionsProvider, nutritionDayProvider, nutritionDateProvider, recentFoodsProvider;
 import '../../plans/presentation/providers.dart';
 import '../../pro/presentation/providers.dart' show proPendingCheckoutProvider;
 import '../../recovery/presentation/providers.dart';
@@ -22,19 +26,33 @@ import '../../streaks/presentation/providers.dart';
 import '../data/auth_repository.dart';
 import '../data/google_sign_in_gateway.dart';
 import '../domain/auth_user.dart';
+import '../domain/sign_in_outcome.dart';
 
 /// Where the app can be, as far as authentication is concerned.
 ///
 /// `onboarding` is a signed-in state: the user has a valid token but has not
 /// finished the four onboarding steps, so the shell must not show them the
 /// plan yet.
-enum AuthStatus { signedOut, onboarding, ready }
+///
+/// `admin` is an admin signed in with an admin token: the shell shows the
+/// admin tabs, and [AuthState.admin] is set instead of [AuthState.user].
+enum AuthStatus { signedOut, onboarding, ready, admin }
+
+/// Why a session ended, when the sign-in screen has something to say about
+/// it. A plain sign-out needs no words: the user asked for it.
+enum SignOutReason { accountDeleted, suspended }
 
 class AuthState {
-  const AuthState(this.status, [this.user]);
+  const AuthState(this.status, [this.user, this.reason, this.admin]);
 
   final AuthStatus status;
   final AuthUser? user;
+
+  /// Set only on a signed-out state, and only when the screen should say why.
+  final SignOutReason? reason;
+
+  /// Set only on an [AuthStatus.admin] state.
+  final AdminUser? admin;
 
   static const signedOut = AuthState(AuthStatus.signedOut);
 }
@@ -67,6 +85,23 @@ class AuthController extends AsyncNotifier<AuthState> {
     final token = await tokens.read();
     if (token == null || token.isEmpty) return AuthState.signedOut;
 
+    // An admin token is refused by /auth/me (and a trainee's by /admin/me),
+    // so each is checked where it belongs. No role is a trainee: installs
+    // from before roles stored none.
+    if (await tokens.readRole() == 'admin') {
+      try {
+        final admin = await ref.watch(adminRepositoryProvider).me();
+        return AuthState(AuthStatus.admin, null, null, admin);
+      } on ApiException catch (error) {
+        // An admin has no reminders to cancel.
+        if (error.code == 'UNAUTHENTICATED') {
+          await tokens.clear();
+          return AuthState.signedOut;
+        }
+        rethrow;
+      }
+    }
+
     try {
       return _forUser(await ref.watch(authRepositoryProvider).me());
     } on ApiException catch (error) {
@@ -76,6 +111,17 @@ class AuthController extends AsyncNotifier<AuthState> {
         await tokens.clear();
         await _cancelReminders();
         return AuthState.signedOut;
+      }
+      // Suspended by an admin: the token is no good until they are
+      // reinstated, and the sign-in screen says why they are back there.
+      if (error.code == 'ACCOUNT_SUSPENDED') {
+        await tokens.clear();
+        await _cancelReminders();
+        return const AuthState(
+          AuthStatus.signedOut,
+          null,
+          SignOutReason.suspended,
+        );
       }
       // Anything else is a real failure the shell should surface with a
       // retry, so let it become an AsyncError.
@@ -95,6 +141,22 @@ class AuthController extends AsyncNotifier<AuthState> {
     // begins without a clean sign-out cannot inherit the previous one either.
     _clearUserScopedCaches();
     state = AsyncData(_forUser(user));
+  }
+
+  /// After a password sign-in: a trainee goes to [onAuthenticated], an admin
+  /// to [onAdminAuthenticated].
+  void onSignedIn(SignInOutcome outcome) => switch (outcome) {
+    TraineeSignedIn(:final user) => onAuthenticated(user),
+    AdminSignedIn(:final admin) => onAdminAuthenticated(admin),
+  };
+
+  /// The admin's [onAuthenticated]: the token and the admin role are already
+  /// stored, so the shell moves straight to the admin tabs.
+  void onAdminAuthenticated(AdminUser admin) {
+    // As onAuthenticated: nothing of a trainee who used this phone before
+    // may stay in memory.
+    _clearUserScopedCaches();
+    state = AsyncData(AuthState(AuthStatus.admin, null, null, admin));
   }
 
   /// Called when onboarding finishes. Without it the shell would keep showing
@@ -144,6 +206,10 @@ class AuthController extends AsyncNotifier<AuthState> {
   /// So does `proPendingCheckoutProvider`: the Pro screen re-checks the
   /// checkout it remembers, and the next account would ask the server about
   /// someone else's payment.
+  ///
+  /// `currentAdProvider` and `adViewsReportedProvider` are kept for the
+  /// session: the ad on the cards, and the views already reported. The next
+  /// account starts both afresh.
   void _clearUserScopedCaches() {
     ref.invalidate(profileProvider);
     ref.invalidate(activePlanProvider);
@@ -166,16 +232,31 @@ class AuthController extends AsyncNotifier<AuthState> {
     ref.invalidate(nutritionDayProvider);
     ref.invalidate(nutritionDateProvider);
     ref.invalidate(recentFoodsProvider);
+    ref.invalidate(mealSuggestionsProvider);
     ref.invalidate(planReadyProvider);
     ref.invalidate(proPendingCheckoutProvider);
+    ref.invalidate(currentAdProvider);
+    ref.invalidate(adViewsReportedProvider);
   }
 
-  Future<void> signOut() async {
+  Future<void> signOut() => _signOutLocally();
+
+  /// Called once the server has deleted the account: the same clean-up as
+  /// [signOut] (the token, this phone's reminders, every cached screen), then
+  /// the sign-in screen says the account was deleted, so the user does not
+  /// wonder why they are back there.
+  Future<void> onAccountDeleted() =>
+      _signOutLocally(SignOutReason.accountDeleted);
+
+  Future<void> _signOutLocally([SignOutReason? reason]) async {
+    final wasAdmin = state.value?.status == AuthStatus.admin;
+    // Clears the role with the token.
     await ref.read(authRepositoryProvider).signOut();
-    // The next account must not inherit this one's reminders.
-    await _cancelReminders();
+    // The next account must not inherit this one's reminders. An admin has
+    // none, so an admin's sign-out leaves the phone's reminders alone.
+    if (!wasAdmin) await _cancelReminders();
     _clearUserScopedCaches();
-    state = const AsyncData(AuthState.signedOut);
+    state = AsyncData(AuthState(AuthStatus.signedOut, null, reason));
   }
 
   /// Best-effort: a scheduler failure here must never strand the caller

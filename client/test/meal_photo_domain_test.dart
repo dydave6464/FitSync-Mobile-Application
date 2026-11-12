@@ -165,6 +165,7 @@ void main() {
   test('swapping keeps the food it replaced as a chip, so the swap can be undone; at most two chips', () {
     final card = DraftCard.suggested(
       PhotoRecognition.fromJson(_answer).items.first,
+      id: 0,
     );
     card.replaceWith(_garlic);
     expect(card.food!.name, 'Garlic fried rice (sinangag)');
@@ -184,6 +185,7 @@ void main() {
   test('an unlisted card has no food until one is picked, then logs with its own item id', () {
     final card = DraftCard.unlisted(
       PhotoRecognition.fromJson(_answer).unlisted.single,
+      id: 0,
     );
     expect(card.isUnlisted, isTrue);
     expect(card.label, 'Atchara (pickled papaya)');
@@ -195,7 +197,7 @@ void main() {
   });
 
   test('servings step in halves between 0.5 and 20', () {
-    final card = DraftCard.added(_rice);
+    final card = DraftCard.added(_rice, id: 0);
     expect([card.itemId, card.servings], [null, 1.0]);
     card.setServings(0.5);
     card.setServings(0);
@@ -206,9 +208,12 @@ void main() {
 
   test('the estimated total follows the server\'s rounding and skips unlisted cards', () {
     final cards = [
-      DraftCard.added(_rice)..setServings(1.5),
-      DraftCard.added(_garlic),
-      DraftCard.unlisted(const PhotoUnlisted(itemId: 9, name: 'Atchara')),
+      DraftCard.added(_rice, id: 0)..setServings(1.5),
+      DraftCard.added(_garlic, id: 1),
+      DraftCard.unlisted(
+        const PhotoUnlisted(itemId: 9, name: 'Atchara'),
+        id: 2,
+      ),
     ];
     final t = draftTotals(cards);
     expect(t.kcal, 309 + 299);
@@ -255,5 +260,23 @@ void main() {
       isTrue,
     );
     expect(sameFood(_rice, _shake), isFalse);
+  });
+
+  // NU-15 / #21: what the capture sheet learns before a photo.
+  test('PhotoToday reads the allowance with no unlogged photo', () {
+    final t = PhotoToday.fromJson({'limit': 15, 'remainingToday': 12, 'unlogged': null});
+    expect([t.limit, t.remainingToday, t.unlogged, t.unloggedAt], [15, 12, null, null]);
+  });
+
+  test('PhotoToday reads an unlogged photo as a PhotoRecognition', () {
+    final t = PhotoToday.fromJson({
+      'limit': 15,
+      'remainingToday': 12,
+      'unlogged': {..._answer, 'createdAt': '2026-11-06T04:05:12.000Z'},
+    });
+    final u = t.unlogged!;
+    expect([u.recognitionId, u.items.length, u.items.first.itemId, u.items.first.servings, u.unlisted.single.name],
+        [7, 2, 40, 1.5, 'Atchara (pickled papaya)']);
+    expect(t.unloggedAt, DateTime.utc(2026, 11, 6, 4, 5, 12));
   });
 }

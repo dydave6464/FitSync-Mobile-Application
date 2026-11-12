@@ -26,8 +26,8 @@ class AppError extends Error {
     return new AppError(404, code, message);
   }
 
-  static conflict(code, message) {
-    return new AppError(409, code, message);
+  static conflict(code, message, details = []) {
+    return new AppError(409, code, message, details);
   }
 }
 

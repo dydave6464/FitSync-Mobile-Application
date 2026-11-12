@@ -1,10 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'package:fitsync/core/widgets/fs_kit.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/features/auth/data/auth_repository.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
+import 'package:fitsync/features/auth/domain/sign_in_outcome.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/auth/presentation/check_email_screen.dart';
 import 'package:fitsync/features/auth/presentation/code_entry.dart';
@@ -40,11 +46,11 @@ class FakeAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<AuthUser> login(String email, String password) {
+  Future<SignInOutcome> login(String email, String password) async {
     loginCalls++;
     lastEmail = email;
     lastPassword = password;
-    return onLogin?.call() ?? Future.value(_user);
+    return TraineeSignedIn(await (onLogin?.call() ?? Future.value(_user)));
   }
 
   @override
@@ -57,6 +63,16 @@ class FakeAuthRepository implements AuthRepository {
     lastPassword = password;
     return onResend?.call() ?? Future<void>.value();
   }
+
+  @override
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> deleteAccount({String? password, String? idToken}) =>
+      throw UnimplementedError();
 
   @override
   Future<void> resetPassword({
@@ -141,6 +157,9 @@ Future<List<AuthUser>> _pump(
   await tester.pumpAndSettle();
   return seen;
 }
+
+bool _isLive(WidgetTester tester, Finder finder) =>
+    tester.getSemantics(finder).getSemanticsData().flagsCollection.isLiveRegion;
 
 void main() {
   testWidgets('asks for the code sent to the address', (tester) async {
@@ -297,6 +316,18 @@ void main() {
         find.text('Your email is verified. Tap to sign in.'),
         findsOneWidget,
       );
+      // AO-9: good news, so neutral text rather than a red error line --
+      // still said aloud as it appears.
+      expect(find.byType(FsErrorLine), findsNothing);
+      expect(
+        find.ancestor(
+          of: find.text('Your email is verified. Tap to sign in.'),
+          matching: find.byWidgetPredicate(
+            (w) => w is Semantics && w.properties.liveRegion == true,
+          ),
+        ),
+        findsOneWidget,
+      );
       expect(find.text('Sign in'), findsOneWidget);
 
       failLogin = false;
@@ -306,6 +337,48 @@ void main() {
       expect(repo.verifyCalls, 1, reason: 'the spent code is not sent again');
       expect(repo.loginCalls, 2);
       expect(seen, [_user]);
+    },
+  );
+
+  // Spec §3: sign-in stays refused while suspended, and the refusal says why
+  // rather than inviting a retry that can only fail the same way.
+  testWidgets(
+    'verified but the account is suspended: the sign-in error says so',
+    (tester) async {
+      final repo = FakeAuthRepository(
+        onLogin: () async => throw const ApiException(
+          'ACCOUNT_SUSPENDED',
+          'This account is suspended.',
+        ),
+      );
+      final handle = tester.ensureSemantics();
+      final seen = await _pump(tester, repo);
+
+      await tester.enterText(find.byKey(const Key('code')), '048213');
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('verify')));
+      await tester.pumpAndSettle();
+
+      final message = find.text('This account is suspended.');
+      expect(
+        find.ancestor(of: message, matching: find.byType(FsErrorLine)),
+        findsOneWidget,
+      );
+      expect(_isLive(tester, message), isTrue);
+      expect(
+        find.text('Your email is verified. Tap to sign in.'),
+        findsNothing,
+      );
+
+      // Tapping again retries the sign-in only, and still says why.
+      await tester.tap(find.byKey(const Key('verify')));
+      await tester.pumpAndSettle();
+
+      expect(repo.verifyCalls, 1, reason: 'the spent code is not sent again');
+      expect(repo.loginCalls, 2);
+      expect(find.text('This account is suspended.'), findsOneWidget);
+      expect(seen, isEmpty);
+      handle.dispose();
     },
   );
 
@@ -344,11 +417,14 @@ void main() {
     expect(find.text(newCodeMessage), findsNothing);
   });
 
-  testWidgets('a resend failure surfaces the server message', (tester) async {
+  testWidgets('a resend failure shows plain words, not the developer text', (
+    tester,
+  ) async {
     final repo = FakeAuthRepository(
       onResend: () async => throw const ApiException(
         'NETWORK_ERROR',
-        'Could not reach the server.',
+        'Could not reach http://10.0.2.2:3000. Check the server is running, '
+            'and that "adb reverse tcp:3000 tcp:3000" has been run.',
       ),
     );
     await _pump(tester, repo);
@@ -356,6 +432,221 @@ void main() {
     await tester.tap(find.byKey(const Key('resend')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Could not reach the server.'), findsOneWidget);
+    expect(
+      find.text("Couldn't reach FitSync. Check your connection and try again."),
+      findsOneWidget,
+    );
+    expect(find.textContaining('adb'), findsNothing);
+  });
+
+  testWidgets('a server message on resend still reads as sent', (tester) async {
+    final repo = FakeAuthRepository(
+      onResend: () async => throw const ApiException(
+        'TOO_MANY_REQUESTS',
+        'Wait a minute before asking for another code.',
+      ),
+    );
+    await _pump(tester, repo);
+
+    await tester.tap(find.byKey(const Key('resend')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Wait a minute before asking for another code.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a verify that gets a non-JSON reply shows plain words', (
+    tester,
+  ) async {
+    final repo = FakeAuthRepository(
+      onVerify: () async => throw const ApiException(
+        'INVALID_RESPONSE',
+        'Server returned a non-JSON body (HTTP 502).',
+      ),
+    );
+    await _pump(tester, repo);
+
+    await tester.enterText(find.byKey(const Key('code')), '048213');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('verify')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Something went wrong on our side. Please try again.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('non-JSON'), findsNothing);
+  });
+
+  testWidgets('a wrong code is a red error line that is read aloud', (
+    tester,
+  ) async {
+    final repo = FakeAuthRepository(
+      onVerify: () async => throw const ApiException(
+        'CODE_INVALID',
+        'That code is wrong or has expired.',
+      ),
+      onLogin: () async => throw const ApiException(
+        'EMAIL_NOT_VERIFIED',
+        'Verify your email before signing in.',
+      ),
+    );
+    final handle = tester.ensureSemantics();
+    await _pump(tester, repo);
+
+    await tester.enterText(find.byKey(const Key('code')), '000000');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('verify')));
+    await tester.pumpAndSettle();
+
+    final message = find.text(wrongCodeMessage);
+    expect(
+      find.ancestor(of: message, matching: find.byType(FsErrorLine)),
+      findsOneWidget,
+    );
+    expect(_isLive(tester, message), isTrue);
+    handle.dispose();
+  });
+
+  testWidgets('a new code on its way is plain news, still read aloud', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester, FakeAuthRepository());
+
+    await tester.tap(find.byKey(const Key('resend')));
+    await tester.pumpAndSettle();
+
+    final message = find.text(newCodeMessage);
+    expect(message, findsOneWidget);
+    expect(
+      find.ancestor(of: message, matching: find.byType(FsErrorLine)),
+      findsNothing,
+      reason: 'a confirmation must not look like an error',
+    );
+    expect(_isLive(tester, message), isTrue);
+    handle.dispose();
+  });
+
+  testWidgets('the code field keeps a visible name a screen reader hears', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await _pump(tester, FakeAuthRepository());
+
+    expect(find.text('Code'), findsOneWidget);
+    expect(
+      tester.getSemantics(find.byKey(const Key('code'))).label,
+      contains('Code'),
+    );
+    semantics.dispose();
+  });
+
+  group('only the button that was tapped spins', () {
+    // AO-18: Verify used to spin, and be announced as "Verify, loading",
+    // while a new code was on its way.
+    testWidgets('Send a new code', (tester) async {
+      final pending = Completer<void>();
+      await _pump(tester, FakeAuthRepository(onResend: () => pending.future));
+
+      await tester.tap(find.byKey(const Key('resend')));
+      await tester.pump();
+
+      expect(
+        tester.widget<FsButton>(find.byKey(const Key('resend'))).busy,
+        isTrue,
+      );
+      final verify = tester.widget<FsButton>(find.byKey(const Key('verify')));
+      expect(verify.busy, isFalse);
+      expect(verify.onPressed, isNull, reason: 'one request at a time');
+
+      pending.complete();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('the code asked for on open', (tester) async {
+      final pending = Completer<void>();
+      final repo = FakeAuthRepository(onResend: () => pending.future);
+      // Pumped by hand: a spinner never settles.
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [authRepositoryProvider.overrideWithValue(repo)],
+          child: const MaterialApp(
+            home: CheckEmailScreen(
+              email: 'juan@example.com',
+              password: 's3cret-pass',
+              sendCodeOnOpen: true,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(repo.resendCalls, 1);
+      expect(
+        tester.widget<FsButton>(find.byKey(const Key('verify'))).busy,
+        isFalse,
+      );
+      expect(
+        tester.widget<FsButton>(find.byKey(const Key('resend'))).busy,
+        isTrue,
+      );
+
+      pending.complete();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('Verify', (tester) async {
+      final pending = Completer<void>();
+      await _pump(tester, FakeAuthRepository(onVerify: () => pending.future));
+
+      await tester.enterText(find.byKey(const Key('code')), '123456');
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('verify')));
+      await tester.pump();
+
+      expect(
+        tester.widget<FsButton>(find.byKey(const Key('verify'))).busy,
+        isTrue,
+      );
+      final resend = tester.widget<FsButton>(find.byKey(const Key('resend')));
+      expect(resend.busy, isFalse);
+      expect(resend.onPressed, isNull);
+
+      pending.complete();
+      await tester.pumpAndSettle();
+    });
+  });
+
+  testWidgets('an error line sits centred, like the rest of the screen', (
+    tester,
+  ) async {
+    // L-22: the icon and words used to start at the left edge of a screen
+    // whose every other line is centred.
+    final repo = FakeAuthRepository(
+      onResend: () async =>
+          throw const ApiException('RATE_LIMITED', 'Wait a minute.'),
+    );
+    await _pump(tester, repo);
+
+    await tester.tap(find.byKey(const Key('resend')));
+    await tester.pumpAndSettle();
+
+    final line = find.byKey(const Key('status'));
+    final icon = find.descendant(
+      of: line,
+      matching: find.byIcon(Icons.error_outline),
+    );
+    final text = find.text('Wait a minute.');
+    final textLeft = tester.getTopLeft(text).dx;
+    final textRight =
+        textLeft + tester.renderObject<RenderParagraph>(text).textSize.width;
+    final screen = tester.getRect(find.byType(CheckEmailScreen));
+    final leftRoom = tester.getTopLeft(icon).dx - screen.left;
+    final rightRoom = screen.right - textRight;
+    expect(leftRoom, greaterThan(40), reason: 'not against the margin');
+    expect((leftRoom - rightRoom).abs(), lessThan(2));
   });
 }

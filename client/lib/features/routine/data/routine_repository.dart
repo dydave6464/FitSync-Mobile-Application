@@ -35,6 +35,17 @@ class RoutineRepository {
     await _api.deleteJson('/api/v1/routine/habits/$habitId');
   }
 
+  /// Brings back a habit [remove] took away: Undo after a delete. A delete
+  /// is soft, so the habit returns with its days and today's tick. Safe to
+  /// send twice: restoring an active habit answers with it unchanged.
+  Future<Habit> restore(int habitId) async => Habit.fromJson(
+    (await _api.postJson(
+          '/api/v1/routine/habits/$habitId/restore',
+          const {},
+        ))['habit']
+        as Map<String, dynamic>,
+  );
+
   /// [date] is the day the screen believes it is, from the [RoutineDay] it
   /// last loaded. The server compares it against its own CURDATE() and
   /// refuses the tick with `DAY_CHANGED` if the day has since turned over,

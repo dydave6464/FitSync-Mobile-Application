@@ -34,6 +34,7 @@ import 'widgets/logger_action.dart';
 import 'widgets/rest_sheet.dart';
 import 'widgets/rest_timer.dart';
 import 'widgets/set_drafts.dart';
+import '../../exercises/domain/exercise_labels.dart';
 
 /// The active workout, one exercise at a time: its set table, Continue to
 /// the next, and the jump sheet for anything out of order.
@@ -126,11 +127,22 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   /// `ref.read` during dispose is not allowed.
   late final RestAlertScheduler _alerts;
 
+  /// Redraws the "min elapsed" caption, and only it. Nothing else rebuilds
+  /// the screen while the user rests or reads a demo -- the rest repaints
+  /// its own tag -- so without this the caption stood still for minutes.
+  /// Every 30 seconds, so a minute turning over shows within half a minute.
+  final _elapsedTick = ValueNotifier<int>(0);
+  Timer? _elapsedTicker;
+
   @override
   void initState() {
     super.initState();
     _alerts = ref.read(restAlertSchedulerProvider);
     WidgetsBinding.instance.addObserver(this);
+    _elapsedTicker = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _elapsedTick.value++,
+    );
   }
 
   @override
@@ -192,7 +204,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     await _alerts.requestPermission();
   }
 
-  DateTime _now() => ref.read(restNowProvider)();
+  DateTime _now() => ref.read(loggerClockProvider)();
 
   void _startRest(int seconds) {
     _restOverTimer?.cancel();
@@ -275,6 +287,35 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
       View.of(context),
       'Rest over',
       TextDirection.ltr,
+    );
+  }
+
+  /// What a set landing feels and sounds like: the tick, the REST tag and
+  /// the next set's label are all visual, so a light tap says it was saved
+  /// and one polite message says what happens now, with no focus move -- the
+  /// pattern 'Rest over' uses. The set that finishes an exercise speaks the
+  /// praise the card shows instead.
+  void _signalSetLogged({
+    required int setNumber,
+    required int restSeconds,
+    required List<PlanExercise> exercises,
+    required int index,
+    required bool wasComplete,
+  }) {
+    HapticFeedback.lightImpact();
+    final session = ref.read(activeSessionProvider).value;
+    final praise = wasComplete || session == null
+        ? null
+        : encouragementFor(
+            exercises: exercises,
+            index: index,
+            session: session,
+          );
+    SemanticsService.sendAnnouncement(
+      View.of(context),
+      praise?.headline ??
+          'Set $setNumber logged. Rest ${spokenRest(restSeconds)}.',
+      Directionality.of(context),
     );
   }
 
@@ -374,6 +415,8 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     _restTicker?.cancel();
     _restOverTimer?.cancel();
     _restReading.dispose();
+    _elapsedTicker?.cancel();
+    _elapsedTick.dispose();
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_alerts.cancel());
     super.dispose();
@@ -416,7 +459,11 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   /// being suspicious of when the number it produces is always the bound.
   int _elapsedMinutes(DateTime? startedAt) {
     if (startedAt == null) return 0;
-    return DateTime.now().difference(startedAt).inMinutes.clamp(0, 1440);
+    return ref
+        .read(loggerClockProvider)()
+        .difference(startedAt)
+        .inMinutes
+        .clamp(0, 1440);
   }
 
   /// The session was closed by someone/something else -- another device, an
@@ -428,7 +475,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     // As in _discard: the rest's alert goes now, not when the pop finishes.
     setState(_endRest);
     ref.invalidate(activeSessionProvider);
-    Navigator.of(context).pop();
+    _closeSelf();
     messenger.showSnackBar(
       const SnackBar(content: Text('This session was already finished.')),
     );
@@ -535,21 +582,19 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   /// but switching back is how a switch is undone, and the old exercise
   /// would otherwise come back with rows it was given before it left.
   ///
-  /// No Undo on the SnackBar. Every swap is recorded server-side as "rejected
-  /// this, chose that" for the recommender, so swapping straight back would
-  /// record a rejection the user never meant; Switch again is the way back.
+  /// No Undo on the SnackBar: inside a workout, Switch again is the way back,
+  /// from the same link the user just used. The Plan tab is where a swap is
+  /// undone outright (PlanRepository.undoSwap, which also takes the swap's
+  /// label out of the ranker's history); a Switch back here is a swap of its
+  /// own.
   Future<void> _switchExercise(int index, PlanExercise exercise) async {
     final messenger = ScaffoldMessenger.of(context);
-    final swappedTo = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => ExerciseSwapSheet(
-        planExerciseId: exercise.planExerciseId,
-        exerciseName: exercise.name,
-        onGoToProfile: null,
-      ),
+    final swapped = await showExerciseSwapSheet(
+      context,
+      planExerciseId: exercise.planExerciseId,
+      exerciseName: exerciseDisplayName(exercise.name),
     );
-    if (swappedTo == null || !mounted) return;
+    if (swapped == null || !mounted) return;
     try {
       await ref.read(activePlanProvider.future);
     } catch (error) {
@@ -570,7 +615,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
         behavior: SnackBarBehavior.floating,
         margin: EdgeInsets.fromLTRB(16, 0, 16, _footerHeight() + 8),
         duration: const Duration(seconds: 4),
-        content: Text('Swapped to $swappedTo'),
+        content: Text('Swapped to ${swapped.swappedTo}'),
       ),
     );
   }
@@ -758,13 +803,33 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     // Captured before the pop, as in _handleAlreadyClosed: the message
     // belongs on the screen underneath.
     final messenger = ScaffoldMessenger.of(context);
+    _closeSelf();
+    _sayKeptOpen(messenger);
+  }
+
+  /// Set by [_closeSelf], so the PopScope can tell the logger closing itself
+  /// -- finished, discarded, closed elsewhere, or Leave with its own message
+  /// -- from the user backing out of exercise 1.
+  bool _closedSelf = false;
+
+  void _closeSelf() {
+    _closedSelf = true;
     Navigator.of(context).pop();
+  }
+
+  /// What leaving with the workout still open means: the sets are kept, but
+  /// nothing counts -- History, the streak, Progress -- until it is finished.
+  /// "Saved" alone read as done, and contradicted the "Tap Finish" lines.
+  static void _sayKeptOpen(ScaffoldMessengerState messenger) {
     // A reopen's Undo is still up for up to four seconds; it would hold this
     // message back, and leaving is the newer news.
     messenger.removeCurrentSnackBar();
     messenger.showSnackBar(
       const SnackBar(
-        content: Text('Workout saved. Resume it any time from Train.'),
+        content: Text(
+          'Workout kept open — your sets are saved. '
+          'Finish it from Train to count it.',
+        ),
       ),
     );
   }
@@ -837,7 +902,9 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
       // Capped at the target: extra sets on one exercise are real work, but
       // they do not make up for another exercise's missing ones.
       done += logged < exercise.targetSets ? logged : exercise.targetSets;
-      if (_activeSetNumber(exercise, session) != null) left.add(exercise.name);
+      if (_activeSetNumber(exercise, session) != null) {
+        left.add(exerciseDisplayName(exercise.name));
+      }
     }
     if (done >= total) return true;
 
@@ -868,6 +935,22 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
       });
     }
     return answer == true;
+  }
+
+  /// "42 min · 18 sets · 3,150 kg lifted". The volume only when there is
+  /// some: a bodyweight workout has none, and "0 kg lifted" would read as a
+  /// failure to record -- the reason History leaves it out too.
+  static String _summaryLine(ActiveSession done, WeightUnit unit) {
+    final sets = done.completedSetCount;
+    final volume = done.totalVolumeKg;
+    return [
+      '${done.durationMin} min',
+      '$sets ${sets == 1 ? 'set' : 'sets'}',
+      if (volume != null && volume > 0)
+        // Whole numbers: a session's total volume runs to hundreds, where
+        // formatWeight's decimal place would be noise rather than precision.
+        '${convertFromKg(volume, unit).toStringAsFixed(0)} ${unit.api} lifted',
+    ].join(' · ');
   }
 
   /// "A", "A and B", "A, B and C" -- and past three, "A, B, C and 2 more",
@@ -903,13 +986,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
           builder: (dialogContext) => AlertDialog(
             key: const Key('logger.summary'),
             title: const Text('Session complete'),
-            content: Text(
-              '${done.durationMin} min · ${done.completedSetCount} sets · '
-              // Whole numbers: a session's total volume runs to hundreds, where
-              // formatWeight's decimal place would be noise rather than precision.
-              '${convertFromKg(done.totalVolumeKg ?? 0, unit).toStringAsFixed(0)} '
-              '${unit.api} lifted',
-            ),
+            content: Text(_summaryLine(done, unit)),
             actions: [
               // Only a hand-picked workout. A plan-backed one is already part of a
               // plan, and offering to add it again would be offering nothing.
@@ -939,7 +1016,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
           ),
         ) ??
         false;
-    if (!addToPlanWillClose && mounted) Navigator.of(context).pop();
+    if (!addToPlanWillClose && mounted) _closeSelf();
   }
 
   /// Sends the finished workout to the user's own plan.
@@ -1013,7 +1090,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     // handed its own pop to this method the moment the offer was tapped, and
     // backing out of the question must not strand the user on a logger whose
     // session is already closed.
-    if (mounted) Navigator.of(context).pop();
+    if (mounted) _closeSelf();
     if (cancelled) return;
 
     try {
@@ -1035,6 +1112,14 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
       // animation, for either outcome. Same as generator_screen.dart.
       messenger.showSnackBar(SnackBar(content: Text('Added to ${plan.name}.')));
     } catch (error) {
+      if (error is ApiException && error.code == 'SESSION_IN_PROGRESS') {
+        // Another workout was opened meanwhile, on this phone or another.
+        // Reloaded so Home's card for it appears; no Resume here, since the
+        // logger has already gone. The server's message says why.
+        container.invalidate(activeSessionProvider);
+        messenger.showSnackBar(SnackBar(content: Text(userMessage(error))));
+        return;
+      }
       messenger.showSnackBar(SnackBar(content: Text(describeError(error))));
     }
   }
@@ -1068,7 +1153,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
       // waits for frames, and the rest's alert would fire for a workout
       // that was thrown away.
       setState(_endRest);
-      Navigator.of(context).pop();
+      _closeSelf();
     } on StateError {
       // Same _current contract as _finish: already closed elsewhere by the
       // time this reached the controller. Same resolution as the 409 path.
@@ -1114,7 +1199,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
       context: context,
       builder: (dialogContext) => AlertDialog(
         key: const Key('logger.restartConfirm'),
-        title: Text('Restart ${exercise.name}?'),
+        title: Text('Restart ${exerciseDisplayName(exercise.name)}?'),
         content: Text(
           'Your $count for this exercise will be cleared. '
           'The rest of your session is kept.',
@@ -1177,11 +1262,64 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     messenger.showSnackBar(
       SnackBar(
         content: Text(
-          "Couldn't finish restarting ${exercise.name}. ${describeError(error)}",
+          "Couldn't finish restarting ${exerciseDisplayName(exercise.name)}. "
+          '${describeError(error)}',
         ),
       ),
     );
   }
+
+  /// [screen], saying on the way out what Leave says when Back closes the
+  /// logger with sets logged. For the screens before the exercises are on
+  /// show -- the plan failing or loading -- which close on the first Back,
+  /// as exercise 1's demo does (see the PopScope in [build]).
+  Widget _keptOpenOnPop(ActiveSession session, Widget screen) => PopScope(
+    onPopInvokedWithResult: (didPop, _) {
+      if (didPop && !_closedSelf && session.completedSetCount > 0) {
+        _sayKeptOpen(ScaffoldMessenger.of(context));
+      }
+    },
+    child: screen,
+  );
+
+  /// The AppBar's leading slot is this wide: the 15 dp inset and the 48 dp
+  /// target, which puts the drawn square where the mockup's 20 did.
+  static const _backWidth = 63.0;
+
+  /// The mockup's 38 dp square, inside a 48 dp target: this is the only back
+  /// control on iOS mid-workout, where the PopScope turns the swipe off.
+  /// Centred, so the toolbar's full height does not stretch the box.
+  Widget _backButton(FsTokens t) => Padding(
+    padding: const EdgeInsets.only(left: 15),
+    child: Center(
+      child: Semantics(
+        button: true,
+        child: Tooltip(
+          message: 'Back',
+          child: InkWell(
+            key: const Key('logger.back'),
+            onTap: () => Navigator.maybePop(context),
+            borderRadius: BorderRadius.circular(FsRadius.sm),
+            child: SizedBox.square(
+              dimension: 48,
+              child: Center(
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: t.surface,
+                    borderRadius: BorderRadius.circular(FsRadius.sm),
+                    border: Border.all(color: t.line),
+                  ),
+                  child: Icon(Icons.chevron_left, size: 19, color: t.text),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
 
   /// The logger's chrome, shared by the loaded state and the empty-day
   /// one below. Both need the same way out: back steps through the
@@ -1213,29 +1351,11 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     // arrow. Tooltipped 'Back' so the platform affordance -- and
     // tester.pageBack -- still finds it, and maybePop routes it through
     // the PopScope above, which is what steps an exercise back.
-    leadingWidth: 58,
-    leading: Padding(
-      padding: const EdgeInsets.only(left: 20),
-      child: Tooltip(
-        message: 'Back',
-        child: InkWell(
-          key: const Key('logger.back'),
-          onTap: () => Navigator.maybePop(context),
-          borderRadius: BorderRadius.circular(FsRadius.sm),
-          child: Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: t.surface,
-              borderRadius: BorderRadius.circular(FsRadius.sm),
-              border: Border.all(color: t.line),
-            ),
-            child: Icon(Icons.chevron_left, size: 19, color: t.text),
-          ),
-        ),
-      ),
-    ),
-    titleSpacing: 10,
+    leadingWidth: _backWidth,
+    leading: _backButton(t),
+    // 5 rather than 10: the target reaches 5 dp past the drawn square, and
+    // the title stays where the mockup puts it.
+    titleSpacing: 5,
     title: Text(
       'Logging',
       style: TextStyle(
@@ -1349,7 +1469,12 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     final session = live ?? _lastSeenSession;
 
     if (session == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      // No session to act on yet, so no menu -- but a way back, always.
+      return Scaffold(
+        backgroundColor: t.bg,
+        appBar: AppBar(leadingWidth: _backWidth, leading: _backButton(t)),
+        body: const Center(child: CircularProgressIndicator()),
+      );
     }
 
     // A session started from a chosen list carries its own exercises and has
@@ -1366,7 +1491,52 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     // session, and a refresh still holds the plan it is replacing -- falling
     // to the spinner then would blank the whole logger for a frame.
     if (carried.isEmpty && asyncPlan.isLoading && !asyncPlan.hasValue) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      // The session is open on the server already: Back and the menu stay,
+      // so a slow plan load never strands anyone on a bare spinner.
+      return _keptOpenOnPop(
+        session,
+        Scaffold(
+          backgroundColor: t.bg,
+          appBar: _appBar(t, restSeconds: restSeconds),
+          body: const Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
+
+    // A plan that failed to load is not an empty day. Saying "Nothing to
+    // train here" and pointing at Discard would invite someone on poor gym
+    // Wi-Fi to throw away a real session with sets already logged.
+    if (carried.isEmpty && plan == null && asyncPlan.hasError) {
+      return _keptOpenOnPop(
+        session,
+        Scaffold(
+          backgroundColor: t.bg,
+          appBar: _appBar(t, restSeconds: restSeconds),
+          body: Center(
+            key: const Key('logger.planError'),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  FsIconTile(icon: Icons.cloud_off, size: 56),
+                  const SizedBox(height: 16),
+                  Text(
+                    "Couldn't load today's workout",
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  FsRetry(
+                    message: userMessage(asyncPlan.error!),
+                    buttonKey: const Key('logger.planError.retry'),
+                    onRetry: () => ref.invalidate(activePlanProvider),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
     }
 
     // The session's own list wins: a manual session must not fall through to
@@ -1454,7 +1624,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     // drawn depends on it.
     final next = _activeSetNumber(exercise, session);
     _restAlertBody = next != null
-        ? 'Next: set $next of ${exercise.name}'
+        ? 'Next: set $next of ${exerciseDisplayName(exercise.name)}'
         : 'Time for your next exercise.';
     final isLast = index == exercises.length - 1;
     // A switch replaces the exercise in the plan, so only a session whose
@@ -1497,7 +1667,14 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     return PopScope(
       canPop: index == 0 && _stage == _LoggerStage.demo,
       onPopInvokedWithResult: (didPop, _) {
-        if (didPop) return;
+        if (didPop) {
+          // Back from exercise 1's demo closes the logger, exactly as Leave
+          // does, so with sets logged it says what Leave says.
+          if (!_closedSelf && doneSets > 0) {
+            _sayKeptOpen(ScaffoldMessenger.of(context));
+          }
+          return;
+        }
         setState(() {
           if (_stage == _LoggerStage.logging) {
             _moveTo(stage: _LoggerStage.demo);
@@ -1531,44 +1708,50 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                     builder: (context, constraints) => Row(
                       children: [
                         Flexible(
-                          child: InkWell(
-                            key: const Key('logger.position'),
-                            onTap: () => _jumpTo(exercises, session, index),
-                            // The caption stays an 11 px line; the target
-                            // around it is a full 48 dp. It takes the gap
-                            // that used to sit under the row, so the bar
-                            // below moves less than the target grew.
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(
-                                minWidth: 48,
-                                minHeight: 48,
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Flexible(
-                                    child: Text(
-                                      '${_positionLabel(index, exercises.length)}'
-                                      // Named the way Home and History name
-                                      // it. Not the active plan's name: a
-                                      // workout the user picked themselves
-                                      // is not a day of the AI plan they may
-                                      // be replacing.
-                                      ' · ${openWorkoutTitle(session, plan)}',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: t.text2,
+                          // A caption to look at, but the way to the jump
+                          // sheet: a screen reader hears a button, and why.
+                          child: Semantics(
+                            button: true,
+                            hint: 'Jump to another exercise',
+                            child: InkWell(
+                              key: const Key('logger.position'),
+                              onTap: () => _jumpTo(exercises, session, index),
+                              // The caption stays an 11 px line; the target
+                              // around it is a full 48 dp. It takes the gap
+                              // that used to sit under the row, so the bar
+                              // below moves less than the target grew.
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  minWidth: 48,
+                                  minHeight: 48,
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        '${_positionLabel(index, exercises.length)}'
+                                        // Named the way Home and History name
+                                        // it. Not the active plan's name: a
+                                        // workout the user picked themselves
+                                        // is not a day of the AI plan they may
+                                        // be replacing.
+                                        ' · ${openWorkoutTitle(session, plan)}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: t.text2,
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  Icon(
-                                    Icons.arrow_drop_down,
-                                    size: 16,
-                                    color: t.text2,
-                                  ),
-                                ],
+                                    Icon(
+                                      Icons.arrow_drop_down,
+                                      size: 16,
+                                      color: t.text2,
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
@@ -1583,12 +1766,16 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                           constraints: BoxConstraints(
                             maxWidth: constraints.maxWidth * 0.45,
                           ),
-                          child: Text(
-                            '${_elapsedMinutes(session.startedAt)} min elapsed',
-                            style: TextStyle(
-                              fontFamily: fsMonoFamily,
-                              fontSize: 11,
-                              color: t.text3,
+                          child: ValueListenableBuilder<int>(
+                            valueListenable: _elapsedTick,
+                            builder: (_, _, _) => Text(
+                              '${_elapsedMinutes(session.startedAt)} '
+                              'min elapsed',
+                              style: TextStyle(
+                                fontFamily: fsMonoFamily,
+                                fontSize: 11,
+                                color: t.text3,
+                              ),
                             ),
                           ),
                         ),
@@ -1607,7 +1794,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                         value: targetSets == 0 ? 0 : doneSets / targetSets,
                         minHeight: 8,
                         backgroundColor: t.surface2,
-                        valueColor: AlwaysStoppedAnimation<Color>(t.accent),
+                        valueColor: AlwaysStoppedAnimation<Color>(t.accentFill),
                       ),
                     ),
                   ),
@@ -1745,6 +1932,13 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                           // counting.
                           if (!mounted) return;
                           setState(() => _startRest(restSeconds));
+                          _signalSetLogged(
+                            setNumber: setNumber,
+                            restSeconds: restSeconds,
+                            exercises: exercises,
+                            index: index,
+                            wasComplete: encouragement != null,
+                          );
                           if (_appVisible) {
                             unawaited(_askRestAlertPermissionOnce());
                           } else {

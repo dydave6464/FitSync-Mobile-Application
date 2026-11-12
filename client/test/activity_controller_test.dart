@@ -57,21 +57,31 @@ class _FakePermission implements StepPermission {
 
 class _FakeRepo implements ActivityRepository {
   final stored = <String, int>{};
-  final saves = <String>[];
+
+  /// Every batch sent, in order.
+  final batches = <Map<String, int>>[];
+  int weekReads = 0;
   Object? failWith;
   Object? saveFailWith;
 
   @override
-  Future<ActivityDay> saveDay(String date, int steps) async {
+  Future<ActivityDay> saveDay(String date, int steps) =>
+      throw UnimplementedError('the controller saves in one batch');
+
+  @override
+  Future<ActivityWeek> saveDays(Map<String, int> days) async {
     if (failWith != null) throw failWith!;
     if (saveFailWith != null) throw saveFailWith!;
-    saves.add('$date=$steps');
-    stored[date] = steps > (stored[date] ?? -1) ? steps : stored[date]!;
-    return _d(date, stored[date]);
+    batches.add(Map.of(days));
+    for (final e in days.entries) {
+      stored[e.key] = e.value > (stored[e.key] ?? -1) ? e.value : stored[e.key]!;
+    }
+    return _week(stored);
   }
 
   @override
   Future<ActivityWeek> week() async {
+    weekReads++;
     if (failWith != null) throw failWith!;
     return _week(stored);
   }
@@ -88,28 +98,49 @@ ProviderContainer _container(_FakeSource source, _FakeRepo repo) {
 }
 
 void main() {
-  test('loading saves today and returns the week', () async {
+  test('loading saves today and the week comes back with it, in one request', () async {
     final repo = _FakeRepo();
     final c = _container(_FakeSource(todaySteps: 6420), repo);
 
     final s = await c.read(activityProvider.future);
 
-    expect(repo.saves, ['2026-09-28=6420']);
+    expect(repo.batches, [{'2026-09-28': 6420}]);
+    expect(repo.weekReads, 0);
     expect(s.today.steps, 6420);
     expect(s.week!.today.steps, 6420);
     expect(s.offline, isFalse);
   });
 
-  test('earlier days are saved only where the phone has more than the server, never 0', () async {
+  test('today and every earlier day with steps go up in one batch, never 0', () async {
+    // The server keeps the higher count, so nothing is read first to
+    // compare against.
     final repo = _FakeRepo()..stored.addAll({'2026-09-27': 5000, '2026-09-26': 9000});
     final c = _container(
       _FakeSource(todaySteps: 100, earlier: {'2026-09-27': 5200, '2026-09-26': 9000, '2026-09-25': 0}),
       repo,
     );
 
+    final s = await c.read(activityProvider.future);
+
+    expect(repo.batches, [
+      {'2026-09-28': 100, '2026-09-27': 5200, '2026-09-26': 9000},
+    ]);
+    expect(repo.weekReads, 0);
+    expect(s.week!.days[5].steps, 5200);
+  });
+
+  test('a sync sends one batch, without reading the week first', () async {
+    final repo = _FakeRepo();
+    final source = _FakeSource(todaySteps: 1000);
+    final c = _container(source, repo);
     await c.read(activityProvider.future);
 
-    expect(repo.saves, ['2026-09-28=100', '2026-09-27=5200']);
+    source.todaySteps = 1500;
+    await c.read(activityProvider.notifier).sync();
+
+    expect(repo.batches, [{'2026-09-28': 1000}, {'2026-09-28': 1500}]);
+    expect(repo.weekReads, 0);
+    expect(c.read(activityProvider).value!.week!.today.steps, 1500);
   });
 
   test('offline: today still counts, the week is the last one, flagged', () async {
@@ -142,7 +173,7 @@ void main() {
 
   test('a server error on first load is an error', () async {
     final repo = _FakeRepo()..failWith = const ApiException('SERVER_ERROR', 'broke');
-    final c = _container(_FakeSource(), repo);
+    final c = _container(_FakeSource(todaySteps: 1000), repo);
 
     await expectLater(c.read(activityProvider.future), throwsA(isA<ApiException>()));
   });
@@ -156,11 +187,11 @@ void main() {
 
     final s = await c.read(activityProvider.future);
 
-    expect(repo.saves, ['2026-09-28=100000', '2026-09-27=100000']);
+    expect(repo.batches, [{'2026-09-28': 100000, '2026-09-27': 100000}]);
     expect(s.today.steps, 150000);
   });
 
-  test('a day the server rejects is skipped; the week still loads', () async {
+  test('a batch the server rejects falls back to reading the week', () async {
     final repo = _FakeRepo()
       ..stored['2026-09-27'] = 4000
       ..saveFailWith = const ApiException('STEPS_INVALID', 'too many');
@@ -168,19 +199,25 @@ void main() {
 
     final s = await c.read(activityProvider.future);
 
+    expect(repo.weekReads, 1);
     expect(s.today.steps, 6420);
     expect(s.offline, isFalse);
     expect(s.week, isNotNull);
     expect(s.week!.days[5].steps, 4000);
   });
 
-  test('0 steps today are never saved', () async {
+  test('with no steps anywhere, nothing is saved and the week is read', () async {
     final repo = _FakeRepo();
-    final c = _container(_FakeSource(todaySteps: 0), repo);
+    final c = _container(
+      _FakeSource(todaySteps: 0, earlier: {'2026-09-27': 0}),
+      repo,
+    );
 
-    await c.read(activityProvider.future);
+    final s = await c.read(activityProvider.future);
 
-    expect(repo.saves, isEmpty);
+    expect(repo.batches, isEmpty);
+    expect(repo.weekReads, 1);
+    expect(s.week, isNotNull);
   });
 
   test(

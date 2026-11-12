@@ -1,13 +1,9 @@
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
-// describeError lives beside the catalogue list rather than in core/ -- it is
-// the one place that turns an ApiException into a sentence, and every screen
-// imports it from there with `show`.
-import '../../../exercises/presentation/exercise_list_screen.dart'
-    show describeError;
 import '../../domain/recovery.dart';
 import '../providers.dart';
 import '../../../../core/api_exception.dart';
@@ -104,14 +100,11 @@ Future<void> showCheckinSheet(
 }) {
   return showModalBottomSheet<void>(
     context: context,
-    // The surface goes on the sheet's own Material -- see share_report_sheet's
-    // note on the same choice. This sheet's chips are InkWells on a Material
-    // too, so Colors.transparent-plus-Container would only relocate the same
-    // bug that once made a copy of that pattern render see-through.
-    backgroundColor: context.fs.surface,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-    ),
+    // The surface and corners are the theme's (bottomSheetTheme), on the
+    // sheet's own Material, which this sheet's InkWell chips need. Its
+    // handle is not: it draws the kit's inside the discard guard, since
+    // Material's would sit outside it (PT-22).
+    showDragHandle: false,
     isScrollControlled: true,
     builder: (_) => _CheckinSheet(existing: existing),
   );
@@ -127,7 +120,10 @@ class _CheckinSheet extends ConsumerStatefulWidget {
 }
 
 class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
-  late final Map<String, String> _answers = {
+  /// The answers already stored: nothing, for a new check-in. One map seeds
+  /// [_answers] and is what [_dirty] compares against, so a question added
+  /// here is counted by both.
+  late final Map<String, String> _saved = {
     if (widget.existing case final existing?) ...{
       'sleepQuality': existing.sleepQuality,
       'muscleSoreness': existing.muscleSoreness,
@@ -136,9 +132,23 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
     },
   };
 
+  late final Map<String, String> _answers = {..._saved};
+
   /// Save waits for all four: a partial check-in has nothing honest to put
   /// in the missing columns.
   bool get _complete => _questions.every((q) => _answers.containsKey(q.field));
+
+  /// Whether closing now would throw answers away: any answer that differs
+  /// from what was saved (nothing, for a new check-in), or a pain answer not
+  /// yet stored. Never while a save is in flight -- that save still lands
+  /// after the sheet has gone.
+  bool get _dirty {
+    if (_busy) return false;
+    final changed =
+        _answers.length != _saved.length ||
+        _answers.entries.any((e) => _saved[e.key] != e.value);
+    return changed || (_painLevel != null && !_painSaved);
+  }
 
   /// The workout the pain row asks about, once [lookUpPendingOutcome] has
   /// answered; null hides the row. Held here rather than watched: the save
@@ -251,9 +261,9 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
   Future<void> _save() async {
     if (_busy) return;
     // Captured before the awaits for the same reason as generator_screen's
-    // _generate and session_logger_screen's _addToPlan: nothing sets
-    // isDismissible: false or blocks the back gesture here, so the sheet can
-    // be swiped away while a request is still in flight. ref would throw
+    // _generate and session_logger_screen's _addToPlan: the discard guard
+    // stands down during a save, so the sheet can still be swiped away
+    // while the request is in flight. ref would throw
     // against a disposed State -- the container outlives the widget, so the
     // refresh still lands even when the sheet is already gone, which is what
     // should happen: the check-in really did save. The messenger is the
@@ -279,10 +289,20 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
         showErrorSnackBar(messenger, painNotSavedMessage);
       }
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted) {
+        // Dismissed mid-save: the error line went with the sheet, so the
+        // failure is said on the screen underneath instead.
+        if (messenger != null) {
+          showErrorSnackBar(
+            messenger,
+            "Your check-in wasn't saved. ${userMessage(error)}",
+          );
+        }
+        return;
+      }
       setState(() {
         _busy = false;
-        _failure = describeError(error);
+        _failure = userMessage(error);
       });
     }
   }
@@ -291,21 +311,57 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
   Widget build(BuildContext context) {
     final t = context.fs;
 
-    // Scrolls, so at large text on a small phone Save is still reachable
-    // rather than pushed off the bottom of the sheet.
-    return SafeArea(
-      child: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(
-          18,
-          10,
-          18,
-          MediaQuery.of(context).viewInsets.bottom + 20,
-        ),
+    // Answers given and not saved make back, a tap on the scrim and a swipe
+    // down ask before throwing them away (the kit's sheet guard, which
+    // claims the drag while dirty).
+    return FsSheetDiscardGuard(
+      dirty: _dirty,
+      message: "Your check-in answers won't be saved.",
+      child: _content(t),
+    );
+  }
+
+  Widget _content(FsTokens t) {
+    // At most 0.9 of the screen, as the How to read sheet: a strip of the
+    // Recovery tab stays in view above it, and its title never slides under
+    // the status bar.
+    return FsSheetHeightCap(
+      child: SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
+            // The kit's handle, drawn inside the guard: Material's would
+            // sit outside it, where a drag would close the sheet unasked.
+            const Padding(
+              padding: EdgeInsets.only(top: 10, bottom: 12),
+              child: Center(child: FsSheetHandle(key: Key('checkin.handle'))),
+            ),
+            // Everything below the handle scrolls, so at large text on a
+            // small phone Save is still reachable rather than pushed off the
+            // bottom of the sheet.
+            Flexible(child: _questionsAndSave(t)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _questionsAndSave(FsTokens t) {
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(
+        18,
+        0,
+        18,
+        MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Semantics(
+            header: true,
+            child: Text(
               'Morning check-in',
               style: TextStyle(
                 fontSize: 20,
@@ -313,82 +369,96 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
                 color: t.text,
               ),
             ),
-            const SizedBox(height: 6),
-            // One short line, the same with or without the pain question:
-            // why the sheet asks, not how many questions it has -- the
-            // questions are right below, and the pain one has its own heading.
+          ),
+          const SizedBox(height: 6),
+          // One short line, the same with or without the pain question:
+          // why the sheet asks, not how many questions it has -- the
+          // questions are right below, and the pain one has its own heading.
+          Text(
+            "Helps estimate today's injury risk.",
+            style: TextStyle(fontSize: 13, color: t.text2, height: 1.4),
+          ),
+          const SizedBox(height: 16),
+          for (final q in _questions) ...[
             Text(
-              "Helps estimate today's injury risk.",
-              style: TextStyle(fontSize: 13, color: t.text2, height: 1.4),
-            ),
-            const SizedBox(height: 16),
-            for (final q in _questions) ...[
-              Text(
-                q.label,
-                style: TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                  color: t.text,
-                ),
+              q.label,
+              style: TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+                color: t.text,
               ),
-              // Small gaps around the row: each band is a full 48 dp tall,
-              // so the pills already sit apart by the band's own slack, and
-              // there is no run spacing for the same reason.
-              const SizedBox(height: 2),
-              Wrap(
-                spacing: 8,
-                children: [
-                  for (final value in q.values)
-                    _AnswerTarget(
-                      key: Key('checkin.${q.field}.$value.target'),
-                      label: '${q.label}: ${_displayLabel(value)}',
+            ),
+            // Small gaps around the row: each band is a full 48 dp tall,
+            // so the pills already sit apart by the band's own slack, and
+            // there is no run spacing for the same reason.
+            const SizedBox(height: 2),
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final value in q.values)
+                  _AnswerTarget(
+                    key: Key('checkin.${q.field}.$value.target'),
+                    label: '${q.label}: ${_displayLabel(value)}',
+                    selected: _answers[q.field] == value,
+                    onTap: () {
+                      if (_busy) return;
+                      setState(() => _answers[q.field] = value);
+                    },
+                    child: FsChip(
+                      key: Key('checkin.${q.field}.$value'),
+                      label: _displayLabel(value),
                       selected: _answers[q.field] == value,
                       onTap: () {
                         if (_busy) return;
                         setState(() => _answers[q.field] = value);
                       },
-                      child: FsChip(
-                        key: Key('checkin.${q.field}.$value'),
-                        label: _displayLabel(value),
-                        selected: _answers[q.field] == value,
-                        onTap: () {
-                          if (_busy) return;
-                          setState(() => _answers[q.field] = value);
-                        },
-                      ),
                     ),
-                ],
-              ),
-              const SizedBox(height: 8),
-            ],
-            if (_pending case final pending?) ..._painRow(pending, t),
-            if (_failure != null) ...[
-              Text(_failure!, style: TextStyle(fontSize: 12, color: t.red)),
-              const SizedBox(height: 12),
-            ],
-            FsButton(
-              key: const Key('checkin.save'),
-              label: 'Save',
-              busy: _busy,
-              onPressed: _busy || !_complete || !_painReady ? null : _save,
+                  ),
+              ],
             ),
-            if (!_complete || !_painReady) ...[
-              const SizedBox(height: 8),
-              Center(
-                child: Text(
-                  !_complete
-                      ? 'Answer all four to save.'
-                      : 'Pick where it hurts, or tap '
-                            '${_displayLabel(_painLevel!)} again to skip this '
-                            'question.',
-                  key: const Key('checkin.hint'),
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 12, color: t.text2),
-                ),
-              ),
-            ],
+            const SizedBox(height: 8),
           ],
-        ),
+          if (_pending case final pending?) ..._painRow(pending, t),
+          if (_failure != null) ...[
+            // A live region: a screen reader says the failure when it
+            // appears, not just the button's loading ending.
+            FsErrorLine(_failure!, key: const Key('checkin.error')),
+            const SizedBox(height: 12),
+          ],
+          FsButton(
+            key: const Key('checkin.save'),
+            label: 'Save',
+            busy: _busy,
+            onPressed: _busy || !_complete || !_painReady ? null : _save,
+          ),
+          if (!_complete || !_painReady) ...[
+            const SizedBox(height: 8),
+            Center(
+              child: Text(
+                !_complete
+                    ? 'Answer all four to save.'
+                    : 'Pick where it hurts, or tap '
+                          '${_displayLabel(_painLevel!)} again to skip this '
+                          'question.',
+                key: const Key('checkin.hint'),
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: t.text2),
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+          // A button as well as the drag, the scrim and back, so closing
+          // never depends on a swipe. It asks the route to pop, so answers
+          // given still meet the discard question first. Off mid-save: the
+          // guard stands down then, and closing would not stop the save, so
+          // a Cancel there would cancel nothing.
+          FsButton(
+            key: const Key('checkin.cancel'),
+            label: 'Cancel',
+            kind: FsButtonKind.ghost,
+            onPressed: _busy ? null : () => Navigator.of(context).maybePop(),
+          ),
+        ],
       ),
     );
   }
@@ -444,7 +514,6 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
   /// The pain row's question itself: the four levels and -- once there is
   /// pain -- where.
   List<Widget> _painQuestion(TextStyle label) {
-    final t = context.fs;
     return [
       Text('Any pain since?', style: label),
       const SizedBox(height: 2),
@@ -502,21 +571,10 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
               // The provider is not autoDispose, so without a retry the
               // error would stay cached until the app restarts. Tapping the
               // pain level again still frees Save meanwhile.
-              error: (_, _) => Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "Couldn't load body regions.",
-                    style: TextStyle(fontSize: 12, color: t.red),
-                  ),
-                  const SizedBox(height: 4),
-                  FsButton(
-                    key: const Key('checkin.regions.retry'),
-                    label: 'Retry',
-                    kind: FsButtonKind.secondary,
-                    onPressed: () => ref.invalidate(injuryOptionsProvider),
-                  ),
-                ],
+              error: (_, _) => FsRetry(
+                message: "Couldn't load body regions.",
+                buttonKey: const Key('checkin.regions.retry'),
+                onRetry: () => ref.invalidate(injuryOptionsProvider),
               ),
             ),
       ],
@@ -534,6 +592,12 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
 ///
 /// A screen reader hears the question with the answer -- "Sleep: Poor" --
 /// rather than a bare "Moderate" that three of the four rows share.
+///
+/// Every row here is one answer per question, so the band reports itself as
+/// FsChip(exclusive: true) does -- the outcome sheet's same pain question
+/// then sounds the same: on Android "radio button, checked" rather than
+/// "selected"; on iOS, which has no radio role, the Selected trait, with an
+/// unpicked one saying "Not selected".
 class _AnswerTarget extends StatelessWidget {
   const _AnswerTarget({
     super.key,
@@ -552,10 +616,18 @@ class _AnswerTarget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final apple =
+        defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS;
     return Semantics(
       container: true,
       button: true,
-      selected: selected,
+      inMutuallyExclusiveGroup: true,
+      checked: selected,
+      selected: apple ? selected : null,
+      hint: apple && !selected
+          ? WidgetsLocalizations.of(context).radioButtonUnselectedLabel
+          : null,
       label: label,
       onTap: onTap,
       excludeSemantics: true,

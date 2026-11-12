@@ -13,6 +13,7 @@ const {
   completedThisWeek,
   listHistory,
   summariseHistory,
+  getCompletedSessionDetail,
   lastCompletedWorkout,
   SUMMARY_WINDOWS,
 } = require('../db/sessions');
@@ -300,6 +301,22 @@ module.exports = function buildSessionsRouter(deps) {
       res.json({
         data: { performances: await lastPerformance(deps.pool, req.user.userId, ids) },
       });
+    } catch (err) { next(err); }
+  });
+
+  // MUST stay after every fixed GET path above ('/summary', '/active', ...):
+  // Express matches in declaration order, so registered any earlier this
+  // would read 'active' as a session id. A fixed GET added later goes above
+  // this one too.
+  //
+  // One 404 for unknown, someone else's, still open and abandoned alike, so
+  // nothing leaks about which ids exist.
+  router.get('/:sessionId', auth, async (req, res, next) => {
+    try {
+      const id = sessionIdOr404(req.params.sessionId);
+      const session = await getCompletedSessionDetail(deps.pool, req.user.userId, id);
+      if (!session) throw notFound();
+      res.json({ data: { session: withUrls(session) } });
     } catch (err) { next(err); }
   });
 

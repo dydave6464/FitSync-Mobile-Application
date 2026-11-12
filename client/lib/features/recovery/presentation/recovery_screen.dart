@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart';
 import '../../../core/numbers.dart';
 import '../../../core/theme.dart';
 import '../../../core/units.dart';
 import '../../../core/widgets/fs_charts.dart'
     show FsRing, FsBarChart, FsChartBar;
 import '../../../core/widgets/fs_kit.dart' hide FsRing;
-import '../../exercises/presentation/exercise_list_screen.dart'
-    show describeError;
+import '../../nutrition/presentation/error_snack_bar.dart'
+    show showErrorSnackBar;
 import '../../profile/presentation/providers.dart' show weightUnitProvider;
 import '../../sessions/domain/training_analytics.dart' show VolumeBucket;
 import '../../sessions/domain/volume_labels.dart'
@@ -21,9 +22,8 @@ import 'widgets/checkin_sheet.dart';
 import 'widgets/how_to_read_sheet.dart';
 
 /// The Recovery tab's body: the injury-risk ring with what it means and why,
-/// what feeds it, and the 7-day training load beneath. Mirrors the loading
-/// spinner and describeError + Retry treatment `PlanScreen` uses for its own
-/// top-level provider, rather than inventing a third failure style.
+/// what feeds it, and the 7-day training load beneath. A failed load shows
+/// the kit's FsRetry, as the app's other screens do.
 class RecoveryScreen extends ConsumerWidget {
   const RecoveryScreen({super.key});
 
@@ -33,22 +33,12 @@ class RecoveryScreen extends ConsumerWidget {
 
     return overview.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(describeError(error), textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              FsButton(
-                label: 'Retry',
-                small: true,
-                onPressed: () => ref.invalidate(recoveryOverviewProvider),
-              ),
-            ],
-          ),
-        ),
+      // The tab fills the Training shell's body, so the kit's full-screen
+      // retry: centred, and scrollable at large text.
+      error: (error, _) => FsRetry(
+        fullScreen: true,
+        message: userMessage(error),
+        onRetry: () => ref.invalidate(recoveryOverviewProvider),
       ),
       data: (data) => _RecoveryView(overview: data),
     );
@@ -155,16 +145,91 @@ class _EmptyEstimate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final style = TextStyle(fontSize: 13, color: t.text2, height: 1.4);
+    if (todayCheckin == null) {
+      return Text(
+        'Check in this morning to get your first estimate.',
+        key: const Key('recovery.empty'),
+        style: style,
+      );
+    }
     // Checked in but nothing came back -- the ML service was down when the
     // check-in was saved. Asking this person to check in again would be
-    // wrong; an update re-sends the answers and tries the estimate again.
-    return Text(
-      todayCheckin == null
-          ? 'Check in this morning to get your first estimate.'
-          : 'Your check-in is saved, but no estimate came back. '
-                'Tap Update below to try again.',
-      key: const Key('recovery.empty'),
-      style: TextStyle(fontSize: 13, color: t.text2, height: 1.4),
+    // wrong; Try again works the estimate out from the saved answers.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Your check-in is saved, but no estimate came back.',
+          key: const Key('recovery.empty'),
+          style: style,
+        ),
+        const SizedBox(height: 8),
+        const _RetryEstimateButton(),
+      ],
+    );
+  }
+}
+
+/// Works today's estimate out again from the check-in already saved, for
+/// when it did not come back with the check-in. Update stays for changing
+/// the answers. On success the overview is fetched again, and Home's
+/// readiness ring and the reminders with it, since they watch it too.
+class _RetryEstimateButton extends StatefulWidget {
+  const _RetryEstimateButton();
+
+  @override
+  State<_RetryEstimateButton> createState() => _RetryEstimateButtonState();
+}
+
+class _RetryEstimateButtonState extends State<_RetryEstimateButton> {
+  bool _busy = false;
+
+  Future<void> _retry() async {
+    // Taken before the wait: the tab may be left while the estimate is
+    // worked out, and the overview should still be fetched again for Home.
+    final container = ProviderScope.containerOf(context, listen: false);
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _busy = true);
+    try {
+      await container.read(recoveryRepositoryProvider).retryEstimate();
+      container.invalidate(recoveryOverviewProvider);
+    } on ApiException catch (error) {
+      // The day rolled over while the tab was open: fetching it again shows
+      // the check-in prompt, which says what to do better than an error.
+      if (error.code == 'NO_CHECKIN_TODAY') {
+        container.invalidate(recoveryOverviewProvider);
+      } else {
+        showErrorSnackBar(messenger, userMessage(error));
+      }
+    } catch (error) {
+      showErrorSnackBar(messenger, userMessage(error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // A Row so the button keeps its own width rather than filling the line;
+    // the small button answers taps across a 48 dp band of its own. In the
+    // advice box, beside its icon, a 320 dp phone at 2x text leaves less
+    // room than the label needs on one line, so it wraps there rather than
+    // overflowing or ending in an ellipsis.
+    return Row(
+      children: [
+        Flexible(
+          child: FsButton(
+            key: const Key('recovery.retry'),
+            label: 'Try again',
+            kind: FsButtonKind.secondary,
+            small: true,
+            wrapLabel: true,
+            busy: _busy,
+            onPressed: _retry,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -205,10 +270,16 @@ class _EstimateCard extends StatelessWidget {
       children: [
         Center(
           // One phrase for a screen reader, which would otherwise hear the
-          // bare word in the ring with nothing to say what it measures.
+          // bare word in the ring with nothing to say what it measures. An
+          // earlier day's ring is told apart only by its grey, so its day is
+          // said here too, not just in the box below.
           child: Semantics(
             container: true,
-            label: 'Injury risk: ${estimate.label}',
+            label: isToday
+                ? 'Injury risk: ${estimate.label}'
+                : 'Injury risk: ${estimate.label}, from '
+                      '${formatShareExpiry(DateTime.parse(estimate.checkinDate))}. '
+                      "Not today's estimate.",
             excludeSemantics: true,
             child: FsRing(
               value: estimate.ringValue,
@@ -358,15 +429,7 @@ class _AdviceBox extends StatelessWidget {
                       // older estimate to show.
                       if (checkedInToday) ...[
                         const SizedBox(height: 8),
-                        Text(
-                          'Tap Update below to try again.',
-                          key: const Key('recovery.retry'),
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: t.text2,
-                            height: 1.4,
-                          ),
-                        ),
+                        const _RetryEstimateButton(),
                       ],
                     ],
                   ],
@@ -626,11 +689,22 @@ class _LoadCard extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const FsEyebrow('7-day training load'),
-        const SizedBox(height: 14),
-        FsBarChart(
-          label: '7-day training load',
-          bars: [for (var i = 0; i < load.length; i++) _bar(i, unit, today)],
-        ),
+        // The server always sends seven days, zero-filled, so a rest week
+        // would draw a bare baseline that reads as a broken chart.
+        if (load.every((bucket) => bucket.volumeKg <= 0)) ...[
+          const SizedBox(height: 12),
+          Text(
+            'No workouts in the last 7 days. Finished workouts show here as '
+            'training load.',
+            style: TextStyle(fontSize: 13, color: t.text2),
+          ),
+        ] else ...[
+          const SizedBox(height: 14),
+          FsBarChart(
+            label: '7-day training load',
+            bars: [for (var i = 0; i < load.length; i++) _bar(i, unit, today)],
+          ),
+        ],
       ],
     );
   }
@@ -678,10 +752,18 @@ class _MusclesCard extends StatelessWidget {
           for (final m in muscles)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 5),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
+              // The group at the start and its day at the end while both
+              // fit; at large text the day drops under the group instead,
+              // rather than squeezing the name mid-word or running off the
+              // card.
+              child: SizedBox(
+                width: double.infinity,
+                child: Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 12,
+                  children: [
+                    Text(
                       m.label,
                       style: TextStyle(
                         fontSize: 13.5,
@@ -689,12 +771,12 @@ class _MusclesCard extends StatelessWidget {
                         color: t.text,
                       ),
                     ),
-                  ),
-                  Text(
-                    m.when,
-                    style: TextStyle(fontSize: 12.5, color: t.text2),
-                  ),
-                ],
+                    Text(
+                      m.when,
+                      style: TextStyle(fontSize: 12.5, color: t.text2),
+                    ),
+                  ],
+                ),
               ),
             ),
       ],

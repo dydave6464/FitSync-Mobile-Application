@@ -78,7 +78,7 @@ void main() {
     // name's own top, exactly as it is for a row with no tag.
     expect(
       tester.getTopLeft(find.text('1')).dy,
-      tester.getTopLeft(find.text('glute bridge')).dy,
+      tester.getTopLeft(find.text('Glute bridge')).dy,
     );
   });
 }

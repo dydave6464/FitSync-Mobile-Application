@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
+import '../../domain/split_style.dart';
+import '../../domain/week_description.dart';
 import '../../domain/workout_plan.dart';
 
 /// The hero of the Plan tab: what today's session is, and the way into it.
@@ -13,9 +15,17 @@ class SessionCard extends StatelessWidget {
     required this.onStart,
     this.starting = false,
     this.dayNo,
+    this.trainingDays,
   });
 
   final WorkoutPlan plan;
+
+  /// The weekdays the user chose, from the profile. The plan's own
+  /// `daysPerWeek` is a label from its last generation and goes stale when
+  /// the days change in Settings or the generator; the week strip above
+  /// counts against these, so this card does too. Null (not known yet) or
+  /// empty (none chosen) falls back to the plan's label.
+  final List<int>? trainingDays;
 
   /// Which rotation day this card is describing — the caller works it out
   /// with [WorkoutPlan.todayDayNo], since it depends on how many sessions
@@ -40,9 +50,17 @@ class SessionCard extends StatelessWidget {
     // single home of that filtering.
     final count = plan.exercisesForDay(dayNo).length;
 
+    final chosen = trainingDays;
+    final days = chosen != null && chosen.isNotEmpty
+        ? chosen.length
+        : plan.daysPerWeek;
+    // Spelled as the choosers spell it ("Push / Pull / Legs"), so one split
+    // does not have two names across screens.
+    final split = splitLabel(plan.splitStyle);
+
     final facts = [
-      describeSplit(plan.splitStyle),
-      '${plan.daysPerWeek} days a week',
+      split,
+      daysAWeek(days),
       '$count ${count == 1 ? 'exercise' : 'exercises'}',
       '${plan.sessionLengthMin} min',
     ].where((part) => part.isNotEmpty).join(' · ');

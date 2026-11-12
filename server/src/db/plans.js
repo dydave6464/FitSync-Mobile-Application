@@ -153,11 +153,31 @@ function planDays(splitStyle, rows) {
   }));
 }
 
+/// The plan's days-per-week as every reader must report it: the number of
+/// days the user chose (user_training_days) when there are any, otherwise the
+/// stored workout_plans.days_per_week.
+///
+/// The stored column is only the label the plan was generated with -- the
+/// generator never sees the chosen days, and PUT /profile/training-days does
+/// not write it -- so read alone it goes stale the moment the user picks
+/// different days. The chosen days win, as the client's own _resolve does.
+/// Derived at read time rather than synced on write: no backfill, and no
+/// writer has to remember the rule. Any new reader of days_per_week uses this
+/// expression, or the Plan tab, Home and Progress disagree again.
+///
+/// [planAlias] is the SQL alias of workout_plans in the caller's query -- a
+/// fixed identifier from our own code, never user input.
+function effectiveDaysPerWeekSql(planAlias) {
+  return `COALESCE((SELECT NULLIF(COUNT(*), 0) FROM user_training_days utd WHERE utd.user_id = ${planAlias}.user_id), ${planAlias}.days_per_week)`;
+}
+
 async function getActivePlan(pool, userId) {
   const [plans] = await pool.query(
-    `SELECT plan_id, name, split_style, days_per_week, session_length_min, week_no, source, created_at
-       FROM workout_plans WHERE user_id = ? AND is_active = TRUE
-      ORDER BY plan_id DESC LIMIT 1`, [userId],
+    `SELECT wp.plan_id, wp.name, wp.split_style,
+            ${effectiveDaysPerWeekSql('wp')} AS days_per_week,
+            wp.session_length_min, wp.week_no, wp.source, wp.created_at
+       FROM workout_plans wp WHERE wp.user_id = ? AND wp.is_active = TRUE
+      ORDER BY wp.plan_id DESC LIMIT 1`, [userId],
   );
   if (plans.length === 0) return null;
   const p = plans[0];
@@ -500,4 +520,5 @@ async function createPlanFromSession(pool, userId, { sessionId, splitStyle, dayN
 
 module.exports = {
   resolveExerciseIds, savePlan, getActivePlan, dayNamesFor, createPlanFromSession,
+  effectiveDaysPerWeekSql,
 };

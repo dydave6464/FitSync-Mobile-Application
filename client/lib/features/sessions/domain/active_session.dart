@@ -1,4 +1,16 @@
+import '../../../core/api_exception.dart';
 import '../../plans/domain/workout_plan.dart';
+
+/// The open workout a SESSION_IN_PROGRESS refusal names, so the screen that
+/// was refused can offer a way back into it. Null for any other error, and
+/// for an older server that sent the refusal without details.
+int? inProgressSessionId(Object error) {
+  if (error is! ApiException || error.code != 'SESSION_IN_PROGRESS') {
+    return null;
+  }
+  if (error.details.isEmpty) return null;
+  return error.details.first['sessionId'] as int?;
+}
 
 /// One set the user has completed and the server has stored.
 class LoggedSet {

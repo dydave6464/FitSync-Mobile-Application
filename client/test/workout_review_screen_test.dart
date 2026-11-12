@@ -13,6 +13,7 @@ import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/exercises/data/exercise_repository.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
+import 'package:fitsync/features/exercises/presentation/exercise_thumb.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
@@ -362,6 +363,18 @@ void main() {
     expect(positions, orderedEquals([...positions]..sort()));
   });
 
+  // The kit's rounded thumb with its themed placeholder, as the plan list
+  // and the logger draw an exercise -- not a bare square Image.network.
+  testWidgets('each row draws its exercise with the shared thumb', (
+    tester,
+  ) async {
+    await _pump(tester, picks: const [_squat, _fly]);
+
+    final thumbs = tester.widgetList<ExerciseThumb>(find.byType(ExerciseThumb));
+    expect(thumbs, hasLength(2));
+    expect(thumbs.map((t) => t.size), everyElement(44));
+  });
+
   testWidgets('says how many exercises the workout holds', (tester) async {
     await _pump(tester, picks: const [_squat, _fly]);
 
@@ -481,7 +494,12 @@ void main() {
     await tester.tap(_start());
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Could not reach the server.'), findsOneWidget);
+    expect(
+      find.textContaining(
+        "Couldn't reach FitSync. Check your connection and try again.",
+      ),
+      findsOneWidget,
+    );
     expect(container.read(workoutDraftProvider).exerciseIds, [
       101,
       202,
@@ -1209,5 +1227,66 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.text('Removed Cable fly'), findsOneWidget);
+  });
+
+  // Similar exercises differ at the end of their names: 'dumbbell incline
+  // bench press' and 'dumbbell incline fly' both read 'dumbbell incline…'
+  // when cut to one line, on the screen where the order is set (SE-6). The
+  // name is short because the test font is one em per glyph: it is two
+  // lines here as the catalogue's long names are two lines on a phone.
+  group('long names are not cut', () {
+    const long = ExerciseSummary(
+      exerciseId: 404,
+      name: 'Incline DB press',
+      muscleGroup: 'pectorals',
+      equipment: 'dumbbell',
+      thumbnailUrl: null,
+    );
+
+    for (final scale in [1.0, 1.3]) {
+      testWidgets('on a 360 dp phone at ${scale}x text', (tester) async {
+        tester.view.physicalSize = const Size(360, 640);
+        tester.view.devicePixelRatio = 1.0;
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.view.reset);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+        await _pump(tester, picks: const [long]);
+
+        expect(tester.takeException(), isNull);
+        final name = tester.renderObject<RenderParagraph>(find.text(long.name));
+        expect(name.didExceedMaxLines, isFalse);
+      });
+    }
+  });
+
+  // The summary and rows read as the library's filter does, not as the
+  // catalogue stores them (SE-10).
+  testWidgets('names and muscles read as words, not catalogue tags', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      picks: const [
+        ExerciseSummary(
+          exerciseId: 505,
+          name: 'barbell bench press',
+          muscleGroup: 'pectorals',
+          equipment: 'barbell',
+          thumbnailUrl: null,
+        ),
+        ExerciseSummary(
+          exerciseId: 506,
+          name: 'push-up',
+          muscleGroup: 'pectorals',
+          equipment: 'body weight',
+          thumbnailUrl: null,
+        ),
+      ],
+    );
+
+    expect(find.text('2 exercises · Chest'), findsOneWidget);
+    expect(find.text('Barbell bench press'), findsOneWidget);
+    expect(find.text('2 · Chest · Bodyweight'), findsOneWidget);
   });
 }

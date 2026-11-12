@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/api_exception.dart';
 import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
-import '../../../exercises/presentation/exercise_list_screen.dart'
-    show describeError;
 import '../../../profile/domain/profile.dart';
 import '../../../profile/presentation/providers.dart';
 
@@ -105,6 +104,9 @@ const locationPrefill = <String, List<String>?>{
 /// Reads the equipment lookup because that list belongs to the server, not to
 /// the design — but still saves nothing and knows nothing about its scaffold.
 class LevelStep extends ConsumerWidget {
+  /// The step's heading, also said when onboarding moves to it.
+  static const title = 'Your level & equipment';
+
   const LevelStep({super.key, required this.value, required this.onChanged});
 
   final LevelAnswers value;
@@ -133,26 +135,54 @@ class LevelStep extends ConsumerWidget {
   Future<void> _pickLocation(BuildContext context, WidgetRef ref) async {
     final picked = await showModalBottomSheet<String>(
       context: context,
-      builder: (sheet) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 8),
-            for (final location in _locations)
-              ListTile(
-                key: Key('location.${location.value}'),
-                // The app theme insets tile content by 4dp, which reads as
-                // padding only inside a card that brings its own. In a sheet
-                // flush with the screen it puts the labels against the edge,
-                // so this matches the 20dp the swap sheet uses.
-                contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-                title: Text(location.label),
-                trailing: location.value == value.trainingLocation
-                    ? Icon(Icons.check, size: 18, color: sheet.fs.accentText)
-                    : null,
-                onTap: () => Navigator.of(sheet).pop(location.value),
-              ),
-          ],
+      // Scroll-controlled and capped, so the theme's drag handle plus four
+      // rows never outgrow a small phone at large text: past the cap the
+      // rows scroll instead of overflowing under the gesture bar.
+      isScrollControlled: true,
+      builder: (sheet) => FsSheetHeightCap(
+        child: SafeArea(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Named, so the sheet says what it is choosing; a heading, so a
+                // screen reader lands on it first.
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+                  child: Semantics(
+                    key: const Key('location.title'),
+                    container: true,
+                    header: true,
+                    child: Text(
+                      'Training location',
+                      style: Theme.of(sheet).textTheme.titleMedium,
+                    ),
+                  ),
+                ),
+                for (final location in _locations)
+                  ListTile(
+                    key: Key('location.${location.value}'),
+                    // Said as "selected" as well as shown by the tick.
+                    selected: location.value == value.trainingLocation,
+                    // The app theme insets tile content by 4dp, which reads as
+                    // padding only inside a card that brings its own. In a sheet
+                    // flush with the screen it puts the labels against the edge,
+                    // so this matches the 20dp the swap sheet uses.
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+                    title: Text(location.label),
+                    trailing: location.value == value.trainingLocation
+                        ? Icon(
+                            Icons.check,
+                            size: 18,
+                            color: sheet.fs.accentText,
+                          )
+                        : null,
+                    onTap: () => Navigator.of(sheet).pop(location.value),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -188,7 +218,12 @@ class LevelStep extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text('Your level & equipment', style: theme.textTheme.headlineSmall),
+        // A heading, so a screen reader can jump to it and hears it as the
+        // title of the step.
+        Semantics(
+          header: true,
+          child: Text(LevelStep.title, style: theme.textTheme.headlineSmall),
+        ),
         const SizedBox(height: 22),
         const FsEyebrow('Experience'),
         const SizedBox(height: 10),
@@ -212,18 +247,32 @@ class LevelStep extends ConsumerWidget {
             children: [
               Icon(Icons.home_outlined, size: 18, color: t.text2),
               const SizedBox(width: 11),
-              const Expanded(
-                child: Text(
-                  'Training location',
-                  style: TextStyle(fontSize: 13.5),
-                ),
-              ),
-              Text(
-                _locationLabel,
-                style: TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                  color: value.trainingLocation == null ? t.text3 : t.text,
+              // Label left and value right on one line, as the design draws
+              // them, while both fit. At large text the value moves under
+              // the label instead of squeezing it into a column of single
+              // letters, or pushing the row off the card.
+              Expanded(
+                child: Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
+                  runSpacing: 2,
+                  children: [
+                    const Text(
+                      'Training location',
+                      style: TextStyle(fontSize: 13.5),
+                    ),
+                    Text(
+                      _locationLabel,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        color: value.trainingLocation == null
+                            ? t.text3
+                            : t.text,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(width: 6),
@@ -252,18 +301,11 @@ class LevelStep extends ConsumerWidget {
             child: Center(child: CircularProgressIndicator()),
           ),
           error: (error, _) => Padding(
-            padding: const EdgeInsets.fromLTRB(0, 24, 0, 16),
-            child: Column(
-              children: [
-                Text(describeError(error), textAlign: TextAlign.center),
-                const SizedBox(height: 12),
-                FsButton(
-                  label: 'Retry',
-                  small: true,
-                  kind: FsButtonKind.secondary,
-                  onPressed: () => ref.invalidate(equipmentOptionsProvider),
-                ),
-              ],
+            padding: const EdgeInsets.only(top: 8),
+            child: FsRetry(
+              message: userMessage(error),
+              buttonKey: const Key('equipment.retry'),
+              onRetry: () => ref.invalidate(equipmentOptionsProvider),
             ),
           ),
           // The server now returns the curated list in display order, and

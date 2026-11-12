@@ -4,13 +4,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart' show FaIcon;
+
+import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/widgets/fs_brand.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/features/auth/data/auth_repository.dart';
+import 'package:fitsync/features/admin/domain/admin_user.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
+import 'package:fitsync/features/auth/domain/sign_in_outcome.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/auth/presentation/check_email_screen.dart';
 import 'package:fitsync/features/auth/presentation/forgot_password_screen.dart';
+import 'package:fitsync/features/auth/presentation/google_g_mark.dart';
+import 'package:fitsync/features/auth/presentation/password_reveal_toggle.dart';
 import 'package:fitsync/features/auth/presentation/sign_in_screen.dart';
 
 AuthUser _user() => const AuthUser(
@@ -26,7 +35,7 @@ AuthUser _user() => const AuthUser(
 class FakeAuthRepository implements AuthRepository {
   FakeAuthRepository({this.onLogin, this.onRegister});
 
-  final Future<AuthUser> Function()? onLogin;
+  final Future<SignInOutcome> Function()? onLogin;
   final Future<void> Function()? onRegister;
 
   int loginCalls = 0;
@@ -36,7 +45,7 @@ class FakeAuthRepository implements AuthRepository {
   String? lastFullName;
 
   @override
-  Future<AuthUser> login(String email, String password) {
+  Future<SignInOutcome> login(String email, String password) {
     loginCalls++;
     lastEmail = email;
     return onLogin!();
@@ -83,6 +92,16 @@ class FakeAuthRepository implements AuthRepository {
       throw UnimplementedError();
 
   @override
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> deleteAccount({String? password, String? idToken}) =>
+      throw UnimplementedError();
+
+  @override
   Future<void> resetPassword({
     required String email,
     required String code,
@@ -91,9 +110,10 @@ class FakeAuthRepository implements AuthRepository {
 }
 
 class RecordingAuthController extends AuthController {
-  RecordingAuthController(this.seen);
+  RecordingAuthController(this.seen, [this.seenAdmins]);
 
   final List<AuthUser> seen;
+  final List<AdminUser>? seenAdmins;
 
   @override
   Future<AuthState> build() async => AuthState.signedOut;
@@ -103,18 +123,39 @@ class RecordingAuthController extends AuthController {
     seen.add(user);
     super.onAuthenticated(user);
   }
+
+  @override
+  void onAdminAuthenticated(AdminUser admin) {
+    seenAdmins?.add(admin);
+    super.onAdminAuthenticated(admin);
+  }
+}
+
+/// Signed out because the account was just deleted.
+class _DeletedAuthController extends AuthController {
+  @override
+  Future<AuthState> build() async =>
+      const AuthState(AuthStatus.signedOut, null, SignOutReason.accountDeleted);
+}
+
+/// Signed out at launch because an admin suspended the account.
+class _SuspendedAuthController extends AuthController {
+  @override
+  Future<AuthState> build() async =>
+      const AuthState(AuthStatus.signedOut, null, SignOutReason.suspended);
 }
 
 Future<void> _pump(
   WidgetTester tester,
   FakeAuthRepository repo, {
   List<AuthUser>? seen,
+  List<AdminUser>? seenAdmins,
 }) => tester.pumpWidget(
   ProviderScope(
     overrides: [
       authRepositoryProvider.overrideWithValue(repo),
       authControllerProvider.overrideWith(
-        () => RecordingAuthController(seen ?? []),
+        () => RecordingAuthController(seen ?? [], seenAdmins),
       ),
     ],
     child: const MaterialApp(home: SignInScreen()),
@@ -171,7 +212,128 @@ Future<void> _fillAndSubmit(
   await _tapKey(tester, 'submit');
 }
 
+/// Whether the text [finder] matches is in a live region, which a screen
+/// reader speaks as soon as it appears.
+bool _isLive(WidgetTester tester, Finder finder) =>
+    tester.getSemantics(finder).getSemanticsData().flagsCollection.isLiveRegion;
+
+/// Whether the field keyed [key] has the keyboard focus.
+bool _hasFocus(WidgetTester tester, String key) => tester
+    .state<EditableTextState>(
+      find.descendant(
+        of: find.byKey(Key(key)),
+        matching: find.byType(EditableText),
+      ),
+    )
+    .widget
+    .focusNode
+    .hasFocus;
+
 void main() {
+  testWidgets('says the account was deleted when that is why it is here', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(FakeAuthRepository()),
+          authControllerProvider.overrideWith(_DeletedAuthController.new),
+        ],
+        child: const MaterialApp(home: SignInScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final notice = find.text('Your account was deleted.');
+    expect(notice, findsOneWidget);
+    expect(
+      _isLive(tester, notice),
+      isTrue,
+      reason: 'a screen reader says it as the sign-in screen appears',
+    );
+    handle.dispose();
+  });
+
+  testWidgets('says the account is suspended when that is why it is here', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(FakeAuthRepository()),
+          authControllerProvider.overrideWith(_SuspendedAuthController.new),
+        ],
+        child: MaterialApp(theme: fsLightTheme(), home: const SignInScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final note = find.byKey(const Key('signIn.suspended'));
+    final message = find.descendant(
+      of: note,
+      matching: find.text('This account is suspended.'),
+    );
+    expect(message, findsOneWidget);
+    final icon = tester.widget<Icon>(
+      find.descendant(of: note, matching: find.byType(Icon)),
+    );
+    expect(icon.icon, Icons.block);
+    expect(icon.color, FsTokens.light.red);
+    expect(
+      _isLive(tester, message),
+      isTrue,
+      reason: 'a screen reader says it as the sign-in screen appears',
+    );
+    expect(find.text('Your account was deleted.'), findsNothing);
+    handle.dispose();
+  });
+
+  testWidgets('the suspended note fits 360x640 at 2x text, dark', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 2.0;
+    tester.view.physicalSize = const Size(360 * 2.0, 640 * 2.0);
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(FakeAuthRepository()),
+          authControllerProvider.overrideWith(_SuspendedAuthController.new),
+        ],
+        child: MaterialApp(
+          theme: fsDarkTheme(),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: const TextScaler.linear(2.0)),
+            child: child!,
+          ),
+          home: const SignInScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    final icon = tester.widget<Icon>(
+      find.descendant(
+        of: find.byKey(const Key('signIn.suspended')),
+        matching: find.byType(Icon),
+      ),
+    );
+    expect(icon.color, FsTokens.dark.red);
+  });
+
+  testWidgets('says nothing about deletion after a plain sign-out', (
+    tester,
+  ) async {
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+    expect(find.text('Your account was deleted.'), findsNothing);
+    expect(find.byKey(const Key('signIn.suspended')), findsNothing);
+  });
+
   testWidgets('renders an email and a password field', (tester) async {
     await _pump(tester, FakeAuthRepository());
     await tester.pumpAndSettle();
@@ -202,7 +364,9 @@ void main() {
     tester,
   ) async {
     final seen = <AuthUser>[];
-    final repo = FakeAuthRepository(onLogin: () async => _user());
+    final repo = FakeAuthRepository(
+      onLogin: () async => TraineeSignedIn(_user()),
+    );
     await _pump(tester, repo, seen: seen);
     await tester.pumpAndSettle();
 
@@ -211,6 +375,49 @@ void main() {
 
     expect(repo.loginCalls, 1);
     expect(seen.single.email, 'juan@example.com');
+  });
+
+  testWidgets('an admin sign-in hands the admin to the controller', (
+    tester,
+  ) async {
+    final seen = <AuthUser>[];
+    final seenAdmins = <AdminUser>[];
+    final repo = FakeAuthRepository(
+      onLogin: () async => const AdminSignedIn(
+        AdminUser(id: 1, email: 'admin@fitsync.ph', fullName: 'Ana Reyes'),
+      ),
+    );
+    await _pump(tester, repo, seen: seen, seenAdmins: seenAdmins);
+    await tester.pumpAndSettle();
+
+    await _fillAndSubmit(tester, email: 'admin@fitsync.ph');
+    await tester.pumpAndSettle();
+
+    expect(seenAdmins.single.email, 'admin@fitsync.ph');
+    expect(seen, isEmpty, reason: 'an admin is not a trainee');
+  });
+
+  testWidgets('a suspended account is told so under the form', (tester) async {
+    final repo = FakeAuthRepository(
+      onLogin: () async => throw const ApiException(
+        'ACCOUNT_SUSPENDED',
+        'This account is suspended.',
+      ),
+    );
+    await _pump(tester, repo);
+    await tester.pumpAndSettle();
+
+    await _fillAndSubmit(tester);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('error')),
+        matching: find.text('This account is suspended.'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byType(FsErrorLine), findsOneWidget);
   });
 
   testWidgets('INVALID_CREDENTIALS shows the message and keeps the input', (
@@ -253,14 +460,30 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repo.registerCalls, 1);
-    expect(find.text('That email is already registered.'), findsOneWidget);
+    // AO-27: the server's words left no way forward. Now the line says what
+    // to do, and a link right under it does it.
+    expect(find.text('That email already has an account.'), findsOneWidget);
+    expect(find.text('That email is already registered.'), findsNothing);
+
+    await _tapKey(tester, 'signInInstead');
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('fullName')), findsNothing);
+    expect(find.text('Sign in'), findsOneWidget);
+    expect(_field(tester, 'email').controller!.text, 'juan@example.com');
+    expect(_field(tester, 'password').controller!.text, 's3cret-pass');
+    expect(find.text('That email already has an account.'), findsNothing);
   });
 
-  testWidgets('a NETWORK_ERROR shows its retryable message', (tester) async {
+  // P-9: the link was shown by comparing the line's text, so any error that
+  // happened to use the same words offered it, even while already signing in.
+  testWidgets('only EMAIL_TAKEN on register offers "Sign in instead"', (
+    tester,
+  ) async {
     final repo = FakeAuthRepository(
       onLogin: () async => throw const ApiException(
-        'NETWORK_ERROR',
-        'Could not reach the server.',
+        'SOME_OTHER_ERROR',
+        'That email already has an account.',
       ),
     );
     await _pump(tester, repo);
@@ -269,7 +492,54 @@ void main() {
     await _fillAndSubmit(tester);
     await tester.pumpAndSettle();
 
-    expect(find.text('Could not reach the server.'), findsOneWidget);
+    expect(find.text('That email already has an account.'), findsOneWidget);
+    expect(find.byKey(const Key('signInInstead')), findsNothing);
+  });
+
+  testWidgets('a NETWORK_ERROR shows plain words, not the developer text', (
+    tester,
+  ) async {
+    final repo = FakeAuthRepository(
+      onLogin: () async => throw const ApiException(
+        'NETWORK_ERROR',
+        'Could not reach http://10.0.2.2:3000. Check the server is running, '
+            'and that "adb reverse tcp:3000 tcp:3000" has been run.',
+      ),
+    );
+    await _pump(tester, repo);
+    await tester.pumpAndSettle();
+
+    await _fillAndSubmit(tester);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text("Couldn't reach FitSync. Check your connection and try again."),
+      findsOneWidget,
+    );
+    expect(find.textContaining('adb'), findsNothing);
+    expect(find.textContaining('10.0.2.2'), findsNothing);
+  });
+
+  testWidgets('a non-JSON reply shows plain words, not the HTTP detail', (
+    tester,
+  ) async {
+    final repo = FakeAuthRepository(
+      onLogin: () async => throw const ApiException(
+        'INVALID_RESPONSE',
+        'Server returned a non-JSON body (HTTP 502).',
+      ),
+    );
+    await _pump(tester, repo);
+    await tester.pumpAndSettle();
+
+    await _fillAndSubmit(tester);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Something went wrong on our side. Please try again.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('non-JSON'), findsNothing);
   });
 
   testWidgets('a double tap on register cannot create two accounts', (
@@ -374,6 +644,26 @@ void main() {
     expect(find.byType(ForgotPasswordScreen), findsOneWidget);
   });
 
+  testWidgets('Forgot password? carries the typed email over', (tester) async {
+    // AO-21: the user had to type it again.
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('email')),
+      ' juan@example.com ',
+    );
+    await tester.tap(find.byKey(const Key('forgotPassword')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<ForgotPasswordScreen>(find.byType(ForgotPasswordScreen))
+          .initialEmail,
+      'juan@example.com',
+    );
+  });
+
   testWidgets('Forgot password? is hidden while registering', (tester) async {
     await _pump(tester, FakeAuthRepository());
     await tester.pumpAndSettle();
@@ -444,6 +734,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(_field(tester, 'password').obscureText, isTrue);
+    expect(
+      tester.widget(find.byKey(const Key('togglePassword'))),
+      isA<PasswordRevealToggle>(),
+      reason: 'one eye for every password field, not a copy per screen',
+    );
     expect(find.byTooltip('Show password'), findsOneWidget);
     expect(
       tester.getSize(find.byKey(const Key('togglePassword'))),
@@ -631,7 +926,9 @@ void main() {
     tester,
   ) async {
     // An account made before the rule must still be able to sign in.
-    final repo = FakeAuthRepository(onLogin: () async => _user());
+    final repo = FakeAuthRepository(
+      onLogin: () async => TraineeSignedIn(_user()),
+    );
     await _pump(tester, repo);
     await tester.pumpAndSettle();
 
@@ -673,8 +970,178 @@ void main() {
     await _tapKey(tester, 'submit');
     await tester.pumpAndSettle();
 
-    expect(find.text('Enter your email.'), findsOneWidget);
+    // The name is drawn first, so it is the field the check names.
+    expect(find.text('Enter your name.'), findsOneWidget);
     expect(find.text('At least 8 characters'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a request error is a red error line that is read aloud', (
+    tester,
+  ) async {
+    final repo = FakeAuthRepository(
+      onLogin: () async => throw const ApiException(
+        'INVALID_CREDENTIALS',
+        'Email or password is incorrect.',
+      ),
+    );
+    final handle = tester.ensureSemantics();
+    await _pump(tester, repo);
+    await _fillAndSubmit(tester);
+    await tester.pumpAndSettle();
+
+    final message = find.descendant(
+      of: find.byKey(const Key('error')),
+      matching: find.text('Email or password is incorrect.'),
+    );
+    expect(message, findsOneWidget);
+    expect(
+      find.ancestor(of: message, matching: find.byType(FsErrorLine)),
+      findsOneWidget,
+    );
+    expect(_isLive(tester, message), isTrue);
+    handle.dispose();
+  });
+
+  testWidgets('a failed check moves to the first field to fix, top down', (
+    tester,
+  ) async {
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+    await _toRegister(tester);
+
+    // Everything empty: the name is drawn first, so it is the one to fix.
+    await _tapKey(tester, 'submit');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Enter your name.'), findsOneWidget);
+    expect(_hasFocus(tester, 'fullName'), isTrue);
+
+    // Name given, email still empty: the cursor moves on to the email.
+    await tester.enterText(find.byKey(const Key('fullName')), 'Juan');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await _tapKey(tester, 'submit');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Enter your email.'), findsOneWidget);
+    expect(_hasFocus(tester, 'email'), isTrue);
+  });
+  testWidgets('a failed check on the field already in use is read aloud', (
+    tester,
+  ) async {
+    // Typed last, so the password field still has focus when Create account
+    // is tapped: focus cannot move, so without an announcement a screen
+    // reader hears nothing at all.
+    final repo = FakeAuthRepository(onRegister: () async {});
+    final handle = tester.ensureSemantics();
+    await _pump(tester, repo);
+    await tester.pumpAndSettle();
+    await _toRegister(tester);
+
+    await tester.enterText(find.byKey(const Key('fullName')), 'Juan');
+    await _fillAndSubmit(tester, password: 'short12');
+    await tester.pumpAndSettle();
+
+    expect(_hasFocus(tester, 'password'), isTrue);
+    expect(
+      tester.takeAnnouncements().map((a) => a.message),
+      contains('Use at least 8 characters.'),
+    );
+    expect(repo.registerCalls, 0);
+    handle.dispose();
+  });
+
+  testWidgets('a bad email typed just before Sign in is read aloud', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('password')), 's3cret-pass');
+    await tester.enterText(find.byKey(const Key('email')), 'juan');
+    await _tapKey(tester, 'submit');
+    await tester.pumpAndSettle();
+
+    expect(_hasFocus(tester, 'email'), isTrue);
+    expect(
+      tester.takeAnnouncements().map((a) => a.message),
+      contains('That does not look like an email.'),
+    );
+    handle.dispose();
+  });
+
+  testWidgets('a failed check that moves focus is not also announced', (
+    tester,
+  ) async {
+    // Moving focus already reads the field and its message; an announcement
+    // as well would say it twice.
+    final handle = tester.ensureSemantics();
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+    await _toRegister(tester);
+
+    await _tapKey(tester, 'submit');
+    await tester.pumpAndSettle();
+
+    expect(_hasFocus(tester, 'fullName'), isTrue);
+    expect(
+      tester.takeAnnouncements().map((a) => a.message),
+      isNot(contains('Enter your name.')),
+    );
+    handle.dispose();
+  });
+
+  testWidgets('the Google button and the logo use the real marks', (
+    tester,
+  ) async {
+    // AO-20: stand-ins -- Material's mobile-data "G" and a lightning bolt.
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+
+    final google = find.byKey(const Key('google'));
+    expect(
+      find.descendant(of: google, matching: find.byIcon(Icons.g_mobiledata)),
+      findsNothing,
+    );
+    // D-7: Google's own colour G, as its sign-in branding requires, never
+    // a one-colour glyph in the button's text colour.
+    expect(
+      find.descendant(of: google, matching: find.byType(FaIcon)),
+      findsNothing,
+    );
+    final mark = find.descendant(
+      of: google,
+      matching: find.byType(GoogleGMark),
+    );
+    expect(mark, findsOneWidget);
+    expect(tester.getSize(mark), const Size.square(18));
+    final colours = <int>{};
+    expect(
+      find.descendant(of: mark, matching: find.byType(CustomPaint)),
+      paints..everything((method, args) {
+        for (final arg in args) {
+          if (arg is Paint) colours.add(arg.color.toARGB32());
+        }
+        return true;
+      }),
+    );
+    // The bundle's blue and red highlights, drawn over its colour sweep.
+    expect(colours, containsAll([0xFF3186FF, 0xFFFF4641]));
+
+    expect(find.byIcon(Icons.bolt), findsNothing);
+    expect(find.byKey(const Key('logo.blades')), findsOneWidget);
+    expect(tester.getSize(find.byKey(const Key('logo.blades'))).width, 22);
+  });
+
+  testWidgets('the logo is the app icon: green blades on the dark tile', (
+    tester,
+  ) async {
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+
+    expect(find.byType(FsBrandMark), findsOneWidget);
+    final tile = tester.widget<Container>(find.byKey(const Key('brand.tile')));
+    expect((tile.decoration! as BoxDecoration).color, FsTokens.dark.surface2);
   });
 }

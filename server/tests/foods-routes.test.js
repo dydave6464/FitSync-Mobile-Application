@@ -160,10 +160,10 @@ test('food search and recents', async (t) => {
       .send({ mealType: 'lunch', servings, food }).expect(201);
     await pool.query('UPDATE foods SET fiber_g = 2.5, sugar_g = 1.5, sodium_mg = 320 WHERE food_id = ?', [chicken]);
     await log({ source: 'local', id: pork });
-    await log({ source: 'manual', name: 'Turon', proteinG: 2, carbsG: 34, fatG: 6 }, 2);
+    const turon = (await log({ source: 'manual', name: 'Turon', proteinG: 2, carbsG: 34, fatG: 6 }, 2)).body.data.entry;
     await log({ source: 'local', id: chicken });
     await log({ source: 'local', id: pork }, 3);
-    await log({ source: 'manual', name: 'Suman', proteinG: 1, carbsG: 20, fatG: 1, sugarG: 10, sodiumMg: 40 }, 2);
+    const suman = (await log({ source: 'manual', name: 'Suman', proteinG: 1, carbsG: 20, fatG: 1, sugarG: 10, sodiumMg: 40 }, 2)).body.data.entry;
     const { foods } = (await request(app).get('/api/v1/foods/recent').set(auth).expect(200)).body.data;
     assert.deepEqual(foods.map((f) => f.name), ['Suman', 'Pork adobo', 'Chicken adobo', 'Turon']);
     assert.equal(foods[1].kcal, 300, 'a catalogue food reads its own per-serving numbers');
@@ -171,11 +171,11 @@ test('food search and recents', async (t) => {
     assert.equal(foods[2].sugarG, 1.5, "a catalogue food's known sugar reaches recents");
     assert.equal(foods[2].sodiumMg, 320, "a catalogue food's known sodium reaches recents");
     assert.deepEqual(foods[3], {
-      id: null, source: 'manual', externalId: null, name: 'Turon', servingDesc: null,
+      id: null, entryId: turon.id, source: 'manual', externalId: null, name: 'Turon', servingDesc: null,
       kcal: 198, proteinG: 2, carbsG: 34, fatG: 6, fiberG: null, sugarG: null, sodiumMg: null,
     });
     assert.deepEqual(foods[0], {
-      id: null, source: 'manual', externalId: null, name: 'Suman', servingDesc: null,
+      id: null, entryId: suman.id, source: 'manual', externalId: null, name: 'Suman', servingDesc: null,
       kcal: 93, proteinG: 1, carbsG: 20, fatG: 1, fiberG: null, sugarG: 10, sodiumMg: 40,
     }, "a manual recent divides sugarG/sodiumMg back by servings");
   });

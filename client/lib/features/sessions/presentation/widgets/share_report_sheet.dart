@@ -10,8 +10,15 @@ import '../../../pro/presentation/pro_screen.dart';
 // imports it from there with `show`.
 import '../../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
-import '../../../profile/presentation/providers.dart' show profileProvider;
+import '../../../profile/presentation/providers.dart'
+    show bodyWeightProvider, profileProvider;
+import '../../domain/share_preview.dart';
+import '../../domain/shared_report.dart';
+import '../../domain/volume_labels.dart' show volumeToday;
 import '../providers.dart';
+import '../share_actions.dart';
+import 'progress_cards.dart' show periodProgressWords;
+import 'share_preview_card.dart';
 
 /// The sections a report can carry, in the order the page draws them.
 ///
@@ -19,11 +26,28 @@ import '../providers.dart';
 /// neither exists in the app, and a toggle that produces an empty section is
 /// worse than no toggle.
 const _sections = [
-  (key: 'volume', label: 'Training volume', pro: false),
-  (key: 'bodyWeight', label: 'Body weight', pro: false),
-  (key: 'muscles', label: 'Muscle balance', pro: true),
-  (key: 'sessions', label: 'Recent sessions', pro: false),
+  (key: 'volume', label: 'Training volume', pro: false, icon: Icons.show_chart),
+  (
+    key: 'bodyWeight',
+    label: 'Body weight',
+    pro: false,
+    icon: Icons.monitor_weight_outlined,
+  ),
+  (
+    key: 'muscles',
+    label: 'Muscle balance',
+    pro: true,
+    icon: Icons.accessibility_new,
+  ),
+  (
+    key: 'sessions',
+    label: 'Recent sessions',
+    pro: false,
+    icon: Icons.event_note_outlined,
+  ),
 ];
+
+const _periodNames = {'week': 'Week', 'month': 'Month', 'year': 'Year'};
 
 /// The expiry as a plain date, e.g. "October 19, 2026".
 ///
@@ -56,6 +80,8 @@ Future<void> showShareReportSheet(
 }) {
   return showModalBottomSheet<void>(
     context: context,
+    // FsSheetHeader draws the handle (PT-22).
+    showDragHandle: false,
     // The surface goes on the sheet's own Material, the way ExerciseJumpSheet
     // is shown, rather than the Colors.transparent-plus-Container arrangement
     // the body-weight and start-workout sheets use. Those draw custom rows;
@@ -99,17 +125,47 @@ class _ShareReportSheetState extends ConsumerState<_ShareReportSheet> {
   bool _busy = false;
   String? _failure;
 
+  /// An inline confirmation ("Link copied."). Not a SnackBar: the sheet now
+  /// stays open, and a SnackBar would sit behind it.
+  String? _notice;
+
+  /// The link this sheet made, once it has made one. Every Share, Copy and
+  /// Open after that reuses it -- one POST per sheet -- and the switches lock,
+  /// so the link always matches what they show.
+  SharedReport? _link;
+
+  /// True while Share, Copy or Open is running. A second tap in that time is
+  /// ignored: before the link exists it would make a second one, and after
+  /// it a second share replaces the open menu -- on Android share_plus then
+  /// answers the first as unavailable, and the sheet would say the menu
+  /// failed while it is on screen. Not drawn, so no setState: the buttons
+  /// stay as they are and the tap simply does nothing.
+  bool _acting = false;
+
+  /// The include map the link was made with, entitlement mask applied. Once
+  /// the link exists the rows draw from this, not from [_include] and the
+  /// live Pro flag: an account that buys Pro (or lapses) with the sheet open
+  /// must still see what the frozen link carries.
+  Map<String, bool>? _sent;
+
   /// Read from the provider where it is needed rather than cached in
   /// initState: profileProvider is an AsyncNotifier, so at initState it is
   /// still loading and its value is null -- a field seeded there reads
   /// "free" for every account, Pro included.
   bool get _premium => ref.read(profileProvider).value?.isPremium ?? false;
 
-  Future<void> _create() async {
-    if (_busy) return;
+  String get _window => shareWindowLabel(widget.period, volumeToday());
+
+  /// The existing link, or a new one. Null when making it failed; the
+  /// failure is already on screen.
+  Future<SharedReport?> _ensureLink() async {
+    final existing = _link;
+    if (existing != null) return existing;
+
     setState(() {
       _busy = true;
       _failure = null;
+      _notice = null;
     });
 
     try {
@@ -125,28 +181,111 @@ class _ShareReportSheetState extends ConsumerState<_ShareReportSheet> {
       final report = await ref
           .read(sessionRepositoryProvider)
           .shareReport(period: widget.period, include: include);
-      await Clipboard.setData(ClipboardData(text: report.url));
-      if (!mounted) return;
-      Navigator.of(context).pop();
-      // The real expiry, not a hardcoded "30 days". The server already sends
-      // it, SharedReport already parses it, and a literal here is a fourth
-      // copy of a constant that only the server is entitled to decide -- one
-      // that goes quietly wrong the day the TTL changes.
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Link copied. It works until ${formatShareExpiry(report.expiresAt)}.',
-          ),
-        ),
-      );
+      if (!mounted) return null;
+      setState(() {
+        _link = report;
+        _sent = include;
+        _busy = false;
+      });
+      return report;
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted) return null;
       setState(() {
         _busy = false;
         // describeError(Object) already falls back for anything that is not
         // an ApiException, so there is no second branch to write.
         _failure = describeError(error);
       });
+      return null;
+    }
+  }
+
+  Future<void> _share() async {
+    if (_acting) return;
+    _acting = true;
+    try {
+      final link = await _ensureLink();
+      if (link == null || !mounted) return;
+
+      // No name in the message: chat apps build preview cards server-side,
+      // the same reason the page's <title> carries none.
+      final text = 'My FitSync training report, $_window: ${link.url}';
+      var opened = false;
+      try {
+        opened = await ref.read(shareActionsProvider).share(text);
+      } catch (_) {
+        opened = false;
+      }
+      if (!mounted || opened) return;
+
+      await _copyToClipboard(
+        link,
+        notice: "Couldn't open the share menu, so the link was copied instead.",
+        failure: "Couldn't open the share menu or copy the link. Try again.",
+      );
+    } finally {
+      _acting = false;
+    }
+  }
+
+  Future<void> _copy() async {
+    if (_acting) return;
+    _acting = true;
+    try {
+      final link = await _ensureLink();
+      if (link == null || !mounted) return;
+      await _copyToClipboard(
+        link,
+        notice: 'Link copied.',
+        failure: "Couldn't copy the link. Try again.",
+      );
+    } finally {
+      _acting = false;
+    }
+  }
+
+  /// Puts the link on the clipboard and says [notice], or shows [failure]
+  /// inline when the platform refuses -- not an unhandled error with
+  /// nothing on screen.
+  Future<void> _copyToClipboard(
+    SharedReport link, {
+    required String notice,
+    required String failure,
+  }) async {
+    try {
+      await Clipboard.setData(ClipboardData(text: link.url));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _notice = null;
+        _failure = failure;
+      });
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _failure = null;
+      _notice = notice;
+    });
+  }
+
+  Future<void> _openPage() async {
+    final link = _link;
+    if (link == null || _acting) return;
+    _acting = true;
+    try {
+      var opened = false;
+      try {
+        opened = await ref.read(shareActionsProvider).open(Uri.parse(link.url));
+      } catch (_) {
+        opened = false;
+      }
+      if (!mounted || opened) return;
+      setState(
+        () => _notice = "Couldn't open the browser. Copy the link instead.",
+      );
+    } finally {
+      _acting = false;
     }
   }
 
@@ -154,63 +293,166 @@ class _ShareReportSheetState extends ConsumerState<_ShareReportSheet> {
   Widget build(BuildContext context) {
     final t = context.fs;
     final premium = ref.watch(profileProvider).value?.isPremium ?? false;
+    final link = _link;
+    final locked = _busy || link != null;
+    final shown = _sent ?? _include;
 
+    final tiles = sharePreviewTiles(
+      period: widget.period,
+      summary: ref.watch(trainingSummaryProvider).value,
+      analytics: ref.watch(trainingAnalyticsProvider(widget.period)).value,
+      bodyWeight: ref.watch(bodyWeightProvider(widget.period)).value,
+      includeVolume: shown['volume']!,
+      includeBodyWeight: shown['bodyWeight']!,
+    );
+
+    // Scrolls once large text makes it taller than the sheet may be.
     return SafeArea(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(
-          18,
+          FsSheetHeader.sideInset,
           10,
-          18,
+          FsSheetHeader.sideInset,
           MediaQuery.of(context).viewInsets.bottom + 20,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const FsEyebrow('Share with coach'),
-            const SizedBox(height: 6),
+            FsSheetHeader(
+              title: 'Share with coach',
+              leading: Icon(Icons.ios_share, size: 19, color: t.accentText),
+            ),
             Text(
-              'A link to this window, frozen as it is now.',
+              'A link to ${periodProgressWords(widget.period)}, '
+              'frozen as it is now.',
               style: TextStyle(fontSize: 12.5, color: t.text2),
             ),
-            const SizedBox(height: 14),
-            for (final s in _sections)
-              if (s.pro && !premium)
-                _LockedSection(label: s.label, sectionKey: s.key)
-              else
-                SwitchListTile(
-                  key: Key('share.toggle.${s.key}'),
-                  contentPadding: EdgeInsets.zero,
-                  value: _include[s.key]!,
-                  onChanged: _busy
-                      ? null
-                      : (on) => setState(() => _include[s.key] = on),
-                  title: Row(
-                    children: [
-                      Text(
-                        s.label,
-                        style: TextStyle(fontSize: 13.5, color: t.text),
-                      ),
-                      if (s.pro) ...[
-                        const SizedBox(width: 8),
-                        const FsTag('Pro'),
-                      ],
-                    ],
-                  ),
-                ),
+            const SizedBox(height: 12),
+            SharePreviewCard(
+              key: const Key('share.preview'),
+              heading:
+                  '${_periodNames[widget.period] ?? widget.period} · $_window',
+              tiles: tiles,
+            ),
+            const SizedBox(height: 18),
+            const FsEyebrow('Include in report'),
+            const SizedBox(height: 2),
+            Text(
+              'Summary is always included.',
+              style: TextStyle(fontSize: 11.5, color: t.text2),
+            ),
+            const SizedBox(height: 4),
+            for (var i = 0; i < _sections.length; i++) ...[
+              if (i > 0) Divider(height: 1, thickness: 1, color: t.line),
+              _sectionRow(
+                _sections[i],
+                premium: premium,
+                locked: locked,
+                sent: _sent,
+              ),
+            ],
             if (_failure != null) ...[
               const SizedBox(height: 8),
-              Text(_failure!, style: TextStyle(fontSize: 12, color: t.red)),
+              FsErrorLine(_failure!),
             ],
-            const SizedBox(height: 14),
-            FsButton(
-              key: const Key('share.create'),
-              label: 'Create link',
-              busy: _busy,
-              onPressed: _busy ? null : _create,
-            ),
+            const SizedBox(height: 16),
+            if (link == null) ...[
+              FsButton(
+                key: const Key('share.share'),
+                label: 'Share report',
+                icon: const Icon(Icons.ios_share, size: 17),
+                busy: _busy,
+                onPressed: _busy ? null : _share,
+              ),
+              const SizedBox(height: 10),
+              FsButton(
+                key: const Key('share.copy'),
+                label: 'Copy link',
+                kind: FsButtonKind.secondary,
+                onPressed: _busy ? null : _copy,
+              ),
+            ] else ...[
+              Text(
+                'Works until ${formatShareExpiry(link.expiresAt)}',
+                key: const Key('share.ready'),
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12.5, color: t.text2),
+              ),
+              const SizedBox(height: 10),
+              FsButton(
+                key: const Key('share.share'),
+                label: 'Share again',
+                icon: const Icon(Icons.ios_share, size: 17),
+                onPressed: _share,
+              ),
+              const SizedBox(height: 10),
+              FsButton(
+                key: const Key('share.copy'),
+                label: 'Copy link',
+                kind: FsButtonKind.secondary,
+                onPressed: _copy,
+              ),
+              const SizedBox(height: 10),
+              FsButton(
+                key: const Key('share.open'),
+                label: 'See what your coach sees',
+                kind: FsButtonKind.ghost,
+                wrapLabel: true,
+                onPressed: _openPage,
+              ),
+            ],
+            if (_notice != null) ...[
+              const SizedBox(height: 10),
+              Semantics(
+                liveRegion: true,
+                child: Text(
+                  _notice!,
+                  key: const Key('share.notice'),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12.5, color: t.text2),
+                ),
+              ),
+            ],
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _sectionRow(
+    ({String key, String label, bool pro, IconData icon}) s, {
+    required bool premium,
+    required bool locked,
+    required Map<String, bool>? sent,
+  }) {
+    final t = context.fs;
+    // Once the link exists, a Pro section it carries keeps its (disabled)
+    // switch even if Pro has since lapsed, and one it was masked out of
+    // shows as off even if Pro was bought since: the row says what the link
+    // holds. Before that, the live entitlement decides.
+    final carried = sent?[s.key];
+    if (s.pro && !premium && carried != true) {
+      return _LockedSection(label: s.label, sectionKey: s.key);
+    }
+    return SwitchListTile(
+      key: Key('share.toggle.${s.key}'),
+      contentPadding: EdgeInsets.zero,
+      secondary: Icon(s.icon, size: 17, color: t.text2),
+      value: carried ?? _include[s.key]!,
+      onChanged: locked ? null : (on) => setState(() => _include[s.key] = on),
+      // The label wraps rather than pushing the Pro tag past the switch:
+      // 'Muscle balance' and its tag need about 270 dp at 2.0x text.
+      title: Row(
+        children: [
+          Flexible(
+            child: Text(
+              s.label,
+              style: TextStyle(fontSize: 13.5, color: t.text),
+            ),
+          ),
+          if (s.pro) ...[const SizedBox(width: 8), const FsTag('Pro')],
+        ],
       ),
     );
   }
@@ -220,9 +462,7 @@ class _ShareReportSheetState extends ConsumerState<_ShareReportSheet> {
 ///
 /// Same treatment as VolumeByMuscleCard on the Progress tab: the badge stays,
 /// because it is what says the feature exists, and the line names what Pro
-/// would add. No upgrade button -- there is nowhere to send anyone until the
-/// purchase flow exists, and a button that goes nowhere is worse than a
-/// sentence that explains.
+/// would add. The whole row opens the Pro screen.
 ///
 /// A disabled switch was the other option and is worse: it reads as a setting
 /// that failed rather than one that is not yours yet.
@@ -252,9 +492,11 @@ class _LockedSection extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Text(
-                        label,
-                        style: TextStyle(fontSize: 13.5, color: t.text2),
+                      Flexible(
+                        child: Text(
+                          label,
+                          style: TextStyle(fontSize: 13.5, color: t.text2),
+                        ),
                       ),
                       const SizedBox(width: 8),
                       const FsTag('Pro'),

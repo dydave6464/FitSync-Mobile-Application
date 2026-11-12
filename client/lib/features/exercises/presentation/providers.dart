@@ -28,16 +28,16 @@ const _maxTransientRetries = 2;
 /// retried ten times against the live server before the error branch ever
 /// renders.
 ///
-/// Only [ApiException]'s `NETWORK_ERROR` — raised by [ApiClient] when the
-/// device could not reach the server at all — is transient in a way a retry
-/// can fix. Every other code, whether named by the server
-/// (`EXERCISE_NOT_FOUND`, `INVALID_QUERY_PARAM`) or raised locally for a
-/// malformed response (`INVALID_RESPONSE`, `UNKNOWN_ERROR`), is permanent
-/// from the client's side and must surface immediately. This function only
-/// decides whether to retry at all; the backoff for the case that should
-/// retry is still Riverpod's own default, bounded by [_maxTransientRetries].
+/// Only a transient failure, as [isRetryableError] defines it -- the device
+/// could not reach the server, the server failed, or its answer was
+/// garbled -- is retried; the "Try again" action on failed saves asks the
+/// same question. Every other code named by the server
+/// (`EXERCISE_NOT_FOUND`, `INVALID_QUERY_PARAM`) is permanent from the
+/// client's side and must surface immediately. This function only decides
+/// whether to retry at all; the backoff for the case that should retry is
+/// still Riverpod's own default, bounded by [_maxTransientRetries].
 Duration? apiRetryPolicy(int retryCount, Object error) {
-  if (error is! ApiException || error.code != 'NETWORK_ERROR') return null;
+  if (!isRetryableError(error)) return null;
   if (retryCount >= _maxTransientRetries) return null;
   return ProviderContainer.defaultRetry(retryCount, error);
 }

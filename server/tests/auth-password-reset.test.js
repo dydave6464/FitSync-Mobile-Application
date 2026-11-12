@@ -7,6 +7,9 @@ const { createPool } = require('../src/db/pool');
 const { buildTestApp } = require('./helpers/test-app');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { createMailService } = require('../src/services/mail');
+const { signToken } = require('../src/lib/tokens');
+
+const SECRET = 'test-secret-value-at-least-32-chars';
 
 const codeIn = (message) => message.subject.match(/(\d{6})$/)[1];
 
@@ -46,12 +49,69 @@ test('password reset', async (t) => {
     for (const r of [unknown, unverified, verified]) assert.equal(r.status, 202);
     assert.equal(unknown.text, unverified.text);
     assert.equal(unverified.text, verified.text,
-      'the verified branch actually sends mail, but must still look identical');
+      'known addresses actually send mail, but must still look identical');
   });
 
-  await t.test('an unverified account is sent no reset code', async () => {
-    assert.equal(mailsTo('unverified@example.com', /password reset code/).length, 0,
-      'mailing a reset to an unproven address is a takeover path, not recovery');
+  // An unverified account cannot sign in and holds nothing but a name and a
+  // password hash, so a code to its address is recovery, not takeover: the
+  // same proof /verify-email accepts.
+  await t.test('an unverified account is sent a code that finishes setting it up', async () => {
+    const sent = mailsTo('unverified@example.com', /password reset code/);
+    assert.equal(sent.length, 1);
+    const [m] = sent;
+    assert.match(m.subject, /^Your FitSync password reset code: \d{6}$/);
+    assert.match(m.text, /finish setting up your account/);
+    assert.match(m.text, /15 minutes/);
+    assert.ok(m.text.includes(codeIn(m)));
+    assert.doesNotMatch(m.text, /https?:\/\//);
+    assert.ok(m.text.endsWith('nothing has changed.'), m.text);
+  });
+
+  await t.test('a reset code proves the address: the account is verified and signs in', async () => {
+    await request(app).post('/api/v1/auth/register').send({
+      email: 'fresh@example.com', password: 'correct horse', fullName: 'F',
+    });
+    await ask('fresh@example.com');
+    const done = await reset({
+      email: 'fresh@example.com', code: resetCode('fresh@example.com'),
+      password: 'a whole new password',
+    });
+    assert.equal(done.status, 200);
+    assert.deepEqual(done.body, { data: { reset: true } });
+
+    const [[row]] = await pool.query(
+      "SELECT email_verified FROM users WHERE email = 'fresh@example.com'",
+    );
+    assert.equal(row.email_verified, 1);
+    const fresh = await login('fresh@example.com', 'a whole new password');
+    assert.equal(fresh.status, 200);
+    assert.ok(fresh.body.data.token);
+    const old = await login('fresh@example.com', 'correct horse');
+    assert.equal(old.status, 401);
+    assert.equal(old.body.error.code, 'INVALID_CREDENTIALS');
+  });
+
+  await t.test('a verification code does not reset a password', async () => {
+    await request(app).post('/api/v1/auth/register').send({
+      email: 'pending@example.com', password: 'correct horse', fullName: 'P',
+    });
+    const [m] = mailsTo('pending@example.com', /^Your FitSync code:/);
+    const res = await reset({
+      email: 'pending@example.com', code: codeIn(m), password: 'a whole new password',
+    });
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error.code, 'CODE_INVALID');
+
+    const old = await login('pending@example.com', 'correct horse');
+    assert.equal(old.status, 403, 'the password is unchanged and still unverified');
+    assert.equal(old.body.error.code, 'EMAIL_NOT_VERIFIED');
+  });
+
+  await t.test("an unverified account's second request within a minute sends nothing", async () => {
+    const before = mailsTo('unverified@example.com', /password reset code/).length;
+    assert.equal(before, 1, 'the first request sent one');
+    await ask('unverified@example.com');
+    assert.equal(mailsTo('unverified@example.com', /password reset code/).length, before);
   });
 
   await t.test('the reset email carries a code and no link', async () => {
@@ -82,6 +142,33 @@ test('password reset', async (t) => {
   await t.test('the new password signs in and the old one does not', async () => {
     assert.equal((await login('verified@example.com', 'a whole new password')).status, 200);
     assert.equal((await login('verified@example.com', 'correct horse')).status, 401);
+  });
+
+  // A reset means someone may have had the password: every device signs out.
+  await t.test('a completed reset signs out tokens issued before it', async () => {
+    await registerVerified('signout@example.com');
+    const [row] = (await pool.query(
+      "SELECT user_id FROM users WHERE email = 'signout@example.com'",
+    ))[0];
+    // Signed this very second: the reset must sign it out even when both land
+    // in the same second.
+    const old = signToken(row.user_id, { secret: SECRET, expiresIn: '1h' });
+    const me = (token) => request(app).get('/api/v1/auth/me')
+      .set('Authorization', `Bearer ${token}`);
+    await me(old).expect(200);
+
+    await ask('signout@example.com');
+    const done = await reset({
+      email: 'signout@example.com', code: resetCode('signout@example.com'),
+      password: 'a whole new password',
+    });
+    assert.equal(done.status, 200);
+
+    const stale = await me(old).expect(401);
+    assert.equal(stale.body.error.code, 'UNAUTHENTICATED');
+    const fresh = await login('signout@example.com', 'a whole new password');
+    assert.equal(fresh.status, 200);
+    await me(fresh.body.data.token).expect(200);
   });
 
   await t.test('a used code is CODE_INVALID', async () => {

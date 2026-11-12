@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'token_store.dart';
 
-/// Remembers whether the user chose dark or light.
+/// Remembers whether the user chose light, dark, or to follow the system.
 ///
 /// Rides on the same [SecureStore] the JWT uses rather than adding
 /// `shared_preferences` for one string. That costs a little — encrypted
@@ -20,14 +20,18 @@ class ThemeStore {
   Future<ThemeMode?> read() async => switch (await _backing.read(_key)) {
     'dark' => ThemeMode.dark,
     'light' => ThemeMode.light,
+    'system' => ThemeMode.system,
     // Anything else — absent, or written by a future version that knew
     // about more modes — means "no usable preference", so the caller
     // keeps its default rather than guessing.
     _ => null,
   };
 
-  Future<void> write(ThemeMode mode) =>
-      _backing.write(_key, mode == ThemeMode.light ? 'light' : 'dark');
+  Future<void> write(ThemeMode mode) => _backing.write(_key, switch (mode) {
+    ThemeMode.light => 'light',
+    ThemeMode.dark => 'dark',
+    ThemeMode.system => 'system',
+  });
 }
 
 final themeStoreProvider = Provider<ThemeStore>((ref) => ThemeStore());
@@ -65,11 +69,16 @@ class ThemeController extends Notifier<ThemeMode> {
     if (saved != null && !_chosen) state = saved;
   }
 
-  Future<void> setDark(bool dark) async {
+  /// Applies and remembers [mode]: light, dark, or follow the system.
+  Future<void> setMode(ThemeMode mode) async {
     _chosen = true;
-    state = dark ? ThemeMode.dark : ThemeMode.light;
-    await ref.read(themeStoreProvider).write(state);
+    state = mode;
+    await ref.read(themeStoreProvider).write(mode);
   }
+
+  /// The two-way form, kept for callers that only offer light and dark.
+  Future<void> setDark(bool dark) =>
+      setMode(dark ? ThemeMode.dark : ThemeMode.light);
 }
 
 final themeModeProvider = NotifierProvider<ThemeController, ThemeMode>(

@@ -1,17 +1,25 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/client_id.dart';
+import '../../../core/manila_day.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../domain/nutrition.dart';
 import 'error_snack_bar.dart';
 import 'providers.dart';
+import 'widgets/meal_chips.dart';
+import 'widgets/number_box.dart';
+import 'widgets/text_limits.dart';
 
 class AddFoodManuallyScreen extends ConsumerStatefulWidget {
-  const AddFoodManuallyScreen({super.key, required this.mealType, this.onLogged, this.pick = false});
+  const AddFoodManuallyScreen({super.key, required String this.mealType, this.onLogged}) : pick = false;
 
-  final String mealType;
+  /// Choosing for Snap a meal, as [pick] says: no meal is shown or used.
+  const AddFoodManuallyScreen.pick({super.key}) : mealType = null, onLogged = null, pick = true;
+
+  /// The meal the food goes into; null when choosing, which shows no meal.
+  final String? mealType;
 
   /// Called once the food is saved, with the day it went to.
   final void Function(FoodEntry entry, String date)? onLogged;
@@ -33,11 +41,17 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
   final _fiber = TextEditingController();
   final _sugar = TextEditingController();
   final _sodium = TextEditingController();
-  late String _meal = widget.mealType;
+
+  /// The label's calories per serving, typed once [_labelKcalOpen].
+  final _kcal = TextEditingController();
+  bool _labelKcalOpen = false;
+
+  /// Null only when choosing, which never logs.
+  late String? _meal = widget.mealType;
 
   @override
   void dispose() {
-    for (final c in [_name, _serving, _protein, _carbs, _fat, _fiber, _sugar, _sodium]) {
+    for (final c in [_name, _serving, _protein, _carbs, _fat, _fiber, _sugar, _sodium, _kcal]) {
       c.dispose();
     }
     super.dispose();
@@ -56,121 +70,191 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
   Widget build(BuildContext context) {
     final t = context.fs;
     final theme = Theme.of(context);
+    // The day the food goes to, named when it is not today (NU-7).
+    final date = ref.watch(nutritionDayProvider).value?.date;
+    final today = manilaDayOf(ref.watch(nutritionClockProvider)());
     final p = _grams(_protein), c = _grams(_carbs), f = _grams(_fat);
     final fiber = _optionalNumber(_fiber);
     final sugar = _optionalNumber(_sugar), sodium = _optionalNumber(_sodium);
-    final gramsOk = [p, c, f].every((g) => g != null && g >= 0 && g <= 500) &&
-        [fiber, sugar].every((g) => g == null || (g >= 0 && g <= 500));
-    final sodiumOk = sodium == null || (sodium >= 0 && sodium <= 20000);
-    final kcal = gramsOk ? manualKcal(p!, c!, f!) : null;
+    final gramsOk = [p, c, f].every((g) => g != null && inGramsRange(g)) &&
+        [fiber, sugar].every((g) => g == null || inGramsRange(g));
+    final sodiumOk = sodium == null || inSodiumRange(sodium);
+    // The label's calories, when that box is open and filled in (#24).
+    final typedKcal = _labelKcalOpen ? _optionalNumber(_kcal) : null;
+    final labelKcalOk = typedKcal == null || inKcalRange(typedKcal);
+    final labelKcal = typedKcal != null && labelKcalOk ? typedKcal.round() : null;
+    final workedOut = gramsOk ? manualKcal(p!, c!, f!) : null;
+    final kcal = labelKcal ?? workedOut;
+    // Something to count: protein, carbs or fat, or the label's calories (a
+    // drink label may give only those).
+    final hasAmount = gramsOk && (p! + c! + f! > 0 || (labelKcal ?? 0) > 0);
     final name = _name.text.trim();
-    final valid = name.isNotEmpty && name.length <= 100 && _serving.text.trim().length <= 60
-        && gramsOk && sodiumOk && (p! + c! + f!) > 0;
+    final valid = name.isNotEmpty && name.length <= maxFoodName && _serving.text.trim().length <= maxServingDesc
+        && gramsOk && sodiumOk && labelKcalOk && hasAmount;
 
-    Widget gramsField(String label, Key key, TextEditingController ctrl, {String hint = 'g'}) => Expanded(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: TextStyle(color: t.text2, fontSize: 12)),
-          const SizedBox(height: 4),
-          FsField(
-            controller: ctrl,
-            fieldKey: key,
-            hint: hint,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
-            onChanged: (_) => setState(() {}),
-          ),
-        ],
+    Widget gramsField(String label, Key key, TextEditingController ctrl, {bool sodium = false}) => Expanded(
+      child: NumberBox(
+        label: label,
+        controller: ctrl,
+        fieldKey: key,
+        hint: sodium ? 'mg' : 'g',
+        error: sodium ? sodiumError(ctrl.text) : gramsError(ctrl.text),
+        onChanged: (_) => setState(() {}),
       ),
     );
+    // Log is off with no protein, carbs or fat: say so once the user has
+    // started, rather than leave the button grey without a reason.
+    final noMacros = gramsOk && sodiumOk && labelKcalOk && !hasAmount &&
+        (name.isNotEmpty || [_protein, _carbs, _fat, _kcal].any((box) => box.text.trim().isNotEmpty));
+    // Likewise with macros typed but no name.
+    final noName = name.isEmpty && sodiumOk && labelKcalOk && hasAmount;
 
-    return Scaffold(
-      backgroundColor: t.bg,
-      appBar: AppBar(title: const Text('Add manually')),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          FsField(controller: _name, fieldKey: const Key('manual.name'), hint: 'Food name',
-              textCapitalization: TextCapitalization.sentences, onChanged: (_) => setState(() {})),
-          const SizedBox(height: 12),
-          if (!widget.pick) ...[
-            FsSegmented(
-              options: [for (final m in mealTypes) (value: m, label: mealLabel(m))],
-              selected: _meal,
-              onSelected: (m) => setState(() => _meal = m),
+    // Back with anything typed asks first; an untouched form just leaves.
+    final typed = [_name, _serving, _protein, _carbs, _fat, _fiber, _sugar, _sodium, _kcal]
+        .any((box) => box.text.trim().isNotEmpty);
+
+    return FsDiscardGuard(
+      dirty: typed,
+      child: Scaffold(
+        backgroundColor: t.bg,
+        appBar: AppBar(title: const Text('Add manually')),
+        body: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            // Labelled as the prototype draws them: a placeholder alone goes
+            // as soon as something is typed, taking the field's name with it.
+            FsField(
+              controller: _name,
+              fieldKey: const Key('manual.name'),
+              label: 'Food name',
+              hint: 'e.g. Grilled bangus',
+              textCapitalization: TextCapitalization.sentences,
+              // The most the server accepts, so Log never greys out unexplained.
+              inputFormatters: const [Utf16LengthLimit(maxFoodName)],
+              onChanged: (_) => setState(() {}),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
+            if (!widget.pick) ...[
+              FsEyebrow(date == null || date == today ? 'Meal' : 'Meal · ${dayLabel(date, today)}', maxLines: 2),
+              const SizedBox(height: 6),
+              MealChips(keyPrefix: 'manual.meal', selected: _meal!, onSelected: (m) => setState(() => _meal = m)),
+              const SizedBox(height: 16),
+            ],
+            FsField(
+              controller: _serving,
+              fieldKey: const Key('manual.serving'),
+              label: 'Serving size · optional',
+              hint: 'e.g. 1 cup',
+              inputFormatters: const [Utf16LengthLimit(maxServingDesc)],
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 16),
+            Semantics(header: true, child: const FsEyebrow('Macros · per serving')),
+            const SizedBox(height: 8),
+            // Two rows of two, not one row of four: four boxes in a row
+            // overflow a narrow phone at large text.
+            // Tops aligned, so an error under one box never shifts its pair.
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              gramsField('Protein (g)', const Key('manual.protein'), _protein),
+              const SizedBox(width: 10),
+              gramsField('Carbs (g)', const Key('manual.carbs'), _carbs),
+            ]),
+            const SizedBox(height: 10),
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              gramsField('Fat (g)', const Key('manual.fat'), _fat),
+              const SizedBox(width: 10),
+              gramsField('Fiber (g)', const Key('manual.fiber'), _fiber),
+            ]),
+            const SizedBox(height: 10),
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              gramsField('Sugar (g)', const Key('manual.sugar'), _sugar),
+              const SizedBox(width: 10),
+              gramsField('Sodium (mg)', const Key('manual.sodium'), _sodium, sodium: true),
+            ]),
+            if (noMacros) ...[
+              const SizedBox(height: 8),
+              FsErrorLine(_labelKcalOpen ? 'Add calories, protein, carbs or fat' : 'Add some protein, carbs or fat'),
+            ],
+            if (noName) ...[
+              const SizedBox(height: 8),
+              const FsErrorLine('Add a food name'),
+            ],
+            const SizedBox(height: 16),
+            // The prototype's "Auto from macros · tap to override" (#24).
+            if (_labelKcalOpen) ...[
+              NumberBox(
+                label: 'Calories (kcal)',
+                controller: _kcal,
+                fieldKey: const Key('manual.kcal'),
+                hint: 'kcal',
+                wholeNumbers: true,
+                error: kcalError(_kcal.text),
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 6),
+              Text("From the label. Protein, carbs and fat won't change it.", style: TextStyle(color: t.text3, fontSize: 12)),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  key: const Key('manual.kcalAuto'),
+                  onPressed: () => setState(() {
+                    _labelKcalOpen = false;
+                    _kcal.clear();
+                  }),
+                  child: const Text('Work it out from macros'),
+                ),
+              ),
+            ] else ...[
+              Text('Calories', style: TextStyle(color: t.text2, fontSize: 12)),
+              Text(workedOut == null ? '—' : '$workedOut kcal', style: theme.textTheme.titleLarge),
+              Text('Worked out from protein, carbs and fat.', style: TextStyle(color: t.text3, fontSize: 12)),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  key: const Key('manual.kcalEdit'),
+                  onPressed: () => setState(() => _labelKcalOpen = true),
+                  icon: const Icon(Icons.edit_outlined),
+                  label: const Text("Use the label's calories"),
+                ),
+              ),
+            ],
+            const SizedBox(height: 24),
+            FsButton(
+              key: const Key('manual.log'),
+              label: widget.pick ? 'Use this food' : 'Log',
+              onPressed: !valid ? null : () async {
+                final food = Food(
+                  source: 'manual', name: name,
+                  servingDesc: _serving.text.trim().isEmpty ? null : _serving.text.trim(),
+                  kcal: kcal!, proteinG: p, carbsG: c, fatG: f, fiberG: fiber,
+                  sugarG: sugar, sodiumMg: sodium, labelKcal: labelKcal,
+                );
+                if (widget.pick) {
+                  Navigator.of(context).pop(food);
+                  return;
+                }
+                final messenger = ScaffoldMessenger.of(context);
+                final controller = ref.read(nutritionDayProvider.notifier);
+                final date = ref.read(nutritionDayProvider).value?.date;
+                final onLogged = widget.onLogged;
+                final meal = _meal!;
+                final persist = MediaQuery.accessibleNavigationOf(context);
+                Navigator.of(context).pop(true);
+                // The form is gone, but the food is kept: Try again sends it
+                // again rather than asking for it to be typed twice -- with
+                // this log's one key, so it is never saved twice (NU-4).
+                final clientId = newClientId();
+                await saveOrOfferRetry(
+                  messenger,
+                  save: () => controller.log(food, mealType: meal, servings: 1, date: date, clientId: clientId),
+                  failure: "Couldn't save ${food.name}.",
+                  persist: persist,
+                  onSaved: (saved) => onLogged?.call(saved, date!),
+                );
+              },
+            ),
           ],
-          FsField(controller: _serving, fieldKey: const Key('manual.serving'),
-              hint: 'Serving size (optional), e.g. 1 cup', onChanged: (_) => setState(() {})),
-          const SizedBox(height: 16),
-          Text('Macros · per serving', style: theme.textTheme.titleSmall),
-          const SizedBox(height: 8),
-          // Two rows of two, not one row of four: four boxes in a row
-          // overflow a narrow phone at large text.
-          Row(children: [
-            gramsField('Protein (g)', const Key('manual.protein'), _protein),
-            const SizedBox(width: 10),
-            gramsField('Carbs (g)', const Key('manual.carbs'), _carbs),
-          ]),
-          const SizedBox(height: 10),
-          Row(children: [
-            gramsField('Fat (g)', const Key('manual.fat'), _fat),
-            const SizedBox(width: 10),
-            gramsField('Fiber (g)', const Key('manual.fiber'), _fiber),
-          ]),
-          const SizedBox(height: 10),
-          Row(children: [
-            gramsField('Sugar (g)', const Key('manual.sugar'), _sugar),
-            const SizedBox(width: 10),
-            gramsField('Sodium (mg)', const Key('manual.sodium'), _sodium, hint: 'mg'),
-          ]),
-          if (!gramsOk)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text('Each value must be 0–500 g', style: TextStyle(color: t.red, fontSize: 12)),
-            )
-          else if (!sodiumOk)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text('Sodium must be 0–20,000 mg', style: TextStyle(color: t.red, fontSize: 12)),
-            ),
-          const SizedBox(height: 16),
-          Text('Calories', style: TextStyle(color: t.text2, fontSize: 12)),
-          Text(kcal == null ? '—' : '$kcal kcal', style: theme.textTheme.titleLarge),
-          Text('Worked out from protein, carbs and fat.', style: TextStyle(color: t.text3, fontSize: 12)),
-          const SizedBox(height: 24),
-          FsButton(
-            key: const Key('manual.log'),
-            label: widget.pick ? 'Use this food' : 'Log',
-            onPressed: !valid ? null : () async {
-              final food = Food(
-                source: 'manual', name: name,
-                servingDesc: _serving.text.trim().isEmpty ? null : _serving.text.trim(),
-                kcal: kcal!, proteinG: p, carbsG: c, fatG: f, fiberG: fiber,
-                sugarG: sugar, sodiumMg: sodium,
-              );
-              if (widget.pick) {
-                Navigator.of(context).pop(food);
-                return;
-              }
-              final messenger = ScaffoldMessenger.of(context);
-              final controller = ref.read(nutritionDayProvider.notifier);
-              final date = ref.read(nutritionDayProvider).value?.date;
-              final onLogged = widget.onLogged;
-              Navigator.of(context).pop(true);
-              final FoodEntry saved;
-              try {
-                saved = await controller.log(food, mealType: _meal, servings: 1, date: date);
-              } catch (_) {
-                showErrorSnackBar(messenger, "Couldn't save — try again.");
-                return;
-              }
-              onLogged?.call(saved, date!);
-            },
-          ),
-        ],
+        ),
       ),
     );
   }

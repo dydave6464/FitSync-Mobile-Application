@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import '../../../core/api_exception.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../data/auth_repository.dart';
-import '../domain/auth_user.dart';
+import '../domain/sign_in_outcome.dart';
 
 /// What the app says for any refused code: the server gives one answer for
 /// wrong, expired and used-up codes alike, so this does too.
@@ -47,7 +47,7 @@ void showSignedInBanner(ScaffoldMessengerState messenger, String message) {
 /// accepted the code but its reply was lost, a retry finds the code spent on
 /// an account that is in fact verified or reset, and only a sign-in can tell.
 /// Null when that sign-in fails too -- then the code really was wrong.
-Future<AuthUser?> signInAfterRejectedCode(
+Future<SignInOutcome?> signInAfterRejectedCode(
   AuthRepository repo,
   String email,
   String password,

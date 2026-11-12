@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
+import '../../../plans/domain/week_description.dart' show daysAWeek;
 import '../../../plans/domain/workout_plan.dart';
 import '../../../profile/domain/profile.dart' show fitnessLevelLabel;
 
@@ -35,9 +36,8 @@ class PlanReadyCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fs;
     final theme = Theme.of(context);
-    final days = plan.daysPerWeek;
     final facts = [
-      '$days ${days == 1 ? 'day' : 'days'} a week',
+      daysAWeek(plan.daysPerWeek),
       '~${plan.sessionLengthMin} min',
       if (fitnessLevel != null) fitnessLevelLabel(fitnessLevel!),
     ];
@@ -71,14 +71,19 @@ class PlanReadyCard extends StatelessWidget {
                           ),
                           const SizedBox(width: 6),
                           Flexible(
-                            child: Text(
-                              'YOUR PLAN IS READY',
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              // The eyebrow's type in the words' green: the
-                              // brand green is under 3:1 as text on its own
-                              // tint.
-                              style: fsEyebrow(t).copyWith(color: t.accentText),
+                            child: Semantics(
+                              container: true,
+                              header: true,
+                              child: Text(
+                                'YOUR PLAN IS READY',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                // The eyebrow's type in the words' green: the
+                                // brand green is under 3:1 as text on its own
+                                // tint.
+                                style: fsEyebrow(t)
+                                    .copyWith(color: t.accentText),
+                              ),
                             ),
                           ),
                         ],

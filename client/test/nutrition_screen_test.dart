@@ -5,14 +5,31 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
+import 'package:fitsync/features/ads/data/ad_source.dart';
+import 'package:fitsync/features/ads/presentation/ad_slot.dart';
 import 'package:fitsync/features/nutrition/domain/nutrition.dart';
 import 'package:fitsync/features/nutrition/presentation/log_food_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/nutrition_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/providers.dart';
 import 'package:fitsync/features/nutrition/presentation/widgets/log_food_sheet.dart';
+import 'package:fitsync/features/profile/domain/profile.dart';
+import 'package:fitsync/features/profile/presentation/providers.dart';
 
+import 'helpers/fake_ad_source.dart';
 import 'nutrition_controller_test.dart' show FakeNutritionRepository;
+
+/// A free trainee's profile: the ad card at the foot of the tab asks it
+/// whether to show at all.
+class _FreeProfile extends ProfileNotifier {
+  @override
+  Future<Profile> build() async => const Profile(
+    userId: 1, email: 'juan@example.com', fullName: 'Juan Dela Cruz', onboardingCompleted: true,
+    isPremium: false, notificationsEnabled: true, equipment: [], injuries: [],
+  );
+}
 
 NutritionDay _day(String date, {bool target = true, List<FoodEntry> lunch = const [], List<String> missing = const []}) {
   final base = NutritionDay(
@@ -44,6 +61,17 @@ class _HeldRepo extends FakeNutritionRepository {
   }
 }
 
+/// Refuses every day with a server error (no automatic retries) until told.
+class _DownRepo extends FakeNutritionRepository {
+  bool down = true;
+
+  @override
+  Future<NutritionDay> getDay(String? date) async {
+    if (down) throw const ApiException('INTERNAL_ERROR', 'An unexpected error occurred.');
+    return super.getDay(date);
+  }
+}
+
 Future<FakeNutritionRepository> _pump(
   WidgetTester tester, {
   required NutritionDay today,
@@ -52,6 +80,8 @@ Future<FakeNutritionRepository> _pump(
   Size size = const Size(390, 844),
   double textScale = 1,
   VoidCallback? onGoToProfile,
+  // No ad running unless a test hands over a source with one.
+  FakeAdSource? adSource,
 }) async {
   final repo0 = (repo ?? FakeNutritionRepository())..days[today.date] = today;
   tester.view.physicalSize = size;
@@ -61,6 +91,8 @@ Future<FakeNutritionRepository> _pump(
     overrides: [
       nutritionRepositoryProvider.overrideWithValue(repo0),
       nutritionClockProvider.overrideWithValue(() => now ?? DateTime.utc(2026, 10, 14, 11)), // 19:00 Manila
+      profileProvider.overrideWith(_FreeProfile.new),
+      adSourceProvider.overrideWithValue(adSource ?? FakeAdSource()),
     ],
     child: MaterialApp(
       // Inside the app, so it adjusts the MediaQuery MaterialApp builds from
@@ -77,6 +109,21 @@ Future<FakeNutritionRepository> _pump(
 }
 
 void main() {
+  testWidgets('a free trainee finds the ad card at the very end of Nutrition', (tester) async {
+    final source = FakeAdSource(ad: sampleHouseAd);
+    await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]), adSource: source);
+
+    final list = tester.widget<ListView>(
+        find.descendant(of: find.byType(NutritionScreen), matching: find.byType(ListView)).first);
+    final children = (list.childrenDelegate as SliverChildListDelegate).children;
+    expect(children.last, isA<AdSlot>().having((slot) => slot.placement, 'placement', 'nutrition'));
+
+    await tester.scrollUntilVisible(find.text(sampleHouseAd.title), 200);
+    await tester.pumpAndSettle();
+    expect(find.text(sampleHouseAd.title), findsOneWidget);
+    expect(source.calls, ['viewed 7']);
+  });
+
   testWidgets('shows eaten against the target, macros and meals', (tester) async {
     await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]));
     expect(find.text('1,160'), findsOneWidget);
@@ -92,6 +139,22 @@ void main() {
       expect(find.text('Add $m'), findsOneWidget, reason: m);
     }
     expect(find.text('Today'), findsOneWidget);
+  });
+
+  // Two foods in one meal are two cards, not one notched block: the
+  // prototype's 8 px between them (NU-6), and none after the last.
+  testWidgets('foods in one meal sit 8 dp apart', (tester) async {
+    final rice = FoodEntry(
+      id: 8, mealType: 'lunch', name: 'White rice', servingDesc: '1 cup', servings: 1,
+      kcal: 205, proteinG: 4, carbsG: 45, fatG: 0, source: 'local', foodId: 3,
+    );
+    await _pump(tester, today: _day('2026-10-14', lunch: [_adobo(), rice]));
+    Rect card(int id) => tester.getRect(
+        find.ancestor(of: find.byKey(Key('entry.$id')), matching: find.byType(Material)).first);
+    expect(card(8).top - card(7).bottom, 8);
+    // The meal's own 12 below its last food, as before.
+    final next = tester.getRect(find.byKey(const Key('meal.add.dinner')));
+    expect(next.top - card(8).bottom, 12);
   });
 
   // Four rows of "0 kcal +" said nothing; an empty meal now says what to do.
@@ -204,6 +267,32 @@ void main() {
     expect(repo.calls, contains('get 2026-10-13'));
   });
 
+  // NU-13: the tab's title and each meal's name are headings to jump
+  // between, and a new day is said when the arrows change it.
+  testWidgets('the title and meal names are headings, and the day is a live region', (tester) async {
+    final h = tester.ensureSemantics();
+    await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]));
+    expect(tester.getSemantics(find.text('Nutrition')), isSemantics(isHeader: true));
+    expect(tester.getSemantics(find.text('LUNCH')), isSemantics(isHeader: true));
+    expect(tester.getSemantics(find.text('Today')), isSemantics(isLiveRegion: true, label: 'Today'));
+    await tester.tap(find.byKey(const Key('day.prev')));
+    await tester.pumpAndSettle();
+    expect(tester.getSemantics(find.text('Yesterday')), isSemantics(isLiveRegion: true, label: 'Yesterday'));
+    h.dispose();
+  });
+
+  // The kit's own failed-load view: why, in plain words, and Try again.
+  testWidgets("a day that won't load says why, and Try again loads it", (tester) async {
+    final repo = _DownRepo();
+    await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]), repo: repo);
+    expect(find.byType(FsRetry), findsOneWidget);
+    expect(find.text('An unexpected error occurred.'), findsOneWidget);
+    repo.down = false;
+    await tester.tap(find.text('Try again'));
+    await tester.pumpAndSettle();
+    expect(find.text('Chicken adobo'), findsOneWidget);
+  });
+
   testWidgets('delete hides the food and Undo logs it again', (tester) async {
     final repo = await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]));
     await tester.tap(find.byKey(const Key('entry.delete.7')));
@@ -215,6 +304,18 @@ void main() {
     expect(repo.calls.last, startsWith('get'));
     expect(repo.calls, contains('log 2026-10-14 lunch Chicken adobo x1.0'));
     expect(find.text('Chicken adobo'), findsOneWidget);
+  });
+
+  testWidgets("Undo puts a label-kcal drink back with its label's kcal", (tester) async {
+    // 0/0/0 + 90 kcal: sent as macros alone, the server would refuse it.
+    const tea = FoodEntry(id: 9, mealType: 'lunch', name: 'Iced tea', servings: 1,
+        kcal: 90, proteinG: 0, carbsG: 0, fatG: 0, source: 'manual');
+    final repo = await _pump(tester, today: _day('2026-10-14', lunch: [tea]));
+    await tester.tap(find.byKey(const Key('entry.delete.9')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Undo'));
+    await tester.pumpAndSettle();
+    expect(repo.lastLogged!.toRef()['kcal'], 90);
   });
 
   testWidgets('the Undo message goes away on its own', (tester) async {
@@ -365,7 +466,7 @@ void main() {
       await tester.pump();
       repo.failNext = true;
       await save(tester);
-      expect(find.text("Couldn't save — try again."), findsOneWidget);
+      expect(find.text("Couldn't save your changes. Couldn't reach FitSync. Check your connection and try again."), findsOneWidget);
       expect(find.text('LUNCH'), findsOneWidget);
       expect(find.text('Add snack'), findsOneWidget);
     });
@@ -461,6 +562,25 @@ void main() {
       return repo;
     }
 
+    // NU-7: logging to a past day names it, before and after.
+    testWidgets('on a past day, Log food and its message name the day', (tester) async {
+      final repo = await _pump(tester, today: _day('2026-10-14'));
+      await tester.tap(find.byKey(const Key('day.prev')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('meal.add.dinner')));
+      await tester.pumpAndSettle();
+      expect(find.text('ADDING TO YESTERDAY'), findsOneWidget);
+      await tester.enterText(find.byKey(const Key('food.search')), 'rice');
+      await tester.pump(foodSearchDebounce);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Rice'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('logSheet.log')));
+      await tester.pumpAndSettle();
+      expect(repo.calls, contains('log 2026-10-13 dinner Rice x1.0'));
+      expect(find.text('Added Rice to dinner yesterday'), findsOneWidget);
+    });
+
     testWidgets('Log food closes and says where the food went', (tester) async {
       await logRiceToDinner(tester);
       expect(find.byType(LogFoodScreen), findsNothing);
@@ -552,7 +672,7 @@ void main() {
         repo.failNext = true;
         await tester.tap(find.byKey(const Key('logSheet.log')));
         await tester.pumpAndSettle();
-        expect(find.text("Couldn't save — try again."), findsOneWidget);
+        expect(find.text("Couldn't save your changes. Couldn't reach FitSync. Check your connection and try again."), findsOneWidget);
       });
     });
 
@@ -577,6 +697,83 @@ void main() {
       await tester.tap(find.byKey(const Key('logSheet.log')));
       await tester.pumpAndSettle();
       expect(repo.calls, contains('update 100 dinner x1.5'));
+    });
+  });
+
+  group('a failed save can be tried again (NU-4)', () {
+    Future<void> failChangeToSnack(WidgetTester tester, FakeNutritionRepository repo) async {
+      await tester.tap(find.byKey(const Key('entry.7')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.descendant(of: find.byType(LogFoodSheet), matching: find.text('Snack')));
+      await tester.pump();
+      repo.failNext = true;
+      await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('logSheet.log')));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets("a failed change offers Try again, which sends the same change", (tester) async {
+      final repo = await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]));
+      await failChangeToSnack(tester, repo);
+      expect(find.text("Couldn't save your changes. Couldn't reach FitSync. Check your connection and try again."), findsOneWidget);
+      await tester.tap(find.text('Try again'));
+      await tester.pumpAndSettle();
+      expect(repo.calls.where((c) => c == 'update 7 snack x1.0'), hasLength(2));
+      expect(find.text('SNACK'), findsOneWidget);
+    });
+
+    testWidgets('a failed Undo offers Try again, which puts the food back', (tester) async {
+      final repo = await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]));
+      await tester.tap(find.byKey(const Key('entry.delete.7')));
+      await tester.pumpAndSettle();
+      repo.failNext = true;
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      expect(find.text("Couldn't put Chicken adobo back. Couldn't reach FitSync. Check your connection and try again."), findsOneWidget);
+      await tester.tap(find.text('Try again'));
+      await tester.pumpAndSettle();
+      expect(repo.calls.where((c) => c == 'log 2026-10-14 lunch Chicken adobo x1.0'), hasLength(2));
+      expect(find.text('Chicken adobo'), findsOneWidget);
+      // The same key both times, so a first save that did land is not doubled.
+      expect(repo.clientIds, hasLength(2));
+      expect(repo.clientIds.first, isNotNull);
+      expect(repo.clientIds.last, repo.clientIds.first);
+    });
+
+    testWidgets('each Undo is a new log, with its own key', (tester) async {
+      final repo = await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]));
+      await tester.tap(find.byKey(const Key('entry.delete.7')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      final back = repo.days['2026-10-14']!.entries.single.id;
+      await tester.tap(find.byKey(Key('entry.delete.$back')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      expect(repo.clientIds, hasLength(2));
+      expect(repo.clientIds, everyElement(isNotNull));
+      expect(repo.clientIds.last, isNot(repo.clientIds.first));
+    });
+
+    testWidgets('the Try again message goes away on its own', (tester) async {
+      final repo = await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]));
+      await failChangeToSnack(tester, repo);
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pumpAndSettle();
+      expect(find.text("Couldn't save your changes. Couldn't reach FitSync. Check your connection and try again."), findsNothing);
+    });
+
+    testWidgets('the Try again message stays up for screen-reader users', (tester) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(accessibleNavigation: true);
+      addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+      final repo = await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]));
+      await failChangeToSnack(tester, repo);
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pumpAndSettle();
+      expect(find.text("Couldn't save your changes. Couldn't reach FitSync. Check your connection and try again."), findsOneWidget);
     });
   });
 }

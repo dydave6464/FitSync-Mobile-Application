@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/manila_day.dart';
 import '../../exercises/presentation/providers.dart' show apiClientProvider, apiRetryPolicy;
 import '../data/nutrition_repository.dart';
+import '../domain/meal_suggestion.dart';
 import '../domain/nutrition.dart';
 
 final nutritionRepositoryProvider = Provider<NutritionRepository>(
@@ -62,21 +63,27 @@ class NutritionDayController extends AsyncNotifier<NutritionDay> {
   /// this rethrows, so the caller can say so. With no [date] and no day
   /// loaded there is nowhere to save, which throws a [StateError]. Returns
   /// the saved entry, so the caller can offer to change it.
-  Future<FoodEntry> log(Food food, {required String mealType, required double servings, String? date}) async {
+  ///
+  /// A caller makes one [clientId] per log and sends it again on Try again
+  /// (see [NutritionRepository.logEntry]), so a first save that landed
+  /// comes back rather than being saved twice.
+  Future<FoodEntry> log(Food food, {required String mealType, required double servings, String? date, String? clientId}) async {
     final target = date ?? state.value?.date;
     if (target == null) throw StateError('No day is loaded to log to.');
     final pending = FoodEntry.pending(id: --_pendingIds, food: food, mealType: mealType, servings: servings);
     _onDay(target, (day) => day.withEntry(pending));
     final FoodEntry saved;
     try {
-      saved = await _repo.logEntry(date: target, mealType: mealType, servings: servings, food: food);
+      saved = await _repo.logEntry(date: target, mealType: mealType, servings: servings, food: food, clientId: clientId);
     } catch (_) {
       _onDay(target, (day) => day.without(pending.id));
       rethrow;
     }
     // The real entry, so it can be deleted even if the refetch below fails.
-    _onDay(target, (day) => day.without(pending.id).withEntry(saved));
+    // A retry may return an entry a reload already shows: listed once.
+    _onDay(target, (day) => day.without(pending.id).without(saved.id).withEntry(saved));
     ref.invalidate(recentFoodsProvider);
+    ref.invalidate(mealSuggestionsProvider);
     await _settle(target);
     return saved;
   }
@@ -98,6 +105,7 @@ class NutritionDayController extends AsyncNotifier<NutritionDay> {
       return saved.mealType == shown.mealType ? day.replacing(saved) : day.without(entry.id).withEntry(saved);
     });
     ref.invalidate(recentFoodsProvider);
+    ref.invalidate(mealSuggestionsProvider);
     await _settle(target);
   }
 
@@ -114,6 +122,7 @@ class NutritionDayController extends AsyncNotifier<NutritionDay> {
       rethrow;
     }
     ref.invalidate(recentFoodsProvider);
+    ref.invalidate(mealSuggestionsProvider);
     await _settle(date);
   }
 
@@ -136,6 +145,15 @@ class NutritionDayController extends AsyncNotifier<NutritionDay> {
 
 final recentFoodsProvider = FutureProvider.autoDispose<List<Food>>(
   (ref) => ref.watch(nutritionRepositoryProvider).recent(),
+);
+
+/// Today's local Filipino suggestions for one meal (spec 2026-11-09). Asked
+/// again whenever an entry is added, changed or removed (see
+/// [NutritionDayController]), and wherever the day itself is refetched: a
+/// new Manila day, sign-out, Snap a meal.
+final mealSuggestionsProvider = FutureProvider.autoDispose.family<MealSuggestions, String>(
+  (ref, meal) => ref.watch(nutritionRepositoryProvider).suggestions(meal),
+  retry: apiRetryPolicy,
 );
 
 /// Keyed by the (already debounced, trimmed) query; Log food debounces.

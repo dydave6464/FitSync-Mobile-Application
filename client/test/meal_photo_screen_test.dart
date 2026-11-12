@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -17,6 +18,7 @@ import 'package:fitsync/features/nutrition/presentation/meal_photo/providers.dar
 import 'package:fitsync/features/nutrition/presentation/providers.dart';
 import 'package:fitsync/features/pro/presentation/providers.dart';
 
+import 'helpers/a11y.dart' show contrast;
 import 'helpers/fake_pro_repository.dart';
 import 'nutrition_controller_test.dart' show FakeNutritionRepository;
 
@@ -71,6 +73,9 @@ final _answer = PhotoRecognition.fromJson({
 });
 
 class _PhotoRepo implements MealPhotoRepository {
+  @override
+  Future<PhotoToday> today() => throw UnimplementedError();
+
   PhotoRecognition answer = _answer;
   Object? error;
   Completer<PhotoRecognition>? gate;
@@ -154,6 +159,8 @@ Future<_Harness> _open(
   Size size = const Size(400, 1400),
   double scale = 1,
   bool watchDay = false,
+  bool dark = false,
+  PhotoRecognition? resume,
 }) async {
   final harness = h ?? _Harness();
   tester.view.physicalSize = size;
@@ -171,7 +178,7 @@ Future<_Harness> _open(
         ),
       ],
       child: MaterialApp(
-        theme: fsLightTheme(),
+        theme: dark ? fsDarkTheme() : fsLightTheme(),
         builder: (context, c) => MediaQuery(
           data: MediaQuery.of(context)
               .copyWith(textScaler: TextScaler.linear(scale)),
@@ -185,6 +192,7 @@ Future<_Harness> _open(
                   Consumer(
                     builder: (context, ref, _) {
                       ref.watch(nutritionDayProvider);
+                      ref.watch(mealSuggestionsProvider('lunch'));
                       return const SizedBox.shrink();
                     },
                   ),
@@ -192,15 +200,21 @@ Future<_Harness> _open(
                   onPressed: () async =>
                       harness.result = await Navigator.of(context).push<bool>(
                         MaterialPageRoute(
-                          builder: (_) => MealPhotoScreen(
-                            photo: _photo,
-                            source: source,
-                            mealType: 'lunch',
-                            onSearchInstead: (ctx, meal) {
-                              harness.searchedInsteadFor = meal;
-                              Navigator.of(ctx).pop(false);
-                            },
-                          ),
+                          builder: (_) => resume != null
+                              ? MealPhotoScreen.resume(
+                                  recognition: resume,
+                                  mealType: 'lunch',
+                                  onSearchInstead: (ctx, meal) {},
+                                )
+                              : MealPhotoScreen(
+                                  photo: _photo,
+                                  source: source,
+                                  mealType: 'lunch',
+                                  onSearchInstead: (ctx, meal) {
+                                    harness.searchedInsteadFor = meal;
+                                    Navigator.of(ctx).pop(false);
+                                  },
+                                ),
                         ),
                       ),
                   child: const Text('go'),
@@ -281,6 +295,99 @@ void main() {
     },
   );
 
+  // The wait can last up to 45 s (NU-14): after 8 s the words change once
+  // (D-6: "up to a minute", since half a minute undersold it),
+  // so it is clear the app has not stuck; Cancel stays.
+  testWidgets('a long wait says so once, and a new try starts over', (tester) async {
+    final h = _Harness()..repo.gate = Completer();
+    await _open(tester, h: h, settle: false);
+    const still = 'Still looking — this can take up to a minute.';
+    await tester.pump(const Duration(seconds: 7));
+    expect(find.text('Looking at your meal…'), findsOneWidget);
+    expect(find.text(still), findsNothing);
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text(still), findsOneWidget);
+    expect(find.text('Looking at your meal…'), findsNothing);
+    expect(
+      tester.getSemantics(find.byKey(const Key('snap.analysing'))),
+      isSemantics(isLiveRegion: true, label: still),
+    );
+    expect(find.byKey(const Key('snap.cancel')), findsOneWidget);
+
+    // It fails; Try again is a new wait, from the first words.
+    h.repo.gate!.completeError(const ApiException('VISION_BUSY', 'x'));
+    await tester.pumpAndSettle();
+    h.repo.gate = Completer();
+    await tester.tap(find.byKey(const Key('snap.retry')));
+    await tester.pump();
+    expect(find.text('Looking at your meal…'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 8));
+    expect(find.text(still), findsOneWidget);
+    h.repo.gate!.complete(_answer);
+    await tester.pumpAndSettle();
+    expect(find.text('White rice'), findsOneWidget);
+  });
+
+  // P-29: the wait's words, first and slow, and Cancel read clearly in
+  // both themes.
+  for (final dark in [false, true]) {
+    testWidgets('the wait reads clearly in ${dark ? 'dark' : 'light'}', (
+      tester,
+    ) async {
+      final h = _Harness()..repo.gate = Completer();
+      await _open(tester, h: h, settle: false, dark: dark);
+      final screen = tester.widget<Scaffold>(
+        find.ancestor(
+          of: find.byKey(const Key('snap.analysing')),
+          matching: find.byType(Scaffold),
+        ).first,
+      );
+      final bg = screen.backgroundColor!;
+      expect(bg, (dark ? FsTokens.dark : FsTokens.light).bg);
+      void readable(String text) {
+        final style = tester
+            .renderObject<RenderParagraph>(find.text(text))
+            .text
+            .style!;
+        expect(
+          contrast(style.color!, bg),
+          greaterThanOrEqualTo(4.5),
+          reason: '"$text"',
+        );
+      }
+
+      readable('Looking at your meal…');
+      readable('Cancel');
+      await tester.pump(const Duration(seconds: 8));
+      readable('Still looking — this can take up to a minute.');
+      h.repo.gate!.complete(_answer);
+      await tester.pumpAndSettle();
+    });
+  }
+
+  // NU-15: the daily limit is no surprise. Shown only when few are left.
+  group('photos left today', () {
+    PhotoRecognition left(int n) => PhotoRecognition(
+      recognitionId: _answer.recognitionId,
+      remainingToday: n,
+      items: _answer.items,
+      unlisted: _answer.unlisted,
+    );
+    for (final (n, text) in [(5, '5 photos left today'), (1, '1 photo left today'), (0, 'No meal photos left today')]) {
+      testWidgets('$n left: "$text"', (tester) async {
+        final h = _Harness()..repo.answer = left(n);
+        await _open(tester, h: h);
+        expect(find.text(text), findsOneWidget);
+      });
+    }
+
+    testWidgets('6 or more left: nothing said', (tester) async {
+      final h = _Harness()..repo.answer = left(6);
+      await _open(tester, h: h);
+      expect(find.textContaining('left today'), findsNothing);
+    });
+  });
+
   testWidgets(
     'the confirm list: every item, the one not on the list, the meal, the total and Log N items',
     (tester) async {
@@ -295,13 +402,16 @@ void main() {
         find.text('"Atchara (pickled papaya)" isn\'t in FitSync\'s list'),
         findsOneWidget,
       );
+      // Named as Add manually names its meal: an eyebrow (L-66).
+      expect(find.text('MEAL'), findsOneWidget);
+      expect(find.text('Meal'), findsNothing);
       expect(
         tester.getSemantics(find.byKey(const Key('snap.meal.lunch'))),
-        isSemantics(isSelected: true),
+        isSemantics(isChecked: true, isInMutuallyExclusiveGroup: true),
       );
       expect(
         tester.getSemantics(find.byKey(const Key('snap.meal.dinner'))),
-        isSemantics(isSelected: false),
+        isSemantics(isChecked: false, isInMutuallyExclusiveGroup: true),
       );
       expect(_kcal('629 kcal'), findsOneWidget);
       expect(find.text('Log 2 items'), findsOneWidget);
@@ -354,6 +464,13 @@ void main() {
     expect(find.text('Log 1 item'), findsOneWidget);
     await tester.tap(find.text('Undo'));
     await tester.pumpAndSettle();
+    // Back in its old place, first, not added at the end.
+    expect(
+      tester
+          .widgetList<PhotoItemCard>(find.byType(PhotoItemCard))
+          .map((c) => c.card.label),
+      ['White rice', 'Chicken adobo'],
+    );
     expect(
       tester
           .widget<Text>(
@@ -372,35 +489,41 @@ void main() {
     '✕ and Undo leave the other cards\' portion lines alone, so the screen reader doesn\'t read them again',
     (tester) async {
       await _open(tester);
-      int portionNode(int i) =>
-          tester.getSemantics(find.byKey(Key('snap.portion.$i'))).id;
+      final adoboFinder = find.text('Chicken adobo');
       Element adoboCard() => tester.element(
-        find.ancestor(
-          of: find.text('Chicken adobo'),
-          matching: find.byType(PhotoItemCard),
-        ),
+        find.ancestor(of: adoboFinder, matching: find.byType(FsCard)),
       );
-      final riceNode = portionNode(0);
-      final adobo = adoboCard();
+      // Found by what it says, not by a key, so the test can't follow a key
+      // that moves with the card's place.
+      int adoboLine() => tester
+          .getSemantics(
+            find.descendant(
+              of: find.ancestor(
+                of: adoboFinder,
+                matching: find.byType(PhotoItemCard),
+              ),
+              matching: find.byWidgetPredicate(
+                (w) => w is Semantics && (w.properties.liveRegion ?? false),
+              ),
+            ),
+          )
+          .id;
+      final card = adoboCard();
+      final line = adoboLine();
       await tester.tap(find.byKey(const Key('snap.remove.0')));
       await tester.pumpAndSettle();
+      // A new live-region node is read out: Chicken adobo's line must be the
+      // same node after it moves up, not a new one.
       expect(
         adoboCard(),
-        same(adobo),
-        reason: 'the card moved up, it was not rebuilt from the removed one',
+        same(card),
+        reason: 'the card moved up, it was not rebuilt',
       );
-      // A live region whose text changes is read out: White rice's line must
-      // not turn into Chicken adobo's.
-      expect(portionNode(0), isNot(riceNode));
-      final adoboNode = portionNode(0);
+      expect(adoboLine(), line, reason: 'the same portion line, not a new one');
       await tester.tap(find.text('Undo'));
       await tester.pumpAndSettle();
-      expect(adoboCard(), same(adobo));
-      expect(
-        portionNode(0),
-        isNot(adoboNode),
-        reason: "Chicken adobo's line doesn't turn into White rice's",
-      );
+      expect(adoboCard(), same(card));
+      expect(adoboLine(), line);
     },
   );
 
@@ -541,7 +664,10 @@ void main() {
       expect(h.result, isNull);
       // Back on Nutrition (Riverpod pauses it while it is covered), its day
       // reloads: the server may have saved the meal before the answer was lost.
+      // Leaving the unlogged list asks first (NU-3).
       await tester.pageBack();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('discard.confirm')));
       await tester.pumpAndSettle();
       expect(dayLoads(h), before + 1);
     },
@@ -567,6 +693,16 @@ void main() {
       expect(dayLoads(h), before + 1);
     },
   );
+
+  testWidgets("logging a photo's meal asks for the meal suggestions again", (tester) async {
+    final h = _Harness();
+    await _open(tester, h: h, watchDay: true);
+    final before = h.nutrition.suggestionCalls.length;
+    await tester.tap(find.byKey(const Key('snap.log')));
+    await tester.pumpAndSettle();
+    expect(h.result, isTrue);
+    expect(h.nutrition.suggestionCalls.length, before + 1);
+  });
 
   testWidgets('a food copied from FatSecret shows the FatSecret attribution', (
     tester,
@@ -603,7 +739,7 @@ void main() {
         });
       await _open(tester, h: h);
       expect(
-        find.text("Couldn't spot any food in this photo."),
+        find.text("Couldn't spot any food in this photo. It doesn't count toward today's limit."),
         findsOneWidget,
       );
       expect(
@@ -664,6 +800,28 @@ void main() {
       expect(h.searchedInsteadFor, 'lunch');
     });
 
+    testWidgets('too many failed tries today: announced, only Search instead', (
+      tester,
+    ) async {
+      final h = _Harness()
+        ..repo.error = const ApiException('PHOTO_RETRY_LIMIT', 'x');
+      await _open(tester, h: h);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('snap.error')),
+          matching: find.text(
+            "Snap a meal can't read photos right now. Try again tomorrow, or add your food with search.",
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('snap.retake')), findsNothing);
+      expect(find.byKey(const Key('snap.retry')), findsNothing);
+      await tester.tap(find.byKey(const Key('snap.searchInstead')));
+      await tester.pumpAndSettle();
+      expect(h.searchedInsteadFor, 'lunch');
+    });
+
     testWidgets('a photo the server can\'t read: Retake', (tester) async {
       final h = _Harness()
         ..repo.error = const ApiException('INVALID_IMAGE', 'x');
@@ -698,4 +856,108 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  group('back on the confirm list (NU-3)', () {
+    testWidgets('system back asks first, and says the photo still counts', (tester) async {
+      final h = await _open(tester);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Leave without logging?'), findsOneWidget);
+      expect(find.text("It still counts toward today's limit. You can finish it later today from Snap a meal."), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('discard.keep')));
+      await tester.pumpAndSettle();
+      expect(find.text('White rice'), findsOneWidget, reason: 'the list stays');
+      expect(h.result, isNull);
+    });
+
+    testWidgets("the photo's own back asks too, and Discard leaves", (tester) async {
+      final h = await _open(tester);
+      await tester.tap(find.byKey(const Key('snap.back')));
+      await tester.pumpAndSettle();
+      expect(find.text('Leave without logging?'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('discard.confirm')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('snap.log')), findsNothing, reason: 'the screen is gone');
+      expect(h.result, isNull);
+      expect(h.repo.logs, isEmpty);
+    });
+
+    testWidgets('a failed photo still leaves without asking', (tester) async {
+      final h = _Harness()..repo.error = const ApiException('VISION_BUSY', 'x');
+      await _open(tester, h: h);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Leave without logging?'), findsNothing);
+      expect(find.byKey(const Key('snap.retry')), findsNothing, reason: 'the screen is gone');
+    });
+
+    testWidgets('logging still closes the screen without asking', (tester) async {
+      final h = await _open(tester);
+      await tester.tap(find.byKey(const Key('snap.log')));
+      await tester.pumpAndSettle();
+      expect(find.text('Leave without logging?'), findsNothing);
+      expect(h.result, isTrue);
+    });
+  });
+
+  // #21: today's unlogged photo, reopened from the capture sheet.
+  group('a reopened photo', () {
+    final reopened = PhotoRecognition.fromJson({
+      'recognitionId': 41,
+      'remainingToday': 12,
+      'items': [
+        {'itemId': 88, 'confidence': 0.95, 'servings': 1.5, 'food': _food(1, 'White rice', 206), 'alternatives': []},
+      ],
+      'unlisted': [
+        {'itemId': 89, 'name': 'Atchara (pickled papaya)'},
+      ],
+    });
+
+    testWidgets('opens on its list, with no photo sent', (tester) async {
+      final h = await _open(tester, resume: reopened);
+      expect(h.repo.recognizeCalls, 0);
+      expect(find.byKey(const Key('snap.analysing')), findsNothing);
+      expect(find.text('White rice'), findsOneWidget);
+      expect(find.textContaining('Atchara (pickled papaya)'), findsOneWidget);
+      expect(_kcal('309 kcal'), findsOneWidget, reason: '1.5 servings of 206 kcal');
+    });
+
+    testWidgets("its header says the photo isn't kept, with back and the Pro tag", (tester) async {
+      final handle = tester.ensureSemantics();
+      await _open(tester, resume: reopened);
+      expect(find.byKey(const Key('snap.photo')), findsNothing);
+      expect(find.text("Your photo isn't kept"), findsOneWidget);
+      expect(find.byIcon(Icons.no_photography_outlined), findsOneWidget);
+      expect(find.bySemanticsLabel("Your photo isn't kept"), findsOneWidget);
+      expect(find.byKey(const Key('snap.back')), findsOneWidget);
+      expect(find.text('Pro'), findsOneWidget);
+      expect(tester.getSize(find.byKey(const Key('snap.noPhoto'))).height, 200);
+      handle.dispose();
+    });
+
+    testWidgets('Log sends the reopened recognition', (tester) async {
+      final h = await _open(tester, resume: reopened);
+      await tester.tap(find.byKey(const Key('snap.log')));
+      await tester.pumpAndSettle();
+      expect(h.repo.logs.single.recognitionId, 41);
+      expect(h.repo.logs.single.items.single.itemId, 88);
+      expect(h.result, isTrue);
+    });
+
+    testWidgets('back asks first, saying it can be finished later', (tester) async {
+      await _open(tester, resume: reopened);
+      await tester.tap(find.byKey(const Key('snap.back')));
+      await tester.pumpAndSettle();
+      expect(find.text('Leave without logging?'), findsOneWidget);
+      expect(find.text("It still counts toward today's limit. You can finish it later today from Snap a meal."), findsOneWidget);
+    });
+
+    for (final dark in [false, true]) {
+      testWidgets('fits a 320 dp phone at 2x text (${dark ? 'dark' : 'light'})', (tester) async {
+        await _open(tester, resume: reopened, size: const Size(320, 640), scale: 2, dark: dark);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  });
 }

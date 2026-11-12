@@ -5,6 +5,7 @@ import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
 import '../../../exercises/domain/muscle_regions.dart';
 import '../../../plans/domain/plan_energy.dart';
+import '../../../plans/domain/split_style.dart';
 import '../../../plans/domain/workout_plan.dart';
 
 /// The today's-plan card.
@@ -19,13 +20,16 @@ class PlanCard extends StatelessWidget {
     super.key,
     required this.plan,
     required this.weightKg,
-    required this.onStart,
+    required this.onOpenPlan,
     this.dayNo,
   });
 
   final WorkoutPlan plan;
   final double? weightKg;
-  final VoidCallback onStart;
+
+  /// "View today's plan": Home takes it to Train's Plan tab, where today's
+  /// session is started.
+  final VoidCallback onOpenPlan;
 
   /// Which rotation day this card is describing — the caller works it out
   /// with [WorkoutPlan.todayDayNo], since it depends on how many sessions
@@ -40,7 +44,7 @@ class PlanCard extends StatelessWidget {
     final kcal = estimateSessionKcal(plan: plan, weightKg: weightKg);
 
     // Today's day, not the whole rotation: this card is titled "Today's
-    // plan" and its button starts one session, so counting a three-day
+    // plan" and its button leads to one session, so counting a three-day
     // rotation's exercises promised a workout three times the one that
     // starts. exercisesForDay is the single home of that filtering.
     final today = plan.exercisesForDay(dayNo);
@@ -65,7 +69,8 @@ class PlanCard extends StatelessWidget {
         .where((d) => d.dayNo == day)
         .map((d) => d.name)
         .firstOrNull;
-    final split = describeSplit(plan.splitStyle);
+    // The Plan tab's spelling ("Push / Pull / Legs"), not the slug's.
+    final split = splitLabel(plan.splitStyle);
     final eyebrow = rotation > 1
         ? [
             'Day $day of $rotation',
@@ -174,7 +179,11 @@ class PlanCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const FsEyebrow("Today's plan"),
+                Semantics(
+                  container: true,
+                  header: true,
+                  child: const FsEyebrow("Today's plan"),
+                ),
                 const SizedBox(height: 8),
                 Text(plan.name, style: theme.textTheme.headlineSmall),
                 const SizedBox(height: 8),
@@ -201,11 +210,15 @@ class PlanCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 14),
+                // Says where it goes: the Plan tab, where Start is. "Start
+                // workout" with a play icon promised a session it never
+                // started.
                 FsButton(
-                  label: 'Start workout',
+                  key: const Key('home.plan.open'),
+                  label: "View today's plan",
                   small: true,
-                  icon: const Icon(Icons.play_arrow),
-                  onPressed: onStart,
+                  icon: const Icon(Icons.event_note),
+                  onPressed: onOpenPlan,
                 ),
               ],
             ),

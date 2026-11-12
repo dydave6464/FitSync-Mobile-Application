@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/api_exception.dart';
+import 'package:fitsync/core/app_settings.dart';
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/nutrition/data/meal_photo_picker.dart';
 import 'package:fitsync/features/nutrition/data/meal_photo_repository.dart';
 import 'package:fitsync/features/nutrition/domain/meal_photo.dart';
@@ -12,6 +15,7 @@ import 'package:fitsync/features/nutrition/domain/nutrition.dart';
 import 'package:fitsync/features/nutrition/presentation/log_food_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/meal_photo/meal_photo_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/meal_photo/providers.dart';
+import 'package:fitsync/features/nutrition/presentation/meal_photo/snap_meal.dart';
 import 'package:fitsync/features/nutrition/presentation/nutrition_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/providers.dart';
 import 'package:fitsync/features/pro/presentation/providers.dart';
@@ -22,12 +26,18 @@ import 'helpers/fake_pro_repository.dart';
 import 'nutrition_controller_test.dart' show FakeNutritionRepository;
 
 class _Profile extends ProfileNotifier {
-  _Profile({required this.premium});
+  _Profile({required this.premium, this.fails = false});
 
   final bool premium;
 
+  /// Loading the profile fails. A code apiRetryPolicy does not retry, since
+  /// a retry here runs only while something watches the profile (Home does
+  /// in the app; nothing does in this test), and these tests are about what
+  /// happens once it has failed.
+  final bool fails;
+
   @override
-  Future<Profile> build() async => Profile(
+  Future<Profile> build() async => fails ? throw const ApiException('UNKNOWN_ERROR', 'x') : Profile(
     userId: 7, email: 'juan@example.com', fullName: 'Juan Dela Cruz', onboardingCompleted: true,
     isPremium: premium, notificationsEnabled: true, equipment: const [], injuries: const [],
   );
@@ -50,9 +60,28 @@ class _Picker implements MealPhotoPicker {
 
 class _Repo implements MealPhotoRepository {
   int logged = 0;
+  String? loggedDate;
+  String? loggedMeal;
+  int? loggedRecognitionId;
+  int recognizeCalls = 0;
+  int todayCalls = 0;
+
+  /// The capture sheet's answer; an error by default, which adds nothing.
+  Future<PhotoToday> Function() todayAnswer = () => Future.error(const ApiException('NETWORK_ERROR', 'x'));
 
   @override
-  Future<PhotoRecognition> recognize(Uint8List bytes, String mimeType, {Future<void>? cancel}) async => PhotoRecognition.fromJson({
+  Future<PhotoToday> today() {
+    todayCalls++;
+    return todayAnswer();
+  }
+
+  @override
+  Future<PhotoRecognition> recognize(Uint8List bytes, String mimeType, {Future<void>? cancel}) async {
+    recognizeCalls++;
+    return _rice;
+  }
+
+  final _rice = PhotoRecognition.fromJson({
     'recognitionId': 7, 'remainingToday': 12, 'unlisted': [],
     'items': [{'itemId': 40, 'confidence': 0.9, 'servings': 1, 'alternatives': [], 'food': {
       'id': 1, 'name': 'White rice', 'servingDesc': '1 cup (160 g)', 'fromFatsecret': false,
@@ -62,7 +91,10 @@ class _Repo implements MealPhotoRepository {
 
   @override
   Future<int> log({required int recognitionId, required String date, required String mealType, required List<PhotoLogItem> items}) async {
+    loggedRecognitionId = recognitionId;
     logged += items.length;
+    loggedDate = date;
+    loggedMeal = mealType;
     return items.length;
   }
 }
@@ -79,6 +111,7 @@ Future<({_Repo repo, _Picker picker, int Function() settingsOpened})> _pump(
   WidgetTester tester, {
   required Widget home,
   bool premium = true,
+  bool profileFails = false,
   List<Object?>? picks,
   Size size = const Size(400, 1000),
   double scale = 1,
@@ -93,7 +126,7 @@ Future<({_Repo repo, _Picker picker, int Function() settingsOpened})> _pump(
   addTearDown(tester.view.reset);
   await tester.pumpWidget(ProviderScope(
     overrides: [
-      profileProvider.overrideWith(() => _Profile(premium: premium)),
+      profileProvider.overrideWith(() => _Profile(premium: premium, fails: profileFails)),
       mealPhotoRepositoryProvider.overrideWithValue(repo),
       mealPhotoPickerProvider.overrideWithValue(picker),
       appSettingsOpenerProvider.overrideWithValue(() async => settings++),
@@ -120,6 +153,33 @@ void main() {
     expect(find.descendant(of: find.byKey(const Key('snap.card')), matching: find.text('Pro')), findsOneWidget);
   });
 
+  // NU-7: the clock says nothing about which meal a past day's photo was;
+  // the confirm screen names the day and waits for a meal to be picked.
+  testWidgets('on a past day: no meal picked for you, the day named, and logged to it', (tester) async {
+    final h = await _pump(tester, home: const NutritionScreen());
+    await tester.tap(find.byKey(const Key('day.prev')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('snap.card')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('snap.library')));
+    await tester.pumpAndSettle();
+    expect(find.text('MEAL · YESTERDAY'), findsOneWidget);
+    for (final m in mealTypes) {
+      expect(tester.getSemantics(find.byKey(Key('snap.meal.$m'))), isSemantics(isChecked: false), reason: m);
+    }
+    final log = tester.widget<FsButton>(find.byKey(const Key('snap.log')));
+    expect(log.label, 'Pick a meal');
+    expect(log.onPressed, isNull);
+
+    await tester.tap(find.byKey(const Key('snap.meal.dinner')));
+    await tester.pump();
+    expect(tester.widget<FsButton>(find.byKey(const Key('snap.log'))).label, 'Log 1 item');
+    await tester.tap(find.byKey(const Key('snap.log')));
+    await tester.pumpAndSettle();
+    expect([h.repo.loggedDate, h.repo.loggedMeal], ['2026-10-13', 'dinner']);
+    expect(find.text('Logged 1 item to dinner yesterday'), findsOneWidget);
+  });
+
   testWidgets('a free account goes to the Pro screen, and the camera never opens', (tester) async {
     final h = await _pump(tester, home: const NutritionScreen(), premium: false);
     await tester.tap(find.byKey(const Key('snap.card')));
@@ -127,6 +187,53 @@ void main() {
     expect(find.text('FitSync Pro'), findsOneWidget);
     expect(find.text('Take a photo'), findsNothing);
     expect(h.picker.sources, isEmpty);
+  });
+
+  // NU-15: the allowance is asked as the sheet opens, once Pro is known.
+  testWidgets('Pro: the sheet asks about today and shows few photos left', (tester) async {
+    final h = await _pump(tester, home: const NutritionScreen());
+    h.repo.todayAnswer = () async => const PhotoToday(limit: 15, remainingToday: 3);
+    await tester.tap(find.byKey(const Key('snap.card')));
+    await tester.pumpAndSettle();
+    expect(h.repo.todayCalls, 1);
+    expect(find.text('3 photos left today'), findsOneWidget);
+  });
+
+  testWidgets('a free account is never asked about today', (tester) async {
+    final h = await _pump(tester, home: const NutritionScreen(), premium: false);
+    await tester.tap(find.byKey(const Key('snap.card')));
+    await tester.pumpAndSettle();
+    expect(h.repo.todayCalls, 0);
+  });
+
+  // #21: today's unlogged photo comes back without a new photo.
+  testWidgets('Finish your last photo reopens its list, sends no photo, and logs that photo', (tester) async {
+    final h = await _pump(tester, home: const NutritionScreen());
+    h.repo.todayAnswer = () async => PhotoToday(
+      limit: 15,
+      remainingToday: 0,
+      unlogged: PhotoRecognition.fromJson({
+        'recognitionId': 41, 'remainingToday': 0, 'unlisted': [{'itemId': 89, 'name': 'Atchara (pickled papaya)'}],
+        'items': [{'itemId': 88, 'confidence': 0.95, 'servings': 1.5, 'alternatives': [], 'food': {
+          'id': 7, 'name': 'Chicken adobo', 'servingDesc': '1 serving', 'fromFatsecret': false,
+          'perServing': {'kcal': 320, 'proteinG': 25, 'carbsG': 4, 'fatG': 22, 'fiberG': null, 'sugarG': null, 'sodiumMg': null},
+        }}],
+      }),
+    );
+    await tester.tap(find.byKey(const Key('snap.card')));
+    await tester.pumpAndSettle();
+    expect(find.text('2 foods · not logged yet'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('snap.resume')));
+    await tester.pumpAndSettle();
+    expect(find.byType(MealPhotoScreen), findsOneWidget);
+    expect(find.text('Chicken adobo'), findsOneWidget);
+    expect(find.textContaining('Atchara (pickled papaya)'), findsOneWidget);
+    expect(find.text("Your photo isn't kept"), findsOneWidget);
+    expect([h.repo.recognizeCalls, h.picker.sources.length], [0, 0]);
+    await tester.tap(find.byKey(const Key('snap.log')));
+    await tester.pumpAndSettle();
+    expect([h.repo.loggedRecognitionId, h.repo.logged, h.repo.loggedMeal], [41, 1, 'lunch']);
+    expect(find.text('Logged 1 item to lunch'), findsOneWidget);
   });
 
   testWidgets('Pro: choose, confirm, log -- back on Nutrition with the message', (tester) async {
@@ -137,7 +244,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(h.picker.sources, [PhotoSource.library]);
     expect(find.text('White rice'), findsOneWidget);
-    expect(tester.getSemantics(find.byKey(const Key('snap.meal.lunch'))), isSemantics(isSelected: true));
+    expect(tester.getSemantics(find.byKey(const Key('snap.meal.lunch'))), isSemantics(isChecked: true, isInMutuallyExclusiveGroup: true));
     await tester.tap(find.byKey(const Key('snap.log')));
     await tester.pumpAndSettle();
     expect(h.repo.logged, 1);
@@ -192,7 +299,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('snap.camera')));
     await tester.pumpAndSettle();
-    expect(tester.getSemantics(find.byKey(const Key('snap.meal.dinner'))), isSemantics(isSelected: true));
+    expect(tester.getSemantics(find.byKey(const Key('snap.meal.dinner'))), isSemantics(isChecked: true, isInMutuallyExclusiveGroup: true));
     await tester.tap(find.byKey(const Key('snap.log')));
     await tester.pumpAndSettle();
     expect(h.repo.logged, 1);
@@ -225,7 +332,7 @@ void main() {
 
   testWidgets('choosing a food for a photo offers no second Snap a meal', (tester) async {
     await _pump(tester, home: Builder(builder: (context) => Scaffold(body: TextButton(
-      onPressed: () => pickFood(context, mealType: 'lunch'),
+      onPressed: () => pickFood(context),
       child: const Text('go'),
     ))));
     await tester.tap(find.text('go'));
@@ -270,4 +377,49 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets("a Pro status that won't load goes on to the camera, leaving Pro to the server (NU-8)", (tester) async {
+    final h = await _pump(tester, home: const NutritionScreen(), profileFails: true);
+    await tester.tap(find.byKey(const Key('snap.card')));
+    await tester.pumpAndSettle();
+    expect(find.text('FitSync Pro'), findsNothing, reason: 'not sent to the purchase page');
+    expect(find.text('Take a photo'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('snap.library')));
+    await tester.pumpAndSettle();
+    expect(h.picker.sources, [PhotoSource.library]);
+    expect(find.text('White rice'), findsOneWidget);
+  });
+
+  group('SnapMealCard while the tab is busy', () {
+    Future<void> pumpCard(WidgetTester tester, {required VoidCallback? onTap, bool reduceMotion = false}) async {
+      await tester.pumpWidget(MaterialApp(
+        theme: fsLightTheme(),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: reduceMotion),
+          child: child!,
+        ),
+        home: Scaffold(body: SnapMealCard(onTap: onTap)),
+      ));
+    }
+
+    AnimatedOpacity fade(WidgetTester tester) => tester.widget<AnimatedOpacity>(
+      find.ancestor(of: find.byKey(const Key('snap.card')), matching: find.byType(AnimatedOpacity)),
+    );
+
+    testWidgets('fades to the disabled 0.45 over 150 ms when it cannot be tapped', (tester) async {
+      await pumpCard(tester, onTap: null);
+      expect(fade(tester).opacity, 0.45);
+      expect(fade(tester).duration, const Duration(milliseconds: 150));
+    });
+
+    testWidgets('is whole when it can be tapped', (tester) async {
+      await pumpCard(tester, onTap: () {});
+      expect(fade(tester).opacity, 1.0);
+    });
+
+    testWidgets('with reduced motion it fades at once', (tester) async {
+      await pumpCard(tester, onTap: null, reduceMotion: true);
+      expect(fade(tester).duration, Duration.zero);
+    });
+  });
 }

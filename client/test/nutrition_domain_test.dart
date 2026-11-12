@@ -27,6 +27,39 @@ Map<String, dynamic> _day({List<Map<String, dynamic>> lunch = const []}) => {
 };
 
 void main() {
+  // NU-7: a past day is named wherever food is logged to it.
+  group('naming a day', () {
+    test('dayLabel: Today, Yesterday, then the weekday and date', () {
+      expect(dayLabel('2026-11-06', '2026-11-06'), 'Today');
+      expect(dayLabel('2026-11-05', '2026-11-06'), 'Yesterday');
+      expect(dayLabel('2026-11-03', '2026-11-06'), 'Tue, Nov 3');
+      expect(dayLabel('2026-10-11', '2026-11-06'), 'Sun, Oct 11');
+      // P-2: the same label as sessions and the weigh-in sheet, so another
+      // year's day carries its year.
+      expect(dayLabel('2025-12-30', '2026-01-02'), 'Tue, Dec 30, 2025');
+    });
+
+    // For a line with no room to spare: Log food's "ADDING TO" eyebrow,
+    // which must stay one line on a 320 dp phone at 2x text.
+    test('shortDayLabel: Today, Yesterday, then the date alone', () {
+      expect(shortDayLabel('2026-11-06', '2026-11-06'), 'Today');
+      expect(shortDayLabel('2026-11-05', '2026-11-06'), 'Yesterday');
+      expect(shortDayLabel('2026-11-03', '2026-11-06'), 'Nov 3');
+      expect(shortDayLabel('2026-10-11', '2026-11-06'), 'Oct 11');
+      // Short in another year too: the line has no room for ", 2025", and
+      // the screen behind it already names the day in full.
+      expect(shortDayLabel('2025-12-30', '2026-01-02'), 'Dec 30');
+    });
+
+    test('onDay: nothing for today, else words to end a sentence with', () {
+      expect(onDay('2026-11-06', '2026-11-06'), '');
+      expect(onDay('2026-11-05', '2026-11-06'), ' yesterday');
+      expect(onDay('2026-11-03', '2026-11-06'), ' on Tue, Nov 3');
+      expect(onDay('2025-12-31', '2026-01-01'), ' yesterday');
+      expect(onDay('2025-12-30', '2026-01-02'), ' on Tue, Dec 30, 2025');
+    });
+  });
+
   test('mealForTime follows Manila hours', () {
     // Manila = UTC+8.
     expect(mealForTime(DateTime.utc(2026, 10, 14, 1, 59)), 'breakfast'); // 09:59
@@ -92,11 +125,44 @@ void main() {
     final manual = FoodEntry.fromJson(_entry(source: 'manual'));
     expect(manual.asFood().toRef(), {
       'source': 'manual', 'name': 'Chicken adobo', 'servingDesc': '1 serving',
-      'proteinG': 28.0, 'carbsG': 4.0, 'fatG': 21.0,
+      // 640 / 2 servings = 320, not 4·4·9's 317: the saved kcal goes back.
+      'proteinG': 28.0, 'carbsG': 4.0, 'fatG': 21.0, 'kcal': 320,
     });
     expect(FoodEntry.fromJson(_entry(source: 'fatsecret')).asFood().toRef(),
         {'source': 'fatsecret', 'externalId': 'fs-1'});
     expect(FoodEntry.fromJson(_entry()).asFood().toRef(), {'source': 'local', 'id': 7});
+  });
+
+  group('Undo puts a manual entry back at its own kcal', () {
+    FoodEntry manual({required int kcal, required double p, required double c, required double f, double servings = 1}) =>
+        FoodEntry(id: 1, mealType: 'snack', name: 'X', servings: servings,
+            kcal: kcal, proteinG: p, carbsG: c, fatG: f, source: 'manual');
+
+    test("a label's kcal is sent again, not 4·4·9's", () {
+      // Choco wafer: 1.5/21/7 works out to 153, the label says 160.
+      expect(manual(kcal: 160, p: 1.5, c: 21, f: 7).asFood().toRef()['kcal'], 160);
+      expect(manual(kcal: 160, p: 1.5, c: 21, f: 7).asFood().labelKcal, 160);
+    });
+
+    test('a 0/0/0 drink with label kcal keeps them, so the server accepts it', () {
+      expect(manual(kcal: 90, p: 0, c: 0, f: 0).asFood().toRef()['kcal'], 90);
+    });
+
+    test('a kept kcal (a beer) is sent per serving', () {
+      expect(manual(kcal: 258, p: 1.2, c: 9.8, f: 0, servings: 2).asFood().toRef()['kcal'], 129);
+    });
+
+    test('a 4·4·9 entry sends macros only', () {
+      final food = manual(kcal: 153, p: 1.5, c: 21, f: 7).asFood();
+      expect(food.labelKcal, isNull);
+      expect(food.toRef().containsKey('kcal'), isFalse);
+    });
+
+    test('a FitSync or FatSecret entry never carries a label kcal', () {
+      final local = FoodEntry(id: 1, mealType: 'snack', name: 'X', servings: 1,
+          kcal: 999, proteinG: 1, carbsG: 1, fatG: 1, source: 'local', foodId: 3);
+      expect(local.asFood().labelKcal, isNull);
+    });
   });
 
   test('hasFatsecret spots a FatSecret entry', () {
@@ -127,6 +193,39 @@ void main() {
     });
     const noFiber = Food(source: 'manual', name: 'Turon', kcal: 198, proteinG: 2, carbsG: 34, fatG: 6);
     expect(noFiber.toRef(), {'source': 'manual', 'name': 'Turon', 'proteinG': 2.0, 'carbsG': 34.0, 'fatG': 6.0});
+  });
+
+  // #24: a label's calories, typed in Add manually, go with the food.
+  test("a manual Food.toRef sends the label's kcal only when one was typed", () {
+    const wafer = Food(source: 'manual', name: 'Choco wafer', servingDesc: '1 pack (32 g)', kcal: 160, labelKcal: 160, proteinG: 1.5, carbsG: 21, fatG: 7);
+    expect(wafer.toRef(), {
+      'source': 'manual', 'name': 'Choco wafer', 'servingDesc': '1 pack (32 g)',
+      'proteinG': 1.5, 'carbsG': 21.0, 'fatG': 7.0, 'kcal': 160,
+    });
+    const worked = Food(source: 'manual', name: 'Choco wafer', kcal: 153, proteinG: 1.5, carbsG: 21, fatG: 7);
+    expect(worked.toRef().containsKey('kcal'), isFalse);
+  });
+
+  test('fromJson never sets a label kcal', () {
+    expect(Food.fromJson({'source': 'manual', 'name': 'x', 'kcal': 160, 'proteinG': 1, 'carbsG': 1, 'fatG': 1}).labelKcal, isNull);
+  });
+
+  test('a manual Food.toRef names the listed food it was edited from, never its kcal', () {
+    const beer = Food(source: 'manual', name: 'Beer', kcal: 129, proteinG: 1.1, carbsG: 10.6, fatG: 0, basedOnFoodId: 21);
+    expect(beer.toRef(), {'source': 'manual', 'name': 'Beer', 'proteinG': 1.1, 'carbsG': 10.6, 'fatG': 0.0, 'basedOnFoodId': 21});
+  });
+
+  test("a Recents manual food reads the entry it came from, and logging it again names that entry", () {
+    final beer = Food.fromJson(const {
+      'id': null, 'entryId': 55, 'source': 'manual', 'externalId': null, 'name': 'Beer', 'servingDesc': null,
+      'kcal': 129, 'proteinG': 1.1, 'carbsG': 10.6, 'fatG': 0, 'fiberG': null, 'sugarG': null, 'sodiumMg': null,
+    });
+    expect(beer.entryId, 55);
+    expect(beer.toRef(), {'source': 'manual', 'name': 'Beer', 'proteinG': 1.1, 'carbsG': 10.6, 'fatG': 0.0, 'basedOnEntryId': 55});
+    final rice = Food.fromJson(const {
+      'id': 3, 'source': 'local', 'name': 'White rice', 'kcal': 205, 'proteinG': 4.3, 'carbsG': 44.5, 'fatG': 0.4,
+    });
+    expect(rice.entryId, isNull, reason: 'a listed food has no entry');
   });
 
   test('FoodEntry.fromJson reads a nullable fiberG', () {

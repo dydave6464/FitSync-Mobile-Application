@@ -3,7 +3,8 @@ const express = require('express');
 const requireAuth = require('../middleware/require-auth');
 const AppError = require('../lib/app-error');
 const {
-  listGoals, deleteGoal, bestKg, isLiveExercise, listOptions, createGoalIfNoneOpen,
+  listGoals, readGoal, deleteGoal, bestKg, isLiveExercise, listOptions, createGoalIfNoneOpen,
+  updateGoalTarget,
 } = require('../db/goals');
 
 const notFound = () => AppError.notFound('GOAL_NOT_FOUND', 'No such goal.');
@@ -19,6 +20,26 @@ function goalIdOr404(raw) {
 /// Kilograms as the app writes them: 52.5, not 52.50.
 function kg(value) {
   return String(Number(value.toFixed(2)));
+}
+
+/// The target in kilograms, rounded to the column's 2 decimals; POST and
+/// PATCH share the rule.
+function targetOr400(targetKg) {
+  if (typeof targetKg !== 'number' || !Number.isFinite(targetKg)
+      || targetKg < 0.5 || targetKg > 999.99) {
+    throw AppError.badRequest('TARGET_INVALID', 'targetKg must be a number from 0.5 to 999.99.',
+      [{ field: 'targetKg' }]);
+  }
+  return Math.round(targetKg * 100) / 100;
+}
+
+/// A goal already met means nothing on the screen. The sentence stays for
+/// older apps; bestKg lets an app say it in the user's unit.
+function refuseIfMet(target, best) {
+  if (best !== null && target <= best) {
+    throw AppError.badRequest('GOAL_ALREADY_MET', `Your best is already ${kg(best)} kg.`,
+      [{ field: 'targetKg', bestKg: best }]);
+  }
 }
 
 module.exports = function buildGoalsRouter(deps) {
@@ -44,23 +65,39 @@ module.exports = function buildGoalsRouter(deps) {
       if (!Number.isInteger(exerciseId) || !(await isLiveExercise(deps.pool, exerciseId))) {
         throw AppError.badRequest('EXERCISE_INVALID', 'Choose an exercise from the catalogue.');
       }
-      if (typeof targetKg !== 'number' || !Number.isFinite(targetKg)
-          || targetKg < 0.5 || targetKg > 999.99) {
-        throw AppError.badRequest('TARGET_INVALID', 'targetKg must be a number from 0.5 to 999.99.');
-      }
-      const target = Math.round(targetKg * 100) / 100;
+      const target = targetOr400(targetKg);
+      refuseIfMet(target, await bestKg(deps.pool, userId, exerciseId));
 
-      // A goal already met means nothing on the screen.
-      const best = await bestKg(deps.pool, userId, exerciseId);
-      if (best !== null && target <= best) {
-        throw AppError.badRequest('GOAL_ALREADY_MET', `Your best is already ${kg(best)} kg.`);
-      }
-
-      const goal = await createGoalIfNoneOpen(deps.pool, userId, exerciseId, target);
+      const { goal, openGoalId } = await createGoalIfNoneOpen(deps.pool, userId, exerciseId, target);
       if (goal === null) {
-        throw AppError.conflict('GOAL_EXISTS', 'You already have a goal for this exercise.');
+        throw AppError.conflict('GOAL_EXISTS', 'You already have a goal for this exercise.',
+          [{ field: 'exerciseId', goalId: openGoalId }]);
       }
       res.status(201).json({ data: { goal } });
+    } catch (err) { next(err); }
+  });
+
+  /// Change an unreached goal's target. A reached goal is refused: raising it
+  /// would reopen it beside a newer open goal for the same lift. A workout
+  /// that reaches the goal between the read and the update is harmless, since
+  /// no second open goal can exist while this one is open.
+  router.patch('/:goalId', auth, async (req, res, next) => {
+    try {
+      const { userId } = req.user;
+      const id = goalIdOr404(req.params.goalId);
+      const target = targetOr400((req.body || {}).targetKg);
+
+      const goal = await readGoal(deps.pool, userId, id);
+      if (goal === null) throw notFound();
+      if (goal.reachedOn !== null) {
+        throw AppError.conflict('GOAL_REACHED', "You've reached this goal. Add a new one to aim higher.",
+          [{ field: 'goalId', goalId: id, reachedOn: goal.reachedOn }]);
+      }
+      refuseIfMet(target, goal.bestKg);
+
+      const changed = await updateGoalTarget(deps.pool, userId, id, target);
+      if (changed === null) throw notFound();
+      res.json({ data: { goal: changed } });
     } catch (err) { next(err); }
   });
 

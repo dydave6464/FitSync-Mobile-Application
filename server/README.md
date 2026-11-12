@@ -56,8 +56,10 @@ code from the logged email and typing it into the app.
 outright when `NODE_ENV=production` — verification is a hard gate, so a
 production server that could never send mail could never let anyone
 register. `PUBLIC_BASE_URL` sets the origin for links that leave the app —
-today only the shared coach-report link (defaults to `http://localhost:3000`,
-refused in production while it still points at localhost). See `docs/production.md` for the
+today the shared coach-report link and the link in the account-deletion email
+(defaults to `http://localhost:3000`, refused in production while it still
+points at localhost). The web account-deletion page Google Play asks for is
+`<PUBLIC_BASE_URL>/api/v1/account/delete-request`. See `docs/production.md` for the
 production setup and rollout checklist.
 
 ## Install, migrate, run

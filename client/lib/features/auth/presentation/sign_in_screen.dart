@@ -1,12 +1,19 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
+import '../../../core/widgets/fs_brand.dart';
 import '../../../core/widgets/fs_kit.dart';
+import '../data/google_sign_in_gateway.dart';
 import 'auth_controller.dart';
+import 'auth_text_link.dart';
 import 'check_email_screen.dart';
+import 'editable_under.dart';
 import 'forgot_password_screen.dart';
+import 'google_g_mark.dart';
+import 'password_reveal_toggle.dart';
 
 /// One screen for both signing in and registering.
 ///
@@ -29,9 +36,24 @@ class SignInScreen extends ConsumerStatefulWidget {
 /// Which field a validation message belongs under.
 enum _Field { fullName, email, password }
 
+/// Which request is on its way, so only the button that started it spins
+/// (and is announced as loading). The others are disabled without one: one
+/// request at a time.
+enum _Pending { none, email, google }
+
 /// The shortest password the server accepts on register and on reset
 /// (`MIN_PASSWORD_LENGTH` in its auth routes).
 const _minPasswordLength = 8;
+
+/// When Google itself could not sign the user in. Names the other way in,
+/// since retrying may not help on a phone without Play Services.
+const _googleFailedMessage =
+    "Couldn't sign in with Google. Try again, or use your email and password.";
+
+/// Registering an address that already has an account. The server's own
+/// words ("already registered") leave the user stuck in Create account mode,
+/// so this says what to do, and a link under it does it.
+const _emailTakenMessage = 'That email already has an account.';
 
 class _SignInScreenState extends ConsumerState<SignInScreen> {
   final _email = TextEditingController();
@@ -39,7 +61,8 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   final _fullName = TextEditingController();
 
   bool _registering = false;
-  bool _busy = false;
+  _Pending _pending = _Pending.none;
+  bool get _busy => _pending != _Pending.none;
 
   /// Starts hidden, as any password field does; the eye reveals it so a
   /// mistyped character can be found without retyping the whole thing.
@@ -47,6 +70,16 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
 
   /// A message from the server or Google, about the request as a whole.
   String? _error;
+
+  /// True only while [_error] says the email is taken on Create account, so
+  /// the line offers "Sign in instead". Set with the message by [_setError],
+  /// never inferred from its words.
+  bool _emailTaken = false;
+
+  void _setError(String? message, {bool emailTaken = false}) {
+    _error = message;
+    _emailTaken = emailTaken;
+  }
 
   /// A validation message, shown under the field it is about so the user
   /// does not have to work out which box to fix.
@@ -61,8 +94,12 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   }
 
   /// Returns the first problem and the field it is about, or null when the
-  /// form is usable.
+  /// form is usable. Checked in the order the fields are drawn, so the one
+  /// named is the first a user meets going down the form.
   ({_Field field, String message})? _validate() {
+    if (_registering && _fullName.text.trim().isEmpty) {
+      return (field: _Field.fullName, message: 'Enter your name.');
+    }
     if (_email.text.trim().isEmpty) {
       return (field: _Field.email, message: 'Enter your email.');
     }
@@ -84,11 +121,17 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         message: 'Use at least $_minPasswordLength characters.',
       );
     }
-    if (_registering && _fullName.text.trim().isEmpty) {
-      return (field: _Field.fullName, message: 'Enter your name.');
-    }
     return null;
   }
+
+  /// One per field, around its [FsLabeledField], so a failed check can put
+  /// the cursor in the field it is about.
+  final _fieldKeys = {for (final field in _Field.values) field: GlobalKey()};
+
+  /// Takes the cursor to [field], or reads [message] when it is already
+  /// there: see [focusOrAnnounce].
+  void _focus(_Field field, String message) =>
+      focusOrAnnounce(context, _fieldKeys[field]!, message);
 
   String? _errorFor(_Field field) =>
       _fieldError?.field == field ? _fieldError!.message : null;
@@ -104,17 +147,31 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     if (_busy) return;
 
     setState(() {
-      _busy = true;
-      _error = null;
+      _pending = _Pending.google;
+      _setError(null);
       _fieldError = null;
     });
 
     try {
-      final idToken = await ref.read(googleSignInGatewayProvider).idToken();
+      final result = await ref.read(googleSignInGatewayProvider).signIn();
       if (!mounted) return;
-      // A cancelled dialog is a decision, not a failure. Leave the screen
-      // exactly as it was so the user can pick another way in.
-      if (idToken == null) return;
+      final String idToken;
+      switch (result) {
+        case GoogleSignInToken(idToken: final token):
+          idToken = token;
+        // A cancelled dialog is a decision, not a failure. Leave the screen
+        // exactly as it was so the user can pick another way in.
+        case GoogleSignInCancelled():
+          return;
+        case GoogleSignInFailed(:final cause):
+          // Never shown -- the message names another way in instead -- but
+          // without it a broken build gives no clue why Google failed.
+          // Debug builds only: debugPrint still prints in release, and the
+          // phone's log is no place for a sign-in failure's details.
+          if (kDebugMode) debugPrint('Google sign-in failed: $cause');
+          setState(() => _setError(_googleFailedMessage));
+          return;
+      }
 
       final user = await ref
           .read(authRepositoryProvider)
@@ -123,9 +180,15 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       ref.read(authControllerProvider.notifier).onAuthenticated(user);
     } on ApiException catch (error) {
       if (!mounted) return;
-      setState(() => _error = error.message);
+      setState(() => _setError(userMessage(error)));
+    } catch (error) {
+      // Anything else, so a tap never just stops the spinner and says
+      // nothing: this is the only way in without a password.
+      if (kDebugMode) debugPrint('Google sign-in failed: $error');
+      if (!mounted) return;
+      setState(() => _setError(_googleFailedMessage));
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _pending = _Pending.none);
     }
   }
 
@@ -138,14 +201,15 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     if (problem != null) {
       setState(() {
         _fieldError = problem;
-        _error = null;
+        _setError(null);
       });
+      _focus(problem.field, problem.message);
       return;
     }
 
     setState(() {
-      _busy = true;
-      _error = null;
+      _pending = _Pending.email;
+      _setError(null);
       _fieldError = null;
     });
 
@@ -166,11 +230,12 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         // user to hand the controller. Send the way forward instead.
         _pushCheckEmail(email, password, sendCodeOnOpen: false);
       } else {
-        final user = await repo.login(email, password);
+        final outcome = await repo.login(email, password);
         if (!mounted) return;
         // The token is already stored by the repository, so the shell can
-        // move on without a second round trip.
-        ref.read(authControllerProvider.notifier).onAuthenticated(user);
+        // move on without a second round trip: to the trainee app, or to
+        // the admin tabs when the email was an admin's.
+        ref.read(authControllerProvider.notifier).onSignedIn(outcome);
       }
     } on ApiException catch (error) {
       if (!mounted) return;
@@ -180,15 +245,25 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         // leave the user guessing what the code means. The code from back
         // then has most likely expired, so the screen asks for a fresh one.
         _pushCheckEmail(email, password, sendCodeOnOpen: true);
+      } else if (_registering && error.code == 'EMAIL_TAKEN') {
+        setState(() => _setError(_emailTakenMessage, emailTaken: true));
       } else {
         // The fields keep their text on purpose — a wrong password should
         // cost one character, not the whole form.
-        setState(() => _error = error.message);
+        setState(() => _setError(userMessage(error)));
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _pending = _Pending.none);
     }
   }
+
+  /// Switches between signing in and creating an account. The email and
+  /// password stay: they are the same two fields in both modes.
+  void _setRegistering(bool registering) => setState(() {
+    _registering = registering;
+    _setError(null);
+    _fieldError = null;
+  });
 
   void _pushCheckEmail(
     String email,
@@ -208,7 +283,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
 
   void _openForgotPassword() {
     Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const ForgotPasswordScreen()),
+      MaterialPageRoute<void>(
+        builder: (_) => ForgotPasswordScreen(initialEmail: _email.text.trim()),
+      ),
     );
   }
 
@@ -216,6 +293,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   Widget build(BuildContext context) {
     final t = context.fs;
     final theme = Theme.of(context);
+    final reason = ref.watch(authControllerProvider).value?.reason;
 
     return Scaffold(
       backgroundColor: t.bg,
@@ -241,6 +319,10 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   'Filipino-context nutrition — built for your goals.',
                   style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.5),
                 ),
+                if (reason != null) ...[
+                  const SizedBox(height: 18),
+                  _SignOutNote(reason),
+                ],
                 const SizedBox(height: 30),
                 // One group so a password manager fills the email and the
                 // password together, and offers to save them on success.
@@ -249,7 +331,8 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       if (_registering) ...[
-                        _LabeledField(
+                        FsLabeledField(
+                          key: _fieldKeys[_Field.fullName],
                           label: 'Full name',
                           error: _errorFor(_Field.fullName),
                           field: FsField(
@@ -266,7 +349,8 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                         ),
                         const SizedBox(height: 14),
                       ],
-                      _LabeledField(
+                      FsLabeledField(
+                        key: _fieldKeys[_Field.email],
                         label: 'Email',
                         error: _errorFor(_Field.email),
                         field: FsField(
@@ -281,7 +365,8 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                         ),
                       ),
                       const SizedBox(height: 14),
-                      _LabeledField(
+                      FsLabeledField(
+                        key: _fieldKeys[_Field.password],
                         label: 'Password',
                         // The same minimum the server enforces on register
                         // and on reset, stated before the user picks one
@@ -308,22 +393,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                                 : AutofillHints.password,
                           ],
                           onChanged: (_) => _clearErrorFor(_Field.password),
-                          trailing: IconButton(
+                          trailing: PasswordRevealToggle(
                             key: const Key('togglePassword'),
-                            tooltip: _obscurePassword
-                                ? 'Show password'
-                                : 'Hide password',
-                            constraints: const BoxConstraints(
-                              minWidth: 48,
-                              minHeight: 48,
-                            ),
-                            icon: Icon(
-                              _obscurePassword
-                                  ? Icons.visibility_outlined
-                                  : Icons.visibility_off_outlined,
-                              size: 20,
-                              color: t.text2,
-                            ),
+                            obscured: _obscurePassword,
                             onPressed: () => setState(
                               () => _obscurePassword = !_obscurePassword,
                             ),
@@ -340,7 +412,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                 if (!_registering)
                   Align(
                     alignment: Alignment.centerRight,
-                    child: _TextLink(
+                    child: AuthTextLink(
                       key: const Key('forgotPassword'),
                       onTap: _busy ? null : _openForgotPassword,
                       child: Text(
@@ -354,17 +426,31 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   // Inline rather than a SnackBar: a snack bar times out, and
                   // an error the user needs in order to fix their input should
                   // stay on screen until they do.
-                  Text(
-                    _error!,
-                    key: const Key('error'),
-                    style: TextStyle(fontSize: 12.5, color: t.red),
-                  ),
+                  // A live region, so a screen reader says it as it
+                  // appears: otherwise a failed sign-in sounds like a hang.
+                  FsErrorLine(_error!, key: const Key('error')),
+                  if (_emailTaken)
+                    Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: AuthTextLink(
+                        key: const Key('signInInstead'),
+                        onTap: _busy ? null : () => _setRegistering(false),
+                        child: Text(
+                          'Sign in instead',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: t.accentText,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
                 const SizedBox(height: 18),
                 FsButton(
                   key: const Key('submit'),
                   label: _registering ? 'Create account' : 'Sign in',
-                  busy: _busy,
+                  busy: _pending == _Pending.email,
                   onPressed: _busy ? null : _submit,
                 ),
                 const SizedBox(height: 18),
@@ -392,20 +478,17 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   label: 'Continue with Google',
                   kind: FsButtonKind.secondary,
                   small: true,
-                  icon: const Icon(Icons.g_mobiledata),
+                  // Google's own colour G, which its sign-in branding
+                  // requires, in place of the prototype's one-colour G.
+                  icon: const GoogleGMark(),
+                  busy: _pending == _Pending.google,
                   onPressed: _busy ? null : _signInWithGoogle,
                 ),
                 const SizedBox(height: 8),
                 Center(
-                  child: _TextLink(
+                  child: AuthTextLink(
                     key: const Key('toggleMode'),
-                    onTap: _busy
-                        ? null
-                        : () => setState(() {
-                            _registering = !_registering;
-                            _error = null;
-                            _fieldError = null;
-                          }),
+                    onTap: _busy ? null : () => _setRegistering(!_registering),
                     child: Text.rich(
                       TextSpan(
                         style: TextStyle(fontSize: 12.5, color: t.text2),
@@ -436,32 +519,61 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   }
 }
 
-/// A line of small text that acts as a button, inside a 48dp tap target.
-///
-/// The words stay as small as the design draws them; the target around them
-/// is what grows, so a thumb that lands just above or below still counts.
-class _TextLink extends StatelessWidget {
-  const _TextLink({super.key, required this.onTap, required this.child});
+/// Why the user is back on sign-in: after Delete account the account is
+/// gone, and after a suspension at launch it is shut until an admin
+/// reinstates it. Without a word either looks like an unexplained sign-out.
+/// Stays until they sign in, unlike a SnackBar that can time out unseen. A
+/// live region, so a screen reader says it as the screen appears.
+class _SignOutNote extends StatelessWidget {
+  const _SignOutNote(this.reason);
 
-  final VoidCallback? onTap;
-  final Widget child;
+  final SignOutReason reason;
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      child: InkWell(
-        onTap: onTap,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-          child: Align(widthFactor: 1, heightFactor: 1, child: child),
+    final t = context.fs;
+    final (key, icon, iconColor, text) = switch (reason) {
+      SignOutReason.accountDeleted => (
+        'signIn.accountDeleted',
+        Icons.check_circle_outline,
+        t.text2,
+        'Your account was deleted.',
+      ),
+      SignOutReason.suspended => (
+        'signIn.suspended',
+        Icons.block,
+        t.red,
+        'This account is suspended.',
+      ),
+    };
+
+    return FsCard(
+      key: Key(key),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Semantics(
+        container: true,
+        liveRegion: true,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 18, color: iconColor),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                text,
+                style: TextStyle(fontSize: 13, height: 1.4, color: t.text),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-/// The accent tile plus wordmark from the prototype's `Logo`.
+/// The brand mark plus wordmark from the prototype's `Logo`, with the mark
+/// drawn as the app icon draws it (the dark tile, not the prototype's accent
+/// tile), so the sign-in screen and the home screen show the same logo.
 class _Logo extends StatelessWidget {
   const _Logo();
 
@@ -471,15 +583,7 @@ class _Logo extends StatelessWidget {
 
     return Row(
       children: [
-        Container(
-          width: 34,
-          height: 34,
-          decoration: BoxDecoration(
-            color: t.accent,
-            borderRadius: BorderRadius.circular(11),
-          ),
-          child: Icon(Icons.bolt, size: 22, color: t.onAccent),
-        ),
+        const FsBrandMark(),
         const SizedBox(width: 9),
         // Shrinks rather than overflowing on a narrow phone at large text: a
         // wordmark cut to an ellipsis would no longer be the name.
@@ -499,68 +603,6 @@ class _Logo extends StatelessWidget {
             ),
           ),
         ),
-      ],
-    );
-  }
-}
-
-/// A field with its name above it and its helper or error text below.
-///
-/// The placeholder alone vanishes as soon as the user types, taking the
-/// field's name with it. The visible texts are hidden from screen readers and
-/// given to the field as its label and hint instead, so the field is announced
-/// with its name and any message about it. Not [MergeSemantics]: that would
-/// also swallow the eye button inside the password field, leaving it
-/// unreachable by TalkBack and VoiceOver.
-class _LabeledField extends StatelessWidget {
-  const _LabeledField({
-    required this.label,
-    required this.field,
-    this.helper,
-    this.error,
-  });
-
-  final String label;
-  final Widget field;
-  final String? helper;
-  final String? error;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.fs;
-
-    final hint = [error, helper].nonNulls.join('. ');
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        ExcludeSemantics(
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-              color: t.text2,
-            ),
-          ),
-        ),
-        const SizedBox(height: 6),
-        Semantics(label: label, hint: hint.isEmpty ? null : hint, child: field),
-        if (helper != null) ...[
-          const SizedBox(height: 6),
-          ExcludeSemantics(
-            child: Text(
-              helper!,
-              style: TextStyle(fontSize: 12, color: t.text2),
-            ),
-          ),
-        ],
-        if (error != null) ...[
-          const SizedBox(height: 6),
-          ExcludeSemantics(
-            child: Text(error!, style: TextStyle(fontSize: 12.5, color: t.red)),
-          ),
-        ],
       ],
     );
   }

@@ -1,5 +1,6 @@
 import '../../../core/api_client.dart';
 import '../domain/active_session.dart';
+import '../domain/session_detail.dart';
 import '../domain/session_history.dart';
 import '../domain/session_outcome.dart';
 import '../domain/shared_report.dart';
@@ -25,6 +26,13 @@ class SessionRepository {
   Future<SessionHistoryPage> history({int page = 1, int limit = 20}) async {
     final data = await _api.getJson('/api/v1/sessions?page=$page&limit=$limit');
     return SessionHistoryPage.fromJson(data);
+  }
+
+  /// One finished workout, with every exercise and completed set. The
+  /// server answers SESSION_NOT_FOUND for anything not finished and yours.
+  Future<SessionDetail> detail(int sessionId) async {
+    final data = await _api.getJson('/api/v1/sessions/$sessionId');
+    return SessionDetail.fromJson(data['session'] as Map<String, dynamic>);
   }
 
   /// The most recent completed workout, or null when there is none.

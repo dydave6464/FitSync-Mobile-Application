@@ -11,12 +11,14 @@ DailyTargets? _estimate({
   double? heightCm = 175,
   double? weightKg = 72,
   String? activityLevel = 'light',
+  String? mainGoal,
 }) => estimateDailyTargets(
   sex: sex,
   dateOfBirth: dateOfBirth,
   heightCm: heightCm,
   weightKg: weightKg,
   activityLevel: activityLevel,
+  mainGoal: mainGoal,
   today: _today,
 );
 
@@ -77,6 +79,50 @@ void main() {
       // target computed as though the user had answered something they
       // deliberately declined to answer.
       expect(_estimate(sex: 'prefer_not_to_say'), isNull);
+    });
+  });
+
+  // The food log's target (server/src/lib/nutrition-target.js) moves the
+  // same maintenance by the main goal and never goes under a floor; this
+  // must say the same number, or onboarding and Nutrition disagree.
+  group('the main goal moves the target as the food log does', () {
+    test('losing weight takes 500 off', () {
+      expect(_estimate(mainGoal: 'lose_weight')!.kcal, 1800);
+    });
+
+    test('building muscle adds 250', () {
+      expect(_estimate(mainGoal: 'build_muscle')!.kcal, 2550);
+    });
+
+    test('any other goal, or none, is maintenance', () {
+      expect(_estimate(mainGoal: 'general_fitness')!.kcal, 2300);
+      expect(_estimate()!.kcal, 2300);
+    });
+
+    test('never under 1,200 kcal for a woman or 1,500 for a man', () {
+      // Sedentary, small and older: maintenance 1,100 for her, 1,300 for him,
+      // so 500 off would go far under either floor.
+      final female = _estimate(
+        sex: 'female',
+        heightCm: 150,
+        weightKg: 45,
+        dateOfBirth: '1960-01-01',
+        activityLevel: 'sedentary',
+        mainGoal: 'lose_weight',
+      )!;
+      final male = _estimate(
+        heightCm: 150,
+        weightKg: 45,
+        dateOfBirth: '1960-01-01',
+        activityLevel: 'sedentary',
+        mainGoal: 'lose_weight',
+      )!;
+      expect(female.kcal, 1200);
+      expect(male.kcal, 1500);
+    });
+
+    test('protein does not move with the goal', () {
+      expect(_estimate(mainGoal: 'lose_weight')!.proteinG, 115);
     });
   });
 }
