@@ -14,6 +14,7 @@ const {
 } = require('../db/photo-recognitions');
 const { VisionError } = require('../services/vision/errors');
 const { secondOpinion } = require('../services/vision/dish-second-opinion');
+const { missingDishFoods } = require('../services/vision/dish-foods');
 
 /// Photos per Pro user per Manila day. App-wide, Groq's free plan takes about
 /// one photo per 40 s (its per-minute token limit; its headers also cap
@@ -84,6 +85,15 @@ module.exports = function buildNutritionPhotosRouter(deps) {
   const auth = requireAuth(deps);
   const { pool } = deps;
   const menu = createMenuCache();
+  // The classifier's foods the menu lacks (an admin renamed or hid one), told
+  // once per menu load rather than on every photo.
+  let checkedMenu = null;
+  const warnMissingDishFoods = (foods) => {
+    if (foods === checkedMenu) return;
+    checkedMenu = foods;
+    const missing = missingDishFoods(foods);
+    if (missing.length) deps.logger?.warn({ missing }, 'dish classifier foods missing from the photo menu');
+  };
 
   // Snap a meal is Pro. isPremium is read fresh on every request by
   // requireAuth, so `npm run pro:grant` takes effect at once.
@@ -126,6 +136,7 @@ module.exports = function buildNutritionPhotosRouter(deps) {
         throw new AppError(429, 'PHOTO_RETRY_LIMIT', "Snap a meal can't read photos right now. Try again tomorrow, or add your food with search.");
       }
       const foods = await menu.get(pool);
+      if (deps.ml?.classifyDish && !deps.ml.isStub) warnMissingDishFoods(foods);
       if (appLeft.signal.aborted) return;
       // The dish classifier's second opinion, asked beside the vision AI so it
       // adds no waiting: it answers in well under a second, and its client
