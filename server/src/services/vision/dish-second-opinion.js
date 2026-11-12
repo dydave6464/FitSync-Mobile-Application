@@ -1,9 +1,10 @@
 'use strict';
-const { DISH_FOODS, DISH_OF_NAME, isSide } = require('./dish-foods');
+const { DISH_FOODS, DISH_OF_NAME, PLATE_OF, isSide } = require('./dish-foods');
 const { MAX_ALTERNATIVES } = require('../../lib/photo-match');
 const { servingGrams, toHalf } = require('../../lib/photo-portion');
 
 const dishOf = (food) => DISH_OF_NAME.get(String(food.name).toLowerCase());
+const isPlate = (food) => PLATE_OF.has(String(food.name).toLowerCase());
 const isProbability = (n) => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 1.01;
 
 /// A /classify-dish answer this rule can act on. [classes] is every dish the
@@ -65,11 +66,12 @@ function act(items, at, food, probability, bar, suffix) {
 /// (outsideSwapAt) replaces it, a fairly sure one (choiceAt) adds a choice.
 /// Never adds or removes a card, so what counts toward the daily limit is
 /// unchanged. A round-1 answer has no outsideSwapAt and changes nothing.
-/// A card of the 12 the model was not trained on means the AI did name one
-/// of the 12, so that answer stays as round 1 left it.
+/// A card of the 12 the model was not trained on, or a silog plate of one
+/// (PLATE_OF), means the AI did name one of the 12, so that answer stays as
+/// round 1 left it.
 function outside(items, opinion, menuByName) {
   const skipped = { items, outcome: 'skipped' };
-  if (items.some((it) => dishOf(it.food))) return skipped;
+  if (items.some((it) => dishOf(it.food) || isPlate(it.food))) return skipped;
   const { dish, probability } = opinion.dishes[0];
   if (opinion.outsideSwapAt == null || !Object.hasOwn(DISH_FOODS, dish) || !opinion.classes.includes(dish)) {
     return skipped;
@@ -87,8 +89,8 @@ function outside(items, opinion, menuByName) {
 /// [opinion] the ML service's answer (null when it had none), [menuByName]
 /// a lower-case menu name -> food map. Returns the cards to answer with and
 /// one word for the log. Only the first card that is one of the 12 dishes
-/// and one of the model's classes can change, and only to another of both:
-/// when the AI named none of the 12, `outside` decides (round 2). A
+/// and one of the model's classes can change, and only to another of both.
+/// When no card is such a dish, `outside` decides (round 2). A
 /// dish dropped from training is never the main dish, or a right AI answer
 /// would always look like a disagreement. The amount and confidence
 /// stay the AI's: a swap rescales the servings to the new food's serving.

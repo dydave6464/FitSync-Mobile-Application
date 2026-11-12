@@ -47,7 +47,9 @@ test('POST /nutrition/recognize', async (t) => {
   await food('Garlic fried rice (sinangag)', '1 cup (160 g)', 299);
   await food('Tinolang manok', '1 bowl (350 g)', 220);
   const SINIGANG = await food('Sinigang na baboy', '1 bowl (350 g)', 230);
-  await food('Bistek tagalog', '1 serving (150 g)', 300);
+  // A home dish, not a FatSecret copy of unknown type: round 2's outside rule may correct it.
+  const BISTEK = await food('Bistek tagalog', '1 serving (150 g)', 300);
+  await pool.query("UPDATE foods SET food_type = 'home' WHERE food_id = ?", [BISTEK]);
   // A FatSecret copy someone has logged: on the menu, flagged fromFatsecret.
   const [mango] = await pool.query("INSERT INTO foods (name, category, serving_desc, calories) VALUES ('Mango Shake', 'international', '1 glass', 250)");
   await pool.query("INSERT INTO food_sources (food_id, provider, external_id) VALUES (?, 'fatsecret', 'fs-1')", [mango.insertId]);

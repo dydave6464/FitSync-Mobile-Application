@@ -27,5 +27,9 @@ test('a side is a listed rice or egg, or a drink, condiment, bread or fresh side
   assert.ok(isSide({ name: 'Monay', group: 'bread_kakanin' }));
   assert.ok(!isSide({ name: 'Bistek tagalog', group: 'home' }));
   assert.ok(!isSide({ name: 'Ginisang ampalaya with egg', group: 'home' }), 'a dish with egg is no side');
-  assert.ok(!isSide({ name: 'Some FatSecret food', group: null }));
+});
+
+test('a food of unknown type (a FatSecret copy) is never the AI\'s dish, so it counts as a side', () => {
+  assert.ok(isSide({ name: 'Some FatSecret food', group: null }));
+  assert.ok(isSide({ name: 'Some FatSecret food' }));
 });

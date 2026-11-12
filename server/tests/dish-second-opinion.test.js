@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { secondOpinion } = require('../src/services/vision/dish-second-opinion');
-const { DISH_FOODS, SIDE_FOODS } = require('../src/services/vision/dish-foods');
+const { DISH_FOODS, SIDE_FOODS, PLATE_OF } = require('../src/services/vision/dish-foods');
 const { FOODS } = require('../src/db/seed-foods');
 
 let nextId = 0;
@@ -13,6 +13,9 @@ const MENU = [
   ['Chicken adobo', 'home'], ['Fried egg', 'home'], ['Bistek tagalog', 'home'], ['Pork sisig', 'home'],
   ['Cola', 'drink'], ['Kamatis (tomato), fresh', 'fruit_veg'], ['Monay', 'bread_kakanin'],
   ['Toyomansi sawsawan (soy sauce with calamansi)', 'condiment'],
+  ['Tapsilog', 'home'], ['Longsilog', 'home'], ['Hotsilog', 'home'],
+  // A FatSecret copy: its food_type is unknown.
+  ['Cooked Rice', null],
 ].map(([name, group]) => ({ foodId: ++nextId, name, group }));
 const byName = new Map(MENU.map((f) => [f.name.toLowerCase(), f]));
 const food = (name) => byName.get(name.toLowerCase());
@@ -249,4 +252,42 @@ test('a card of the 12 the model dropped from training keeps round 1\'s answer, 
   const out = secondOpinion(items, r2('longganisa', 0.99, { classes }), byName);
   assert.equal(out.outcome, 'skipped');
   assert.equal(out.items, items);
+});
+
+test('a silog plate is its dish on a plate, so a very sure classifier never swaps it for the bare dish', () => {
+  for (const [plate, dish] of [['Tapsilog', 'tapa'], ['Longsilog', 'longganisa'], ['Hotsilog', 'hotdog']]) {
+    const items = [card(plate)];
+    const out = secondOpinion(items, r2(dish, 0.99), byName);
+    assert.equal(out.outcome, 'skipped', plate);
+    assert.equal(out.items, items, plate);
+  }
+});
+
+test('the silog plates are all seed foods and point to their dish', () => {
+  const menu = new Set(FOODS.map((f) => f.name.toLowerCase()));
+  assert.deepEqual([...PLATE_OF], [['tapsilog', 'tapa'], ['longsilog', 'longganisa'], ['hotsilog', 'hotdog']]);
+  for (const [plate, dish] of PLATE_OF) {
+    assert.ok(menu.has(plate), `${plate} is not a seed food`);
+    assert.ok(Object.hasOwn(DISH_FOODS, dish), `${dish} is not one of the 12`);
+  }
+});
+
+test('a food of unknown type (a FatSecret copy) is never the AI\'s dish', () => {
+  const items = [card('Cooked Rice'), card('Bistek tagalog')];
+  const out = secondOpinion(items, r2('tapa', 0.97), byName);
+  assert.equal(out.outcome, 'swapped outside');
+  assert.deepEqual(shown(out.items), [['Cooked Rice', []], ['Beef tapa', ['Bistek tagalog']]]);
+});
+
+test('between the swap bar and the very-sure bar, outside the 12 only adds a choice', () => {
+  const items = [card('Bistek tagalog')];
+  const out = secondOpinion(items, r2('tapa', 0.9), byName);
+  assert.equal(out.outcome, 'added choice outside');
+  assert.deepEqual(shown(out.items), [['Bistek tagalog', ['Beef tapa']]]);
+});
+
+test('exactly the very-sure bar swaps outside the 12', () => {
+  const out = secondOpinion([card('Bistek tagalog')], r2('tapa', 0.95), byName);
+  assert.equal(out.outcome, 'swapped outside');
+  assert.deepEqual(shown(out.items), [['Beef tapa', ['Bistek tagalog']]]);
 });
