@@ -192,3 +192,39 @@ def test_classify_dish_names_the_classes_the_model_knows(tmp_path):
     client, _ = client_for(tmp_path)
     res = client.post("/classify-dish", json={"image": photo((230, 20, 20)), "mimeType": "image/jpeg"})
     assert res.status_code == 200 and res.json()["classes"] == CLASSES
+
+
+# --- round 2: the very-sure bar --------------------------------------------------
+
+
+def test_write_model_saves_the_very_sure_bar_only_when_given(tmp_path):
+    path = tmp_path / CLASSIFIER_FILENAME
+    common = dict(version="dish-lr-2-clip-b32", classes=CLASSES, embedder_key="clip-b32",
+                  coef=np.array(COEF), intercept=np.zeros(3), swap_at=0.8, choice_at=0.5,
+                  photos={"train": 150, "test": 30})
+    dm.write_model(str(path), outside_swap_at=0.95, **common)
+    assert json.loads(path.read_text())["outsideSwapAt"] == 0.95
+    dm.write_model(str(path), **common)
+    assert "outsideSwapAt" not in json.loads(path.read_text())
+
+
+def test_a_round_two_model_loads_and_answers_its_very_sure_bar(tmp_path):
+    write_classifier(tmp_path, edit=lambda d: d.update(outsideSwapAt=0.95))
+    client, model = client_for(tmp_path)
+    assert model.status == "loaded" and model.outside_swap_at == 0.95
+    res = client.post("/classify-dish", json={"image": photo((230, 20, 20)), "mimeType": "image/jpeg"})
+    assert res.status_code == 200 and res.json()["outsideSwapAt"] == 0.95
+
+
+def test_a_round_one_model_has_no_very_sure_bar(tmp_path):
+    write_classifier(tmp_path)
+    client, model = client_for(tmp_path)
+    assert model.status == "loaded" and model.outside_swap_at is None
+    res = client.post("/classify-dish", json={"image": photo((230, 20, 20)), "mimeType": "image/jpeg"})
+    assert res.status_code == 200 and res.json()["outsideSwapAt"] is None
+
+
+def test_a_very_sure_bar_below_the_swap_bar_or_not_a_probability_is_absent(tmp_path):
+    for bad in (0.5, 1.5, "high"):
+        write_classifier(tmp_path, edit=lambda d, b=bad: d.update(outsideSwapAt=b))
+        assert dm.DishModel.load(str(tmp_path), open_embedder=fake_open).status == "absent", bad
