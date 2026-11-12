@@ -14,8 +14,10 @@ plates per dish, and the split is the manifest's to make by group. Drops
 training photos that are near-copies of a test photo or of an --exclude photo
 (the 42-photo set is never trained on; the report says how many were
 compared); compares the embedders by 5-fold cross-validation on the training
-photos and keeps the best (the smaller when within 2 points); sets the swap
-and choice thresholds from the cross-validated predictions; fits on every
+photos and keeps the best (the smaller when within 2 points); sets the swap,
+choice and very-sure (outside) thresholds from plate-grouped cross-validated
+predictions of a dish; an optional class "other" stands for every dish that is
+not one of the 12 (spec 2026-11-12-dish-classifier-other-class); fits on every
 training photo; scores the held-out test photos once; writes
 models/dish_classifier.json and reports/dish_classifier_cv.json.
 """
@@ -38,13 +40,19 @@ C_VALUES = (0.1, 1.0, 10.0)
 NEAR_DUPLICATE = 0.95
 SWAP_PRECISION = 0.90
 CHOICE_PRECISION = 0.70
+# Round 2: a dish the AI named outside the 12 is replaced only this surely.
+OUTSIDE_PRECISION = 0.97
 # A level must still cover this share of the photos to count.
 MIN_SHARE = 0.10
 MIN_TRAIN_PER_DISH = 20
 TIE_POINTS = 0.02
 DEDUPE_WITH = "dinov2-small"
 NEVER = 1.01
-VERSION = "dish-lr-1-{}"
+VERSION = "dish-lr-2-{}"
+# The class for every dish that is not one of the 12 (spec 2026-11-12, section 2).
+OTHER = "other"
+# Cross-validation compares these; "balanced" stops ~350 "other" photos outweighing ~70 per dish.
+WEIGHTS = (None, "balanced")
 
 # Replaced in tests; the default opens the ONNX file.
 open_embedder = Embedder.open
@@ -86,34 +94,64 @@ def near_duplicates(train: np.ndarray, others: np.ndarray,
     return [int(i) for i in np.where((train @ others.T).max(axis=1) >= threshold)[0]]
 
 
-def build_classifier(c: float):
+def build_classifier(c: float, class_weight=None):
     from sklearn.linear_model import LogisticRegression
 
-    return LogisticRegression(C=c, max_iter=2000)
+    return LogisticRegression(C=c, max_iter=2000, class_weight=class_weight)
 
 
-def cross_validate(X: np.ndarray, y: np.ndarray, c_values=C_VALUES, folds: int = FOLDS,
-                   seed: int = SEED) -> Tuple[float, float, np.ndarray]:
-    """(best C, its accuracy, its out-of-fold probabilities, one column per class)."""
-    from sklearn.model_selection import StratifiedKFold, cross_val_predict
+def groups_for(photos: Sequence[Photo]) -> np.ndarray:
+    """Each photo's plate, so a plate never sits on both sides of a fold; a photo
+    the manifest does not group is a plate of its own."""
+    return np.array([p.group if p.group is not None else "photo:" + p.file for p in photos])
 
+
+def plate_folds(y: np.ndarray, groups: Optional[np.ndarray], folds: int = FOLDS,
+                seed: int = SEED) -> List[Tuple[np.ndarray, np.ndarray]]:
+    """Stratified folds that keep every plate's photos together. Round 1 used
+    StratifiedKFold, which could put two angles of one plate on both sides
+    and flatter the thresholds."""
+    from sklearn.model_selection import StratifiedGroupKFold
+
+    if groups is None:
+        groups = np.arange(len(y))
+    splitter = StratifiedGroupKFold(n_splits=folds, shuffle=True, random_state=seed)
+    return list(splitter.split(np.zeros((len(y), 1)), y, groups))
+
+
+def cross_validate(X: np.ndarray, y: np.ndarray, groups: Optional[np.ndarray] = None,
+                   c_values=C_VALUES, weights=WEIGHTS, folds: int = FOLDS,
+                   seed: int = SEED) -> Tuple[float, Optional[str], float, np.ndarray]:
+    """(best C, its class weight, its accuracy, its out-of-fold probabilities,
+    one column per class), over plate-grouped folds."""
+    from sklearn.model_selection import cross_val_predict
+
+    split = plate_folds(y, groups, folds, seed)
     best = None
-    for c in c_values:
-        cv = StratifiedKFold(n_splits=folds, shuffle=True, random_state=seed)
-        proba = cross_val_predict(build_classifier(c), X, y, cv=cv, method="predict_proba")
-        accuracy = float((proba.argmax(axis=1) == y).mean())
-        if best is None or accuracy > best[1]:
-            best = (c, accuracy, proba)
+    for weight in weights:
+        for c in c_values:
+            proba = cross_val_predict(build_classifier(c, weight), X, y, cv=split,
+                                      method="predict_proba")
+            accuracy = float((proba.argmax(axis=1) == y).mean())
+            if best is None or accuracy > best[2]:
+                best = (c, weight, accuracy, proba)
     return best
 
 
-def thresholds(proba: np.ndarray, y: np.ndarray, swap_precision: float = SWAP_PRECISION,
-               choice_precision: float = CHOICE_PRECISION, min_share: float = MIN_SHARE):
+def thresholds(proba: np.ndarray, y: np.ndarray, other: Optional[int] = None,
+               swap_precision: float = SWAP_PRECISION, choice_precision: float = CHOICE_PRECISION,
+               outside_precision: float = OUTSIDE_PRECISION, min_share: float = MIN_SHARE):
     """The lowest top probability at which the classifier is right at least
-    swap_precision (choice_precision) of the time, among levels still covering
-    min_share of the photos; NEVER when no level does. (swap_at, choice_at, stats)."""
-    confidence = proba.max(axis=1)
-    correct = proba.argmax(axis=1) == y
+    swap_precision (choice_precision, outside_precision) of the time, among
+    levels still covering min_share of the photos; NEVER when no level does.
+
+    Only predictions of a dish count -- the rule never acts on "other" -- and
+    an "other" photo predicted as a dish is a wrong one.
+    (swap_at, choice_at, outside_at, stats)."""
+    top = proba.argmax(axis=1)
+    acting = np.ones(len(y), dtype=bool) if other is None else top != other
+    confidence = proba.max(axis=1)[acting]
+    correct = (top == y)[acting]
     # Rounded down so a level never excludes the photo it came from.
     levels = sorted(set((np.floor(confidence * 1e4) / 1e4).tolist()))
 
@@ -128,11 +166,13 @@ def thresholds(proba: np.ndarray, y: np.ndarray, swap_precision: float = SWAP_PR
                 return level, round(precision, 4), round(share, 4)
         return NEVER, None, 0.0
 
-    swap, choice = lowest(swap_precision), lowest(choice_precision)
+    swap, choice, outside = lowest(swap_precision), lowest(choice_precision), lowest(outside_precision)
     choice_at = min(choice[0], swap[0])
+    outside_at = max(outside[0], swap[0])
     stats = {"swapAt": swap[0], "swapPrecision": swap[1], "swapShare": swap[2],
-             "choiceAt": choice_at, "choicePrecision": choice[1], "choiceShare": choice[2]}
-    return swap[0], choice_at, stats
+             "choiceAt": choice_at, "choicePrecision": choice[1], "choiceShare": choice[2],
+             "outsideSwapAt": outside_at, "outsidePrecision": outside[1], "outsideShare": outside[2]}
+    return swap[0], choice_at, outside_at, stats
 
 
 def pick(results: Dict[str, dict]) -> str:
@@ -201,15 +241,25 @@ def main(argv=None) -> int:
         raise SystemExit("too few training photos (< {}) for: {}".format(
             args.min_train, ", ".join(short)))
 
+    groups = groups_for([train[i] for i in keep])
     results, oof = {}, {}
     for k in keys:
-        c, accuracy, proba = cross_validate(vectors[k][0][keep], y_train)
-        results[k] = {"cvAccuracy": round(accuracy, 4), "C": c, "sizeMb": EMBEDDERS[k].size_mb}
+        c, weight, accuracy, proba = cross_validate(vectors[k][0][keep], y_train, groups)
+        results[k] = {"cvAccuracy": round(accuracy, 4), "C": c, "classWeight": weight,
+                      "sizeMb": EMBEDDERS[k].size_mb}
         oof[k] = proba
-        print("{}: cross-validated accuracy {:.3f} (C={})".format(k, accuracy, c), flush=True)
+        print("{}: cross-validated accuracy {:.3f} (C={}, class weight {})".format(
+            k, accuracy, c, weight), flush=True)
     chosen = pick(results)
-    swap_at, choice_at, stats = thresholds(oof[chosen], y_train)
-    final = build_classifier(results[chosen]["C"]).fit(vectors[chosen][0][keep], y_train)
+    other = classes.index(OTHER) if OTHER in classes else None
+    swap_at, choice_at, outside_at, stats = thresholds(oof[chosen], y_train, other=other)
+    final = build_classifier(results[chosen]["C"], results[chosen]["classWeight"]).fit(
+        vectors[chosen][0][keep], y_train)
+    guessed = oof[chosen].argmax(axis=1)
+    per_class_cv = {d: {"n": int((y_train == i).sum()),
+                        "recall": round(float((guessed[y_train == i] == i).mean()), 4)
+                        if (y_train == i).any() else None}
+                    for i, d in enumerate(classes)}
 
     confusion = np.zeros((len(classes), len(classes)), dtype=int)
     accuracy_test = None
@@ -226,7 +276,7 @@ def main(argv=None) -> int:
     write_model(os.path.join(args.model_dir, CLASSIFIER_FILENAME), version=version,
                 classes=classes, embedder_key=chosen, coef=final.coef_,
                 intercept=final.intercept_, swap_at=swap_at, choice_at=choice_at,
-                photos={"train": len(keep), "test": len(test)})
+                photos={"train": len(keep), "test": len(test)}, outside_swap_at=outside_at)
     report = {
         "createdAt": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
         "version": version,
@@ -235,6 +285,7 @@ def main(argv=None) -> int:
                    "excludeCompared": len(names), "perDish": counts},
         "embedders": results,
         "chosen": chosen,
+        "cv": {"perClass": per_class_cv},
         "thresholds": stats,
         "test": {"accuracy": accuracy_test, "perDish": per_dish,
                  "confusion": {"labels": classes, "matrix": confusion.tolist()}},
@@ -243,8 +294,8 @@ def main(argv=None) -> int:
     with open(args.report, "w") as f:
         json.dump(report, f, indent=1)
         f.write("\n")
-    print("chosen {}: test accuracy {}, swap at {}, choice at {}".format(
-        chosen, accuracy_test, swap_at, choice_at))
+    print("chosen {}: test accuracy {}, swap at {}, choice at {}, outside at {}".format(
+        chosen, accuracy_test, swap_at, choice_at, outside_at))
     return 0
 
 
