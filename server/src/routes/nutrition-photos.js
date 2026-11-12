@@ -136,7 +136,7 @@ module.exports = function buildNutritionPhotosRouter(deps) {
         throw new AppError(429, 'PHOTO_RETRY_LIMIT', "Snap a meal can't read photos right now. Try again tomorrow, or add your food with search.");
       }
       const foods = await menu.get(pool);
-      if (deps.ml?.classifyDish) warnMissingDishFoods(foods);
+      if (deps.ml?.classifyDish && !deps.ml.isStub) warnMissingDishFoods(foods);
       if (appLeft.signal.aborted) return;
       // The dish classifier's second opinion, asked beside the vision AI so it
       // adds no waiting: it answers in well under a second, and its client

@@ -75,4 +75,6 @@ async function classifyDish() {
   return null;
 }
 
-module.exports = { generatePlan, estimateInjuryRisk, classifyDish };
+// isStub: the photo route warns about renamed classifier foods only when a
+// real classifier stands behind classifyDish.
+module.exports = { generatePlan, estimateInjuryRisk, classifyDish, isStub: true };

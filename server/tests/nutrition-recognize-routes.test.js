@@ -68,6 +68,7 @@ test('POST /nutrition/recognize', async (t) => {
     const auth = { Authorization: `Bearer ${login.body.data.token}` };
     return {
       userId,
+      auth,
       recognize: (body) => request(app).post('/api/v1/nutrition/recognize').set(auth).send(body),
       today: () => request(app).get('/api/v1/nutrition/recognitions/today').set(auth),
     };
@@ -359,17 +360,27 @@ test('POST /nutrition/recognize', async (t) => {
     assert.equal(mlCalls.length, before);
   });
 
-  await t.test('classifier foods missing from the menu are logged once per menu load, by name', async () => {
+  await t.test('classifier foods missing from the menu are logged once per menu load, and not when the classifier is a stub', async () => {
     const u = await freshUser({ pro: true });
     answer = async () => ({ items: [] });
-    await u.recognize(PHOTO).expect(200);
-    await u.recognize(PHOTO).expect(200);
-    const lines = captured.text().split('\n').filter((l) => l.includes('dish classifier foods missing from the photo menu'));
-    // Earlier tests already loaded this app's menu; it is kept for 10 minutes.
-    assert.equal(lines.length, 1, 'once per menu load, not once per photo');
-    const { missing } = JSON.parse(lines[0]);
-    assert.ok(missing.includes('Bulalo') && missing.includes('Beef tapa'), lines[0]);
+    const warnings = (c) => c.text().split('\n').filter((l) => l.includes('dish classifier foods missing from the photo menu'));
+    const send = (anApp) => request(anApp).post('/api/v1/nutrition/recognize').set(u.auth).send(PHOTO).expect(200);
+
+    // Its own app, so its own menu cache and log.
+    const own = captureLogger();
+    const withClassifier = buildTestApp({ pool, vision, ml, logger: own.logger });
+    assert.equal(warnings(own).length, 0, 'nothing before the menu is loaded');
+    await send(withClassifier);
+    await send(withClassifier);
+    assert.equal(warnings(own).length, 1, 'once per menu load, not once per photo');
+    const { missing } = JSON.parse(warnings(own)[0]);
+    assert.ok(missing.includes('Bulalo') && missing.includes('Beef tapa'), warnings(own)[0]);
     assert.ok(!missing.includes('Tinolang manok') && !missing.includes('Sinigang na baboy'), 'foods on the menu are not named');
+
+    // ML_MODE=stub: no classifier stands behind it, so nothing has stopped working.
+    const stubbed = captureLogger();
+    await send(buildTestApp({ pool, vision, ml: require('../src/services/ml/stub'), logger: stubbed.logger }));
+    assert.equal(warnings(stubbed).length, 0, 'no warning without a real classifier');
   });
 
   await t.test('the photo is never stored or logged', async () => {
