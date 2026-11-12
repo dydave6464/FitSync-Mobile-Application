@@ -66,7 +66,11 @@ test('POST /nutrition/recognize', async (t) => {
     if (pro) await pool.query('UPDATE users SET is_premium = 1 WHERE user_id = ?', [userId]);
     const login = await request(app).post('/api/v1/auth/login').send({ email, password: 's3cret-pass' }).expect(200);
     const auth = { Authorization: `Bearer ${login.body.data.token}` };
-    return { userId, recognize: (body) => request(app).post('/api/v1/nutrition/recognize').set(auth).send(body) };
+    return {
+      userId,
+      recognize: (body) => request(app).post('/api/v1/nutrition/recognize').set(auth).send(body),
+      today: () => request(app).get('/api/v1/nutrition/recognitions/today').set(auth),
+    };
   };
   const rowsOf = async (userId) => (await pool.query('SELECT status FROM photo_recognitions WHERE user_id = ? ORDER BY recognition_id', [userId]))[0].map((r) => r.status);
 
@@ -160,10 +164,12 @@ test('POST /nutrition/recognize', async (t) => {
     answer = riceOnly;
     assert.equal((await u.recognize(PHOTO).expect(200)).body.data.remainingToday, 0);
     const before = calls.length;
+    const mlBefore = mlCalls.length;
     const res = await u.recognize(PHOTO).expect(429);
     assert.equal(res.body.error.code, 'PHOTO_LIMIT_REACHED');
     assert.equal(res.body.error.message, "You've used today's meal photos. Try again tomorrow.");
     assert.equal(calls.length, before, 'refused before the AI is asked');
+    assert.equal(mlCalls.length, mlBefore, 'and before the dish classifier is asked');
   });
 
   await t.test('an empty answer does not count: with 14 recognised photos, empty answers stay allowed and the 15th recognised one still fits', async () => {
@@ -180,8 +186,10 @@ test('POST /nutrition/recognize', async (t) => {
     answer = async () => ({ items: [{ menu: 'White rice', name: 'White rice', quantity: 1, unit: 'cup', grams: 160, confidence: 0.9, alternatives: [] }] });
     assert.equal((await u.recognize(PHOTO).expect(200)).body.data.remainingToday, 0, 'a recognised answer: 15 - 14 - 1');
     const before = calls.length;
+    const mlBefore = mlCalls.length;
     assert.equal((await u.recognize(PHOTO).expect(429)).body.error.code, 'PHOTO_LIMIT_REACHED');
     assert.equal(calls.length, before, 'refused before the AI is asked');
+    assert.equal(mlCalls.length, mlBefore, 'and before the dish classifier is asked');
     answer = async () => ({ items: [] });
   });
 
@@ -198,10 +206,12 @@ test('POST /nutrition/recognize', async (t) => {
     assert.equal((await u.recognize(PHOTO).expect(200)).body.data.remainingToday, 15, 'the 30th try is allowed');
     assert.equal(calls.length, before + 1);
     before = calls.length;
+    const mlBefore = mlCalls.length;
     const res = await u.recognize(PHOTO).expect(429);
     assert.equal(res.body.error.code, 'PHOTO_RETRY_LIMIT');
     assert.equal(res.body.error.message, "Snap a meal can't read photos right now. Try again tomorrow, or add your food with search.");
     assert.equal(calls.length, before, 'the 31st is refused before the AI is asked');
+    assert.equal(mlCalls.length, mlBefore, 'and before the dish classifier is asked');
   });
 
   await t.test('30 failed tries today refuse the next photo with 429 PHOTO_RETRY_LIMIT, before the AI; yesterday\'s do not count', async () => {
@@ -222,10 +232,12 @@ test('POST /nutrition/recognize', async (t) => {
     answer = async () => ({ items: [] });
     before = calls.length;
     const rows = (await rowsOf(u.userId)).length;
+    const mlBefore = mlCalls.length;
     const res = await u.recognize(PHOTO).expect(429);
     assert.equal(res.body.error.code, 'PHOTO_RETRY_LIMIT');
     assert.equal(res.body.error.message, "Snap a meal can't read photos right now. Try again tomorrow, or add your food with search.");
     assert.equal(calls.length, before, 'refused before the AI is asked');
+    assert.equal(mlCalls.length, mlBefore, 'and before the dish classifier is asked');
     assert.equal((await rowsOf(u.userId)).length, rows, 'nothing is recorded for a refused photo');
   });
 
@@ -312,6 +324,11 @@ test('POST /nutrition/recognize', async (t) => {
         [d.recognitionId],
       );
       assert.equal(rows[0].suggested_food_id, SINIGANG);
+      const reopened = (await u.today().expect(200)).body.data.unlogged;
+      assert.equal(reopened.recognitionId, d.recognitionId);
+      assert.deepEqual(reopened.items.map((i) => [i.food.name, i.alternatives.map((a) => a.name)]), [
+        ['Sinigang na baboy', ['Tinolang manok']], ['White rice', []],
+      ], 'reopening shows the swapped card, as first answered');
       const line = lastRecognised();
       assert.ok(line.includes('"dish":"swapped"'), line);
       assert.ok(!/inigang|inola/.test(line), 'no food or dish names in the log');
