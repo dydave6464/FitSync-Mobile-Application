@@ -4,6 +4,10 @@ const AppError = require('../../lib/app-error');
 
 const REQUEST_TIMEOUT_MS = 10000;
 
+/// The dish classifier answers in well under a second. The photo route asks
+/// it beside the vision AI and must never wait on it longer than this.
+const DISH_TIMEOUT_MS = 2000;
+
 /// The generator's refusal to build a plan with an empty day, in words the
 /// user can act on. main.py names each empty day as "day N (Name)"; anything
 /// else is not this refusal and stays an internal error.
@@ -27,14 +31,15 @@ function unfillableDayError(detail) {
 }
 
 function create(baseUrl) {
-  async function post(pathname, body) {
+  async function post(pathname, body, { timeoutMs = REQUEST_TIMEOUT_MS, signal = null } = {}) {
+    const timeout = AbortSignal.timeout(timeoutMs);
     let response;
     try {
       response = await fetch(new URL(pathname, baseUrl), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
       });
     } catch (err) {
       throw new Error(`ML service request to ${pathname} failed: ${err.message}`, { cause: err });
@@ -66,7 +71,13 @@ function create(baseUrl) {
   return {
     generatePlan: (profile) => post('/generate-plan', toPlanPayload(profile)),
     estimateInjuryRisk: (payload) => post('/injury-risk', toRiskPayload(payload)),
+    // The dish classifier's second opinion on a meal photo (spec
+    // 2026-11-05-food-classifier). [signal] is the photo request's own:
+    // when the app stops waiting, this stops too.
+    classifyDish: ({ imageBase64, mimeType, signal }) => post(
+      '/classify-dish', { image: imageBase64, mimeType }, { timeoutMs: DISH_TIMEOUT_MS, signal },
+    ),
   };
 }
 
-module.exports = { create };
+module.exports = { create, DISH_TIMEOUT_MS };

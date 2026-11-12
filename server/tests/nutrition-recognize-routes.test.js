@@ -32,7 +32,10 @@ test('POST /nutrition/recognize', async (t) => {
   let answer = async () => ({ items: [] });
   const vision = { model: 'fake', async recognize(args) { calls.push(args); return answer(args); } };
   const captured = captureLogger();
-  const app = buildTestApp({ pool, vision, logger: captured.logger });
+  const mlCalls = [];
+  let opinion = async () => null;
+  const ml = { async classifyDish(args) { mlCalls.push(args); return opinion(args); } };
+  const app = buildTestApp({ pool, vision, ml, logger: captured.logger });
   t.after(async () => { await dropAllTables(pool); await pool.end(); });
 
   const food = async (name, servingDesc, kcal) => (await pool.query(
@@ -42,6 +45,8 @@ test('POST /nutrition/recognize', async (t) => {
   ))[0].insertId;
   const RICE = await food('White rice', '1 cup (160 g)', 206);
   await food('Garlic fried rice (sinangag)', '1 cup (160 g)', 299);
+  await food('Tinolang manok', '1 bowl (350 g)', 220);
+  const SINIGANG = await food('Sinigang na baboy', '1 bowl (350 g)', 230);
   // A FatSecret copy someone has logged: on the menu, flagged fromFatsecret.
   const [mango] = await pool.query("INSERT INTO foods (name, category, serving_desc, calories) VALUES ('Mango Shake', 'international', '1 glass', 250)");
   await pool.query("INSERT INTO food_sources (food_id, provider, external_id) VALUES (?, 'fatsecret', 'fs-1')", [mango.insertId]);
@@ -279,6 +284,62 @@ test('POST /nutrition/recognize', async (t) => {
     await new Promise((r) => setTimeout(r, 100));
     assert.deepEqual(await rowsOf(u.userId), [], 'not counted, not recorded as failed');
     answer = async () => ({ items: [] });
+  });
+
+  const lastRecognised = () => captured.text().split('\n').filter((l) => l.includes('meal photo recognised')).at(-1);
+
+  await t.test('a sure dish classifier swaps the main dish, is recorded, and is logged by outcome only', async () => {
+    const u = await freshUser({ pro: true });
+    answer = async () => ({ items: [
+      { menu: 'Tinolang manok', name: 'Tinolang manok', quantity: 1, unit: 'bowl', grams: null, confidence: 0.8, alternatives: [] },
+      { menu: 'White rice', name: 'White rice', quantity: 1, unit: 'cup', grams: 160, confidence: 0.9, alternatives: [] },
+    ] });
+    opinion = async () => ({
+      model: 'dish-lr-1-test', dishes: [{ dish: 'sinigang', probability: 0.93 }], swapAt: 0.8, choiceAt: 0.5,
+      classes: ['sinigang', 'tinola', 'tapa'],
+    });
+    try {
+      const d = (await u.recognize(PHOTO).expect(200)).body.data;
+      assert.deepEqual(d.items.map((i) => [i.food.name, i.alternatives.map((a) => a.name)]), [
+        ['Sinigang na baboy', ['Tinolang manok']], ['White rice', []],
+      ]);
+      const sent = mlCalls.at(-1);
+      assert.equal(sent.imageBase64, PHOTO.image);
+      assert.equal(sent.mimeType, 'image/jpeg');
+      assert.ok(sent.signal instanceof AbortSignal);
+      const [rows] = await pool.query(
+        'SELECT suggested_food_id FROM photo_recognition_items WHERE recognition_id = ? ORDER BY item_order',
+        [d.recognitionId],
+      );
+      assert.equal(rows[0].suggested_food_id, SINIGANG);
+      const line = lastRecognised();
+      assert.ok(line.includes('"dish":"swapped"'), line);
+      assert.ok(!/inigang|inola/.test(line), 'no food or dish names in the log');
+    } finally {
+      opinion = async () => null;
+    }
+  });
+
+  await t.test('a failing classifier leaves the AI answer as it is', async () => {
+    const u = await freshUser({ pro: true });
+    answer = async () => ({ items: [
+      { menu: 'Tinolang manok', name: 'Tinolang manok', quantity: 1, unit: 'bowl', grams: null, confidence: 0.8, alternatives: [] },
+    ] });
+    opinion = async () => { throw new Error('ML service /classify-dish responded 503'); };
+    try {
+      const d = (await u.recognize(PHOTO).expect(200)).body.data;
+      assert.deepEqual(d.items.map((i) => i.food.name), ['Tinolang manok']);
+      assert.ok(lastRecognised().includes('"dish":"unavailable"'));
+    } finally {
+      opinion = async () => null;
+    }
+  });
+
+  await t.test('the classifier is not asked about a photo refused before the AI', async () => {
+    const before = mlCalls.length;
+    await (await freshUser({ pro: false })).recognize(PHOTO).expect(403);
+    await (await freshUser({ pro: true })).recognize({ image: 'not base64!', mimeType: 'image/jpeg' }).expect(400);
+    assert.equal(mlCalls.length, before);
   });
 
   await t.test('the photo is never stored or logged', async () => {

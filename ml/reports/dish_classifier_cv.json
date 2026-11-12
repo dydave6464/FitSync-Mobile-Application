@@ -1,0 +1,351 @@
+{
+ "createdAt": "2026-11-05T13:20:46+00:00",
+ "version": "dish-lr-1-dinov2-small",
+ "classes": [
+  "bihon",
+  "bulalo",
+  "canton",
+  "hotdog",
+  "longganisa",
+  "nilaga",
+  "palabok",
+  "sinigang",
+  "spaghetti",
+  "tapa",
+  "tinola",
+  "tocino"
+ ],
+ "photos": {
+  "train": 532,
+  "test": 120,
+  "droppedNearDuplicates": 0,
+  "excludeCompared": 42,
+  "perDish": {
+   "bihon": {
+    "train": 46,
+    "test": 10,
+    "plates": 47
+   },
+   "bulalo": {
+    "train": 43,
+    "test": 10,
+    "plates": 50
+   },
+   "canton": {
+    "train": 48,
+    "test": 10,
+    "plates": 27
+   },
+   "hotdog": {
+    "train": 50,
+    "test": 10,
+    "plates": 60
+   },
+   "longganisa": {
+    "train": 48,
+    "test": 10,
+    "plates": 49
+   },
+   "nilaga": {
+    "train": 38,
+    "test": 10,
+    "plates": 30
+   },
+   "palabok": {
+    "train": 50,
+    "test": 10,
+    "plates": 47
+   },
+   "sinigang": {
+    "train": 50,
+    "test": 10,
+    "plates": 38
+   },
+   "spaghetti": {
+    "train": 45,
+    "test": 10,
+    "plates": 44
+   },
+   "tapa": {
+    "train": 36,
+    "test": 10,
+    "plates": 42
+   },
+   "tinola": {
+    "train": 39,
+    "test": 10,
+    "plates": 38
+   },
+   "tocino": {
+    "train": 39,
+    "test": 10,
+    "plates": 48
+   }
+  }
+ },
+ "embedders": {
+  "clip-b32": {
+   "cvAccuracy": 0.8703,
+   "C": 10.0,
+   "sizeMb": 89.1
+  },
+  "dinov2-small": {
+   "cvAccuracy": 0.8835,
+   "C": 10.0,
+   "sizeMb": 88.5
+  },
+  "mobilenetv4-small": {
+   "cvAccuracy": 0.3891,
+   "C": 10.0,
+   "sizeMb": 15.1
+  }
+ },
+ "chosen": "dinov2-small",
+ "thresholds": {
+  "swapAt": 0.3876,
+  "swapPrecision": 0.9004,
+  "swapShare": 0.9436,
+  "choiceAt": 0.2476,
+  "choicePrecision": 0.8835,
+  "choiceShare": 1.0
+ },
+ "test": {
+  "accuracy": 0.9083,
+  "perDish": {
+   "bihon": {
+    "n": 10,
+    "recall": 0.9
+   },
+   "bulalo": {
+    "n": 10,
+    "recall": 0.8
+   },
+   "canton": {
+    "n": 10,
+    "recall": 0.9
+   },
+   "hotdog": {
+    "n": 10,
+    "recall": 1.0
+   },
+   "longganisa": {
+    "n": 10,
+    "recall": 0.8
+   },
+   "nilaga": {
+    "n": 10,
+    "recall": 0.8
+   },
+   "palabok": {
+    "n": 10,
+    "recall": 1.0
+   },
+   "sinigang": {
+    "n": 10,
+    "recall": 0.9
+   },
+   "spaghetti": {
+    "n": 10,
+    "recall": 1.0
+   },
+   "tapa": {
+    "n": 10,
+    "recall": 1.0
+   },
+   "tinola": {
+    "n": 10,
+    "recall": 0.8
+   },
+   "tocino": {
+    "n": 10,
+    "recall": 1.0
+   }
+  },
+  "confusion": {
+   "labels": [
+    "bihon",
+    "bulalo",
+    "canton",
+    "hotdog",
+    "longganisa",
+    "nilaga",
+    "palabok",
+    "sinigang",
+    "spaghetti",
+    "tapa",
+    "tinola",
+    "tocino"
+   ],
+   "matrix": [
+    [
+     9,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     8,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     1,
+     0
+    ],
+    [
+     1,
+     0,
+     9,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     10,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     8,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     2
+    ],
+    [
+     0,
+     1,
+     0,
+     0,
+     0,
+     8,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     10,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     9,
+     0,
+     0,
+     1,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     10,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     10,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     1,
+     0,
+     0,
+     8,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     10
+    ]
+   ]
+  }
+ }
+}

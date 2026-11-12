@@ -39,6 +39,7 @@ function leadingUnit(servingDesc) {
   return count > 0 ? { count, unit: unitKey(m[4]) } : null;
 }
 
+/// [s] servings to the nearest half, 0.5 to 10.
 const toHalf = (s) => Math.min(MAX_SERVINGS, Math.max(MIN_SERVINGS, Math.round(s * 2) / 2));
 
 /// How many of the food's servings the AI's portion is: its grams over the
@@ -55,4 +56,4 @@ function estimateServings({ grams, quantity, unit }, servingDesc) {
   return 1;
 }
 
-module.exports = { servingGrams, estimateServings };
+module.exports = { servingGrams, estimateServings, toHalf };

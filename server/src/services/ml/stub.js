@@ -69,4 +69,10 @@ async function estimateInjuryRisk(request = {}) {
   };
 }
 
-module.exports = { generatePlan, estimateInjuryRisk };
+/// No classifier stands behind the stub, so there is no second opinion and
+/// Snap a meal keeps the vision AI's answer as it is.
+async function classifyDish() {
+  return null;
+}
+
+module.exports = { generatePlan, estimateInjuryRisk, classifyDish };

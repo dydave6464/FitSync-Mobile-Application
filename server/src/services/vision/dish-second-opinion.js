@@ -1,0 +1,81 @@
+'use strict';
+const { DISH_FOODS, DISH_OF_NAME } = require('./dish-foods');
+const { MAX_ALTERNATIVES } = require('../../lib/photo-match');
+const { servingGrams, toHalf } = require('../../lib/photo-portion');
+
+const dishOf = (food) => DISH_OF_NAME.get(String(food.name).toLowerCase());
+const isProbability = (n) => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 1.01;
+
+/// A /classify-dish answer this rule can act on. [classes] is every dish the
+/// model was trained on: a dish dropped for too few photos is not among them.
+function usable(opinion) {
+  const top = Array.isArray(opinion?.dishes) ? opinion.dishes[0] : undefined;
+  const { classes } = opinion ?? {};
+  return typeof top?.dish === 'string' && isProbability(top.probability)
+    && isProbability(opinion.swapAt) && isProbability(opinion.choiceAt) && opinion.choiceAt <= opinion.swapAt
+    && Array.isArray(classes) && classes.length > 0 && classes.every((c) => typeof c === 'string');
+}
+
+/// The menu food that stands for [dish]: one the AI already named (a card or
+/// a choice), else the dish's default, else the first of its foods on the menu.
+function foodFor(dish, items, menuByName) {
+  const names = new Set(DISH_FOODS[dish].map((n) => n.toLowerCase()));
+  for (const it of items) {
+    const named = [it.food, ...it.alternatives].find((f) => names.has(String(f.name).toLowerCase()));
+    if (named) return named;
+  }
+  for (const n of DISH_FOODS[dish]) {
+    const f = menuByName.get(n.toLowerCase());
+    if (f) return f;
+  }
+  return null;
+}
+
+/// [servings] of [from] as servings of [to], so the amount stays the same:
+/// 2 hotdogs of 45 g are about 1 tocino serving of 112 g. Keeps the count
+/// when either serving gives no grams.
+function sameAmount(servings, from, to) {
+  const was = servingGrams(from.servingDesc);
+  const now = servingGrams(to.servingDesc);
+  return was && now ? toHalf((servings * was) / now) : servings;
+}
+
+/// The dish classifier's second opinion on the main dish (spec
+/// 2026-11-05-food-classifier, section 3). [items] are matchItems' cards,
+/// [opinion] the ML service's answer (null when it had none), [menuByName]
+/// a lower-case menu name -> food map. Returns the cards to answer with and
+/// one word for the log. Only the first card that is one of the 12 dishes
+/// and one of the model's classes can change, and only to another of both:
+/// the classifier knows nothing else, so for any other food it is ignored. A
+/// dish dropped from training is never the main dish, or a right AI answer
+/// would always look like a disagreement. The amount and confidence
+/// stay the AI's: a swap rescales the servings to the new food's serving.
+/// Never changes [items]; returns it as is when nothing changes.
+function secondOpinion(items, opinion, menuByName) {
+  if (!usable(opinion)) return { items, outcome: 'unavailable' };
+  const known = new Set(opinion.classes);
+  const at = items.findIndex((it) => known.has(dishOf(it.food)));
+  if (at === -1) return { items, outcome: 'skipped' };
+  const main = items[at];
+  const { dish, probability } = opinion.dishes[0];
+  if (!Object.hasOwn(DISH_FOODS, dish) || !known.has(dish)) return { items, outcome: 'skipped' };
+  if (dish === dishOf(main.food)) return { items, outcome: 'agreed' };
+  if (probability < opinion.choiceAt) return { items, outcome: 'skipped' };
+  const food = foodFor(dish, items, menuByName);
+  // Already a card of its own, in any version: a swap would show the dish twice.
+  if (!food || items.some((it, i) => i !== at && dishOf(it.food) === dish)) {
+    return { items, outcome: 'skipped' };
+  }
+  const replaced = (card) => items.map((it, i) => (i === at ? card : it));
+  if (probability >= opinion.swapAt) {
+    const alternatives = [main.food, ...main.alternatives.filter((f) => f.foodId !== food.foodId)]
+      .slice(0, MAX_ALTERNATIVES);
+    const servings = sameAmount(main.servings, main.food, food);
+    return { items: replaced({ ...main, food, servings, alternatives }), outcome: 'swapped' };
+  }
+  if (main.alternatives.some((f) => f.foodId === food.foodId)) return { items, outcome: 'skipped' };
+  const alternatives = [food, ...main.alternatives].slice(0, MAX_ALTERNATIVES);
+  return { items: replaced({ ...main, alternatives }), outcome: 'added choice' };
+}
+
+module.exports = { secondOpinion };
