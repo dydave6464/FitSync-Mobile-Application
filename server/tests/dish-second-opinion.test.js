@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { secondOpinion } = require('../src/services/vision/dish-second-opinion');
-const { DISH_FOODS, SIDE_FOODS, PLATE_OF } = require('../src/services/vision/dish-foods');
+const { DISH_FOODS, SIDE_FOODS, PLATE_OF, SILOG_PLATES } = require('../src/services/vision/dish-foods');
 const { FOODS } = require('../src/db/seed-foods');
 
 let nextId = 0;
@@ -13,7 +13,9 @@ const MENU = [
   ['Chicken adobo', 'home'], ['Fried egg', 'home'], ['Bistek tagalog', 'home'], ['Pork sisig', 'home'],
   ['Cola', 'drink'], ['Kamatis (tomato), fresh', 'fruit_veg'], ['Monay', 'bread_kakanin'],
   ['Toyomansi sawsawan (soy sauce with calamansi)', 'condiment'],
-  ['Tapsilog', 'home'], ['Longsilog', 'home'], ['Hotsilog', 'home'],
+  ['Tapsilog', 'home'], ['Longsilog', 'home'], ['Tocilog', 'home'], ['Hotsilog', 'home'],
+  ['Cornsilog', 'home'], ['Bangsilog', 'home'], ['Spamsilog', 'home'],
+  ['Chicksilog (fried chicken, garlic rice, egg)', 'home'],
   // A FatSecret copy: its food_type is unknown.
   ['Cooked Rice', null],
 ].map(([name, group]) => ({ foodId: ++nextId, name, group }));
@@ -254,8 +256,12 @@ test('a card of the 12 the model dropped from training keeps round 1\'s answer, 
   assert.equal(out.items, items);
 });
 
-test('a silog plate is its dish on a plate, so a very sure classifier never swaps it for the bare dish', () => {
-  for (const [plate, dish] of [['Tapsilog', 'tapa'], ['Longsilog', 'longganisa'], ['Hotsilog', 'hotdog']]) {
+test('a silog plate keeps round 1\'s answer, so a very sure classifier never swaps it for a bare dish', () => {
+  // Its own dish (tapa on a Tapsilog) or another (longganisa on a Spamsilog):
+  // swapping the plate for a bare dish would drop the rice and egg.
+  for (const [plate, dish] of [['Tapsilog', 'tapa'], ['Longsilog', 'longganisa'], ['Tocilog', 'tocino'],
+    ['Hotsilog', 'hotdog'], ['Cornsilog', 'longganisa'], ['Bangsilog', 'tocino'], ['Spamsilog', 'longganisa'],
+    ['Chicksilog (fried chicken, garlic rice, egg)', 'tocino']]) {
     const items = [card(plate)];
     const out = secondOpinion(items, r2(dish, 0.99), byName);
     assert.equal(out.outcome, 'skipped', plate);
@@ -263,9 +269,14 @@ test('a silog plate is its dish on a plate, so a very sure classifier never swap
   }
 });
 
-test('the silog plates are all seed foods and point to their dish', () => {
+test('the silog plates are all seed foods and the four of the 12 point to their dish', () => {
+  const seed = new Set(FOODS.map((f) => f.name));
+  assert.equal(SILOG_PLATES.length, 8);
+  for (const n of SILOG_PLATES) assert.ok(seed.has(n), `${n} is not a seed food`);
   const menu = new Set(FOODS.map((f) => f.name.toLowerCase()));
-  assert.deepEqual([...PLATE_OF], [['tapsilog', 'tapa'], ['longsilog', 'longganisa'], ['hotsilog', 'hotdog']]);
+  assert.deepEqual([...PLATE_OF], [
+    ['tapsilog', 'tapa'], ['longsilog', 'longganisa'], ['hotsilog', 'hotdog'], ['tocilog', 'tocino'],
+  ]);
   for (const [plate, dish] of PLATE_OF) {
     assert.ok(menu.has(plate), `${plate} is not a seed food`);
     assert.ok(Object.hasOwn(DISH_FOODS, dish), `${dish} is not one of the 12`);

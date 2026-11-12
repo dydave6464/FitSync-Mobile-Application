@@ -1,9 +1,9 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { DISH_FOODS, SIDE_FOODS, missingDishFoods, isSide } = require('../src/services/vision/dish-foods');
+const { DISH_FOODS, SIDE_FOODS, SILOG_PLATES, missingDishFoods, isSide } = require('../src/services/vision/dish-foods');
 
-const all = [...Object.values(DISH_FOODS).flat(), ...SIDE_FOODS];
+const all = [...Object.values(DISH_FOODS).flat(), ...SIDE_FOODS, ...SILOG_PLATES];
 const menuOf = (names) => names.map((name, i) => ({ foodId: i + 1, name }));
 
 test('a menu holding every classifier food misses none, whatever the case', () => {
@@ -16,9 +16,10 @@ test('a renamed or hidden classifier food is named, in DISH_FOODS order', () => 
   assert.deepEqual(missingDishFoods(menu), ['Tinolang manok', 'Beef tapa']);
 });
 
-test('an empty menu misses all 24 dish foods and every side food', () => {
+test('an empty menu misses all 24 dish foods, every side food and all 8 silog plates, in that order', () => {
   assert.deepEqual(missingDishFoods([]), all);
   assert.equal(Object.values(DISH_FOODS).flat().length, 24);
+  assert.equal(SILOG_PLATES.length, 8);
 });
 
 test('a side is a listed rice or egg, or a drink, condiment, bread or fresh side by its group', () => {

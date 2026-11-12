@@ -1,10 +1,11 @@
 'use strict';
-const { DISH_FOODS, DISH_OF_NAME, PLATE_OF, isSide } = require('./dish-foods');
+const { DISH_FOODS, DISH_OF_NAME, SILOG_PLATES, isSide } = require('./dish-foods');
 const { MAX_ALTERNATIVES } = require('../../lib/photo-match');
 const { servingGrams, toHalf } = require('../../lib/photo-portion');
 
 const dishOf = (food) => DISH_OF_NAME.get(String(food.name).toLowerCase());
-const isPlate = (food) => PLATE_OF.has(String(food.name).toLowerCase());
+const PLATE_NAMES = new Set(SILOG_PLATES.map((n) => n.toLowerCase()));
+const isPlate = (food) => PLATE_NAMES.has(String(food.name).toLowerCase());
 const isProbability = (n) => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 1.01;
 
 /// A /classify-dish answer this rule can act on. [classes] is every dish the
@@ -66,8 +67,9 @@ function act(items, at, food, probability, bar, suffix) {
 /// (outsideSwapAt) replaces it, a fairly sure one (choiceAt) adds a choice.
 /// Never adds or removes a card, so what counts toward the daily limit is
 /// unchanged. A round-1 answer has no outsideSwapAt and changes nothing.
-/// A card of the 12 the model was not trained on, or a silog plate of one
-/// (PLATE_OF), means the AI did name one of the 12, so that answer stays as
+/// A card of the 12 the model was not trained on means the AI did name one
+/// of the 12, and any silog plate (SILOG_PLATES) is never swapped for a bare
+/// dish, which would drop the rice and egg; either way that answer stays as
 /// round 1 left it.
 function outside(items, opinion, menuByName) {
   const skipped = { items, outcome: 'skipped' };
