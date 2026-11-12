@@ -42,6 +42,24 @@ function sameAmount(servings, from, to) {
   return was && now ? toHalf((servings * was) / now) : servings;
 }
 
+/// Puts [food] on the card at [at]: at or above [bar] it replaces the card's
+/// food (the old one becomes the first choice, the servings keep the same
+/// amount), below it [food] is added as the first choice unless it already is
+/// one. [suffix] tells the log which rule acted ('' or ' outside').
+function act(items, at, food, probability, bar, suffix) {
+  const main = items[at];
+  const replaced = (card) => items.map((it, i) => (i === at ? card : it));
+  if (probability >= bar) {
+    const alternatives = [main.food, ...main.alternatives.filter((f) => f.foodId !== food.foodId)]
+      .slice(0, MAX_ALTERNATIVES);
+    const servings = sameAmount(main.servings, main.food, food);
+    return { items: replaced({ ...main, food, servings, alternatives }), outcome: `swapped${suffix}` };
+  }
+  if (main.alternatives.some((f) => f.foodId === food.foodId)) return { items, outcome: 'skipped' };
+  const alternatives = [food, ...main.alternatives].slice(0, MAX_ALTERNATIVES);
+  return { items: replaced({ ...main, alternatives }), outcome: `added choice${suffix}` };
+}
+
 /// Round 2 (spec 2026-11-12, section 3): the AI named none of the 12. The
 /// AI's dish is its first card that is no side; a very sure classifier
 /// (outsideSwapAt) replaces it, a fairly sure one (choiceAt) adds a choice.
@@ -61,17 +79,7 @@ function outside(items, opinion, menuByName) {
   if (at === -1) return skipped;
   const food = foodFor(dish, items, menuByName);
   if (!food) return skipped;
-  const main = items[at];
-  const replaced = (card) => items.map((it, i) => (i === at ? card : it));
-  if (probability >= opinion.outsideSwapAt) {
-    const alternatives = [main.food, ...main.alternatives.filter((f) => f.foodId !== food.foodId)]
-      .slice(0, MAX_ALTERNATIVES);
-    const servings = sameAmount(main.servings, main.food, food);
-    return { items: replaced({ ...main, food, servings, alternatives }), outcome: 'swapped outside' };
-  }
-  if (main.alternatives.some((f) => f.foodId === food.foodId)) return skipped;
-  const alternatives = [food, ...main.alternatives].slice(0, MAX_ALTERNATIVES);
-  return { items: replaced({ ...main, alternatives }), outcome: 'added choice outside' };
+  return act(items, at, food, probability, opinion.outsideSwapAt, ' outside');
 }
 
 /// The dish classifier's second opinion on the main dish (spec
@@ -100,16 +108,7 @@ function secondOpinion(items, opinion, menuByName) {
   if (!food || items.some((it, i) => i !== at && dishOf(it.food) === dish)) {
     return { items, outcome: 'skipped' };
   }
-  const replaced = (card) => items.map((it, i) => (i === at ? card : it));
-  if (probability >= opinion.swapAt) {
-    const alternatives = [main.food, ...main.alternatives.filter((f) => f.foodId !== food.foodId)]
-      .slice(0, MAX_ALTERNATIVES);
-    const servings = sameAmount(main.servings, main.food, food);
-    return { items: replaced({ ...main, food, servings, alternatives }), outcome: 'swapped' };
-  }
-  if (main.alternatives.some((f) => f.foodId === food.foodId)) return { items, outcome: 'skipped' };
-  const alternatives = [food, ...main.alternatives].slice(0, MAX_ALTERNATIVES);
-  return { items: replaced({ ...main, alternatives }), outcome: 'added choice' };
+  return act(items, at, food, probability, opinion.swapAt, '');
 }
 
 module.exports = { secondOpinion };
