@@ -56,6 +56,7 @@ test('GET /nutrition/suggestions', async (t) => {
       userId: res.body.data.user.userId,
       ask: (query) => request(app).get(`/api/v1/nutrition/suggestions${query}`).set(auth),
       log: (body) => request(app).post('/api/v1/nutrition/entries').set(auth).send(body).expect(201),
+      patch: (body) => request(app).patch('/api/v1/profile').set(auth).send(body).expect(200),
     };
   };
   const ids = (data) => data.suggestions.map((s) => s.food.foodId);
@@ -86,10 +87,15 @@ test('GET /nutrition/suggestions', async (t) => {
         foodId: BANGUS, name: 'Grilled bangus', servingDesc: '1 piece (150 g)', kcal: 206, proteinG: 35.1, carbsG: 0, fatG: 7.2,
       },
       rice: {
-        foodId: RICE, name: 'White rice', servingDesc: '1 cup (160 g)', kcal: 206, proteinG: 3.4, carbsG: 47.5, fatG: 0.3,
+        foodId: RICE, name: 'White rice', servingDesc: '1 cup (160 g)', servings: 1, kcal: 206, proteinG: 3.4, carbsG: 47.5, fatG: 0.3,
       },
       total: { kcal: 412, proteinG: 38.5, carbsG: 47.5, fatG: 7.5 },
+      servedWithRice: true,
       highProtein: true,
+    });
+    assert.equal(data.riceCups, 1);
+    assert.deepEqual(data.riceFood, {
+      foodId: RICE, name: 'White rice', servingDesc: '1 cup (160 g)', kcal: 206, proteinG: 3.4, carbsG: 47.5, fatG: 0.3,
     });
   });
 
@@ -106,6 +112,7 @@ test('GET /nutrition/suggestions', async (t) => {
     const { data } = (await u.ask('?meal=snack').expect(200)).body;
     assert.deepEqual(ids(data), [EGG, BANANA]);
     assert.ok(data.suggestions.every((s) => s.rice === null));
+    assert.ok(data.suggestions.every((s) => s.servedWithRice === false));
   });
 
   await t.test('with White rice hidden, or only a FatSecret copy of it, plates are the dish alone', async () => {
@@ -121,7 +128,9 @@ test('GET /nutrition/suggestions', async (t) => {
     for (const s of data.suggestions) {
       assert.equal(s.rice, null);
       assert.equal(s.total.kcal, s.food.kcal);
+      assert.equal(s.servedWithRice, false);
     }
+    assert.equal(data.riceFood, null);
     await setHidden(RICE, false);
   });
 
@@ -155,6 +164,39 @@ test('GET /nutrition/suggestions', async (t) => {
       kcal: Math.round((target.kcal - 260) / 2),
       proteinG: Math.round(((target.proteinG - 26) / 2) * 10) / 10,
     });
+  });
+
+  await t.test("the user's usual rice: 1½ cups on each plate; none leaves the dish alone", async () => {
+    const u = await freshUser({ profile: { usualRiceCups: 1.5 } });
+    const half = (await u.ask('?meal=lunch').expect(200)).body.data;
+    assert.equal(half.riceCups, 1.5);
+    assert.ok(half.suggestions.length > 0);
+    for (const s of half.suggestions) {
+      assert.equal(s.rice.servings, 1.5);
+      assert.equal(s.rice.kcal, 309);
+      assert.equal(s.total.kcal, s.food.kcal + 309);
+    }
+    await u.patch({ usualRiceCups: 0 });
+    const none = (await u.ask('?meal=lunch').expect(200)).body.data;
+    assert.equal(none.riceCups, 0);
+    for (const s of none.suggestions) {
+      assert.equal(s.rice, null);
+      assert.equal(s.servedWithRice, true);
+    }
+  });
+
+  await t.test("a dish eaten yesterday comes last, not gone", async () => {
+    const u = await freshUser({ profile: PROFILE });
+    const before = ids((await u.ask('?meal=lunch').expect(200)).body.data);
+    assert.notEqual(before.at(-1), BANGUS, 'needs Bangus not already last');
+    await pool.query(
+      `INSERT INTO meal_logs (user_id, food_id, meal_type, servings, calories, protein_g, carbs_g, fat_g, logged_via, log_date)
+       VALUES (?, ?, 'lunch', 1, 206, 35.1, 0, 7.2, 'search', ?)`,
+      [u.userId, BANGUS, manilaDay(1)],
+    );
+    const after = ids((await u.ask('?meal=lunch').expect(200)).body.data);
+    assert.equal(after.at(-1), BANGUS);
+    assert.deepEqual([...after].sort(), [...before].sort());
   });
 
   await t.test("today's calories reached: light snacks whatever the meal, never with rice", async () => {
