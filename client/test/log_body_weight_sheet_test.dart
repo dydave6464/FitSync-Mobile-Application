@@ -433,17 +433,18 @@ void main() {
       expect(find.text('open'), findsOneWidget);
     });
 
-    // After a drag the sheet stays mounted for its exit animation while its
-    // route is already popping: a save landing then must not pop the page
-    // under it.
+    // However it is closed, the sheet stays mounted for its exit animation
+    // while its route is already popping: a save landing then must not pop
+    // the page under it, and still refreshes.
     testWidgets('landing as the sheet slides away leaves the page under it', (
       tester,
     ) async {
       final repo = FakeProfileRepository()..gate = Completer<void>();
+      final fetches = _FetchCount();
       await _pumpOnPushedPage(
         tester,
         repo: repo,
-        fetches: _FetchCount(),
+        fetches: fetches,
         nutrition: FakeNutritionRepository(),
       );
 
@@ -451,6 +452,7 @@ void main() {
       // One frame into the exit: the sheet is still mounted.
       await tester.pump();
       expect(find.text('Log your weight'), findsOneWidget);
+      final charts = fetches.value;
 
       repo.gate!.complete();
       await tester.pumpAndSettle();
@@ -459,6 +461,7 @@ void main() {
       expect(find.text('Log your weight'), findsNothing);
       expect(find.text('open'), findsOneWidget);
       expect(find.text('go'), findsNothing);
+      expect(fetches.value, charts + 1);
     });
 
     // Without the sheet there is nowhere else to say it: the user would
@@ -776,6 +779,8 @@ void main() {
       find.text('Something went wrong on our side. Please try again.'),
       findsOneWidget,
     );
+    // Said on the open sheet only, not again in a snackbar under it.
+    expect(find.byType(SnackBar), findsNothing);
     expect(find.textContaining('HTTP'), findsNothing);
     expect(find.textContaining('adb'), findsNothing);
     final error = find.byKey(const Key('bodyWeight.error'));

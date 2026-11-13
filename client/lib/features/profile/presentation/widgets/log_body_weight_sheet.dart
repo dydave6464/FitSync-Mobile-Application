@@ -162,10 +162,10 @@ class _LogBodyWeightSheetState extends ConsumerState<_LogBodyWeightSheet> {
       if (error is! ApiException) debugPrint('Weigh-in save failed: $error');
       final message = userMessage(error);
       // Whether the sheet is still open is its route's to say, not
-      // `mounted`: after a drag it stays mounted for its exit animation
-      // while its route is already popping. Once it is closing or closed,
-      // the failure is said on the screen instead, or the user would take
-      // the weigh-in for saved.
+      // `mounted`: however it is closed, it stays mounted for its exit
+      // animation while its route is already popping. Once it is closing or
+      // closed, the failure is said on the screen instead, or the user would
+      // take the weigh-in for saved.
       final open = mounted && (route?.isCurrent ?? false);
       if (!open) {
         messenger.showSnackBar(
