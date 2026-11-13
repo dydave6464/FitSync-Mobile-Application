@@ -332,12 +332,12 @@ test('dishes with a food the user avoids are skipped, in every state, and counte
 });
 
 test('dishes the user hid are skipped and counted; today\'s dishes never count', () => {
-  const pool = [dish(5, 'A', 300, 20), dish(6, 'B', 300, 20), dish(7, 'C', 300, 20)];
-  const result = pick({ rice: null, pool, hidden: [6], entries: [{ mealType: 'breakfast', foodId: 7 }] });
+  const pool = [dish(5, 'A', 300, 20), dish(6, 'B', 300, 20, { contains: ['pork'] }), dish(7, 'C', 300, 20)];
+  const result = pick({ rice: null, pool, hidden: [6, 7], entries: [{ mealType: 'breakfast', foodId: 7 }] });
   assert.deepEqual(names(result), ['A']);
-  assert.equal(result.skipped, 1, 'C was eaten today: skipped by rule 5, not by a preference');
+  assert.equal(result.skipped, 1, 'C is hidden but was eaten today: skipped by rule 5, not by a preference');
   const both = pick({ rice: null, pool, hidden: [6], avoid: ['pork'] });
-  assert.equal(both.skipped, 1);
+  assert.equal(both.skipped, 1, 'B is both hidden and avoided: counted once');
 });
 
 test('nothing avoided or hidden: skipped is 0', () => {
