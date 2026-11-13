@@ -8,6 +8,7 @@ import '../../domain/meal_suggestion.dart';
 import '../../domain/nutrition.dart' show FoodEntry;
 import '../error_snack_bar.dart';
 import '../providers.dart';
+import 'dish_photo.dart';
 
 /// Changes whenever what the rows show changes, and only then: the key the
 /// cross-fade switches on.
@@ -172,8 +173,13 @@ class _PlateRowState extends State<PlateRow> {
             onTap: onTap,
             focusNode: _focus,
             padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+            // Top-aligned: at large text the row grows and the photo stays
+            // level with the title (spec 2026-11-13, round 3, section 4).
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                DishPhoto(url: plate.food.photoUrl, width: 56, height: 56),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -206,7 +212,8 @@ class _PlateRowState extends State<PlateRow> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Icon(Icons.add, size: 18, color: t.text2),
+                // Centred on the photo, as it was on the row.
+                SizedBox(height: 56, child: Center(child: Icon(Icons.add, size: 18, color: t.text2))),
               ],
             ),
           ),

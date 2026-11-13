@@ -11,12 +11,14 @@ import 'package:fitsync/features/nutrition/domain/meal_suggestion.dart';
 import 'package:fitsync/features/nutrition/presentation/meal_ideas_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/nutrition_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/providers.dart';
+import 'package:fitsync/features/nutrition/presentation/widgets/dish_photo.dart';
 import 'package:fitsync/features/nutrition/presentation/widgets/meal_ideas_card.dart';
 import 'package:fitsync/features/nutrition/presentation/widgets/meal_section.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 
 import 'helpers/fake_ad_source.dart';
+import 'helpers/fake_dish_photos.dart';
 import 'helpers/meal_suggestion_fixtures.dart';
 import 'nutrition_controller_test.dart' show FakeNutritionRepository, emptyDay;
 
@@ -111,6 +113,86 @@ void main() {
       ),
     );
     handle.dispose();
+  });
+
+  group('the tile', () {
+    Finder photo() => find.descendant(of: find.byKey(const Key('ideas.card')), matching: find.byType(DishPhoto));
+
+    testWidgets("the top plate's dish photo, 48 dp square, 12 dp before the title", (tester) async {
+      final asked = fakeDishPhotos();
+      await _pump(
+        tester,
+        lunch: suggestionsAnswer(
+          'fits',
+          [
+            plateJson(tinolaJson, photoUrl: 'http://fitsync.test/storage/foods/tinola.jpg'),
+            plateJson(bangusJson, photoUrl: 'http://fitsync.test/storage/foods/bangus.jpg'),
+          ],
+          share: {'kcal': 650, 'proteinG': 40},
+        ),
+      );
+      await decodeDishPhotos(tester);
+      expect(asked.toSet(), {'http://fitsync.test/storage/foods/tinola.jpg'}, reason: 'the top plate only');
+      expect(tester.widget<DishPhoto>(photo()).url, 'http://fitsync.test/storage/foods/tinola.jpg');
+      expect(tester.getSize(find.descendant(of: photo(), matching: find.byType(RawImage))), const Size(48, 48));
+      final title = tester.getRect(find.text('Suggested for lunch'));
+      expect(title.left - tester.getRect(photo()).right, closeTo(12, 0.01));
+      expect(find.descendant(of: find.byKey(const Key('ideas.card')), matching: find.byKey(const Key('dish.leaf'))),
+          findsNothing);
+    });
+
+    testWidgets('the leaf tile, 48 dp, when the top dish has no photo', (tester) async {
+      final asked = fakeDishPhotos();
+      await _pump(
+        tester,
+        lunch: suggestionsAnswer(
+          'fits',
+          [plateJson(tinolaJson), plateJson(bangusJson, photoUrl: 'http://fitsync.test/storage/foods/bangus.jpg')],
+          share: {'kcal': 650, 'proteinG': 40},
+        ),
+      );
+      expect(asked, isEmpty, reason: "another plate's photo never stands in");
+      final leaf = find.descendant(of: find.byKey(const Key('ideas.card')), matching: find.byKey(const Key('dish.leaf')));
+      expect(tester.getSize(leaf), const Size(48, 48));
+      final icon = tester.widget<Icon>(find.descendant(of: leaf, matching: find.byIcon(Icons.eco_outlined)));
+      expect(icon.color, tester.element(leaf).fs.accentText);
+    });
+
+    testWidgets("reached: its top light option's photo", (tester) async {
+      fakeDishPhotos();
+      await _pump(
+        tester,
+        lunch: suggestionsAnswer('reached', [
+          plateJson(eggJson, rice: false, photoUrl: 'http://fitsync.test/storage/foods/egg.jpg'),
+          plateJson(tinolaJson, rice: false, photoUrl: 'http://fitsync.test/storage/foods/tinola.jpg'),
+        ]),
+      );
+      await decodeDishPhotos(tester);
+      expect(tester.widget<DishPhoto>(photo()).url, 'http://fitsync.test/storage/foods/egg.jpg');
+    });
+
+    testWidgets('the card with a photo is said as before', (tester) async {
+      final handle = tester.ensureSemantics();
+      fakeDishPhotos();
+      await _pump(
+        tester,
+        lunch: suggestionsAnswer(
+          'fits',
+          [plateJson(tinolaJson, photoUrl: 'http://fitsync.test/storage/foods/tinola.jpg'), plateJson(sinigangJson)],
+          share: {'kcal': 650, 'proteinG': 40},
+        ),
+      );
+      await decodeDishPhotos(tester);
+      expect(
+        tester.getSemantics(find.byKey(const Key('ideas.card'))),
+        matchesSemantics(
+          label: 'Suggested for lunch: Tinolang manok with 1 cup rice, 466 kilocalories, and 1 more',
+          hint: 'Opens meal ideas',
+          isButton: true, isEnabled: true, hasEnabledState: true, hasTapAction: true,
+        ),
+      );
+      handle.dispose();
+    });
   });
 
   testWidgets('at least 48 dp tall', (tester) async {

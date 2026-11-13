@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,6 +12,7 @@ import '../../domain/meal_suggestion.dart';
 import '../../domain/nutrition.dart';
 import '../../../profile/presentation/providers.dart' show profileProvider;
 import '../providers.dart';
+import 'dish_photo.dart';
 
 /// Both entries saved. [whileOpen]: the sheet was still open when the save
 /// ended, so it is closing now; false when it was dragged away first.
@@ -260,6 +262,21 @@ class _LogPlateSheetState extends ConsumerState<LogPlateSheet> {
             children: [
               FsSheetHeader(title: 'Log to ${mealLabel(widget.meal)}'),
               const SizedBox(height: 8),
+              // The dish's photo leads the content, under the header that
+              // holds the handle: full width at 16:9, at most 200 dp tall.
+              // None at all without a photo, or when it fails to load.
+              if (widget.plate.food.photoUrl case final url?) ...[
+                LayoutBuilder(
+                  builder: (context, constraints) => DishPhoto(
+                    url: url,
+                    width: constraints.maxWidth,
+                    height: math.min(constraints.maxWidth * 9 / 16, 200),
+                    radius: FsRadius.md,
+                    fallback: false,
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               if (_offersRice) ...[
                 Text('Rice', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: t.text)),
                 const SizedBox(height: 8),

@@ -61,6 +61,8 @@ class NutritionRepository {
   /// first.
   Future<MealSuggestions> suggestions(String meal) async => MealSuggestions.fromJson(
     await _api.getJson('/api/v1/nutrition/suggestions', query: {'meal': meal}),
+    // Each dish's photo comes as a `/storage/...` path, as ad images do.
+    mediaBase: _api.baseUrl,
   );
 
   /// The dishes this user asked not to be suggested, newest first.
