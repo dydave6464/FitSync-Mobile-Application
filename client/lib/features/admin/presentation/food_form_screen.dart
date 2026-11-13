@@ -572,7 +572,7 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
             ),
           ),
           ?fieldError('contains'),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Text(
             'Used to skip dishes for trainees who avoid these foods.',
             style: TextStyle(fontSize: 12, height: 1.4, color: t.text3),

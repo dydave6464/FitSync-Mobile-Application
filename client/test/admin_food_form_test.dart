@@ -886,6 +886,23 @@ void main() {
       expect(repo.updateFoodCalls.single.input.contains, ['fish']);
     });
 
+    testWidgets('a tap just below the chip row still toggles it', (
+      tester,
+    ) async {
+      await _pump(tester, FakeAdminRepository());
+      final egg = find.byKey(const Key('admin.food.contains.egg'));
+      // Bring the helper under the chips into view, so the gap is on screen.
+      await tester.ensureVisible(find.text(helper));
+      await tester.pumpAndSettle();
+      final rect = tester.getRect(egg);
+
+      // 7 dp below the chip is inside its 48 dp target, not the helper's.
+      await tester.tapAt(Offset(rect.center.dx, rect.bottom + 7));
+      await tester.pumpAndSettle();
+
+      expect(chip(tester, 'egg').selected, isTrue);
+    });
+
     testWidgets('a changed tag is an unsaved change', (tester) async {
       await _pump(
         tester,
