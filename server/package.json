@@ -22,7 +22,8 @@
     "pro:grant": "node scripts/pro-grant.js",
     "admin:create": "node scripts/admin-create.js",
     "review:safety": "node scripts/review-exercise-safety.js",
-    "review:categories": "node scripts/review-exercise-categories.js"
+    "review:categories": "node scripts/review-exercise-categories.js",
+    "photos:import": "node scripts/import-dish-photos.js"
   },
   "keywords": [],
   "author": "",

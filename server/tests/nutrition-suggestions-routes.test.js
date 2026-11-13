@@ -5,6 +5,7 @@ const request = require('supertest');
 const { migrate } = require('../src/db/migrate');
 const { createPool } = require('../src/db/pool');
 const { buildTestApp } = require('./helpers/test-app');
+const localDriver = require('../src/services/storage/local');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { markEmailVerified } = require('../src/db/users');
 const { manilaDay } = require('../src/lib/manila-day');
@@ -18,7 +19,8 @@ test('GET /nutrition/suggestions', async (t) => {
   const pool = createPool(testDbConfig());
   await dropAllTables(pool);
   await migrate(testDbConfig());
-  const app = buildTestApp({ pool });
+  // Only url() is used here: nothing is stored.
+  const app = buildTestApp({ pool, storage: localDriver.create('storage-unused') });
   t.after(async () => { await dropAllTables(pool); await pool.end(); });
 
   const food = async (name, kcal, proteinG, carbsG, fatG, serving, {
@@ -90,6 +92,7 @@ test('GET /nutrition/suggestions', async (t) => {
     assert.deepEqual(data.suggestions[0], {
       food: {
         foodId: BANGUS, name: 'Grilled bangus', servingDesc: '1 piece (150 g)', kcal: 206, proteinG: 35.1, carbsG: 0, fatG: 7.2,
+        photoUrl: null,
       },
       rice: {
         foodId: RICE, name: 'White rice', servingDesc: '1 cup (160 g)', servings: 1, kcal: 206, proteinG: 3.4, carbsG: 47.5, fatG: 0.3,
@@ -229,5 +232,18 @@ test('GET /nutrition/suggestions', async (t) => {
     const both = (await u.ask('?meal=lunch').expect(200)).body.data;
     assert.ok(!ids(both).includes(BANGUS));
     assert.equal(both.skipped, 2);
+  });
+
+  await t.test("each plate's dish carries its photo URL, or null; rice never does", async () => {
+    await pool.query("UPDATE foods SET photo_key = 'foods/tinola-test.jpg' WHERE food_id = ?", [TINOLA]);
+    const u = await freshUser();
+    const { data } = (await u.ask('?meal=lunch').expect(200)).body;
+    const tinola = data.suggestions.find((s) => s.food.foodId === TINOLA);
+    assert.equal(tinola.food.photoUrl, '/storage/foods/tinola-test.jpg');
+    assert.ok(data.suggestions.filter((s) => s.food.foodId !== TINOLA).every((s) => s.food.photoUrl === null));
+    assert.ok(data.suggestions.every((s) => s.rice === null || !('photoUrl' in s.rice)));
+    assert.ok(!('photoUrl' in data.riceFood));
+    assert.ok(data.suggestions.every((s) => !('photoKey' in s.food)));
+    await pool.query('UPDATE foods SET photo_key = NULL WHERE food_id = ?', [TINOLA]);
   });
 });

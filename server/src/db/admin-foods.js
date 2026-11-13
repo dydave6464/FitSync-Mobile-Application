@@ -29,14 +29,15 @@ const OWN = 'NOT EXISTS (SELECT 1 FROM food_sources s WHERE s.food_id = f.food_i
 const SELECT_FOOD = `
   SELECT f.food_id, f.name, f.category, f.food_type, f.serving_desc, f.calories, f.protein_g, f.carbs_g,
          f.fat_g, f.fiber_g, f.sugar_g, f.sodium_mg, f.hidden_at IS NOT NULL AS hidden,
-         f.suggest_meals, f.suggest_with_rice, f.contains
+         f.suggest_meals, f.suggest_with_rice, f.contains, f.photo_key
     FROM foods f`;
 
 // DECIMAL columns arrive as strings.
 const nullable2 = (n) => (n == null ? null : round2(Number(n)));
 const nullable1 = (n) => (n == null ? null : round1(Number(n)));
 
-/// A SELECT_FOOD row in Appendix A's admin food shape.
+/// A SELECT_FOOD row in Appendix A's admin food shape, with the photo's
+/// storage key (053), which the route turns into a URL and never answers.
 function asAdminFood(r) {
   return {
     id: r.food_id,
@@ -57,6 +58,7 @@ function asAdminFood(r) {
     suggestWithRice: Boolean(r.suggest_with_rice),
     // Also a SET column: 'pork,egg' in the groups' own order, '' for none.
     contains: r.contains ? String(r.contains).split(',') : [],
+    photoKey: r.photo_key || null,
   };
 }
 
@@ -189,21 +191,25 @@ const writeValues = (f, adminId) => [
   f.sodiumMg, f.suggestMeals.join(','), f.suggestWithRice, f.contains.join(','), adminId,
 ];
 
-/// Adds one of FitSync's own foods, added by [adminId]. 400 per bad field;
-/// 409 FOOD_NAME_TAKEN when another own food has the name, in any case.
-async function createFood(pool, input, adminId) {
+/// Adds one of FitSync's own foods, added by [adminId], with the photo
+/// stored at [photoKey] (null: none). 400 per bad field; 409
+/// FOOD_NAME_TAKEN when another own food has the name, in any case.
+async function createFood(pool, input, adminId, { photoKey = null } = {}) {
   const food = checkFood(input);
   if (await ownNameTaken(pool, food.name)) throw nameTaken();
-  const [r] = await pool.query(`INSERT INTO foods SET ${WRITE_COLUMNS}`, writeValues(food, adminId));
+  const [r] = await pool.query(
+    `INSERT INTO foods SET ${WRITE_COLUMNS}, photo_key = ?`, [...writeValues(food, adminId), photoKey],
+  );
   return findOwnFood(pool, r.insertId);
 }
 
 /// Changes the fields [input] sends of one of FitSync's own foods and marks
 /// it as [adminId]'s (so the seed leaves it alone). Calories follow the
 /// typed-food rule again when any of kcal, protein, carbs or fat is sent;
-/// otherwise they stay. Meals already logged keep their own numbers. null
+/// otherwise they stay. Meals already logged keep their own numbers.
+/// [photoKey]: undefined keeps the photo, null clears it, a key sets it. null
 /// when there is no such own food.
-async function updateFood(pool, foodId, input, adminId) {
+async function updateFood(pool, foodId, input, adminId, { photoKey } = {}) {
   const existing = await findOwnFood(pool, foodId);
   if (!existing) return null;
   const sent = (k) => Object.hasOwn(input, k);
@@ -215,7 +221,11 @@ async function updateFood(pool, foodId, input, adminId) {
   if (CALORIE_FIELDS.some(sent)) merged.kcal = input.kcal;
   const food = checkFood(merged);
   if (await ownNameTaken(pool, food.name, foodId)) throw nameTaken();
-  await pool.query(`UPDATE foods SET ${WRITE_COLUMNS} WHERE food_id = ?`, [...writeValues(food, adminId), foodId]);
+  const photo = photoKey === undefined ? { sql: '', values: [] } : { sql: ', photo_key = ?', values: [photoKey] };
+  await pool.query(
+    `UPDATE foods SET ${WRITE_COLUMNS}${photo.sql} WHERE food_id = ?`,
+    [...writeValues(food, adminId), ...photo.values, foodId],
+  );
   return findOwnFood(pool, foodId);
 }
 
