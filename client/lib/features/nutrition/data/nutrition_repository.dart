@@ -57,11 +57,26 @@ class NutritionRepository {
   }
 
   /// Today's local Filipino suggestions for [meal] -- the server's own today
-  /// in Manila, whatever the phone's clock says: up to three plates, best
+  /// in Manila, whatever the phone's clock says: up to nine plates, best
   /// first.
   Future<MealSuggestions> suggestions(String meal) async => MealSuggestions.fromJson(
     await _api.getJson('/api/v1/nutrition/suggestions', query: {'meal': meal}),
   );
+
+  /// The dishes this user asked not to be suggested, newest first.
+  Future<List<HiddenSuggestion>> hiddenSuggestions() async =>
+      _hidden(await _api.getJson('/api/v1/nutrition/suggestions/hidden'));
+
+  /// "Don't suggest this": the updated list.
+  Future<List<HiddenSuggestion>> hideSuggestion(int foodId) async =>
+      _hidden(await _api.putJson('/api/v1/nutrition/suggestions/hidden/$foodId', const {}));
+
+  /// "Show again": the updated list.
+  Future<List<HiddenSuggestion>> showSuggestion(int foodId) async =>
+      _hidden(await _api.deleteJson('/api/v1/nutrition/suggestions/hidden/$foodId'));
+
+  List<HiddenSuggestion> _hidden(Map<String, dynamic> data) =>
+      [for (final h in data['hidden'] as List) HiddenSuggestion.fromJson(h as Map<String, dynamic>)];
 
   Future<FoodSearchResult> search(String q) async {
     final data = await _api.getJson('/api/v1/foods/search', query: {'q': q});

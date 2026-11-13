@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
@@ -51,6 +52,36 @@ Future<void> _undo(
   } catch (_) {
     showErrorSnackBar(messenger, "Couldn't undo. Remove the plate from the meal list.");
   }
+}
+
+/// "Won't suggest {dish}" with Undo, which shows it again; replaces any
+/// message up. Undo failing says where to find the dish.
+void showDishHiddenSnackBar(
+  ScaffoldMessengerState messenger,
+  ProviderContainer container,
+  SuggestedFood dish, {
+  required bool screenReader,
+}) {
+  messenger.hideCurrentSnackBar();
+  messenger.showSnackBar(SnackBar(
+    duration: const Duration(seconds: 4),
+    // As "Logged to lunch": only a screen reader keeps it up.
+    persist: screenReader,
+    content: Text("Won't suggest ${dish.name}"),
+    action: SnackBarAction(
+      label: 'Undo',
+      onPressed: () async {
+        try {
+          await container.read(nutritionRepositoryProvider).showSuggestion(dish.foodId);
+        } catch (_) {
+          showErrorSnackBar(messenger, "Couldn't undo. Show it again in Meal preferences.");
+          return;
+        }
+        container.invalidate(mealSuggestionsProvider);
+        container.invalidate(hiddenSuggestionsProvider);
+      },
+    ),
+  ));
 }
 
 /// One plate: the whole row is the button. One screen-reader node, its words

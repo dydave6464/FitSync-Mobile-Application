@@ -144,6 +144,7 @@ class MealSuggestions {
     required this.suggestions,
     this.riceCups = 1,
     this.riceFood,
+    this.skipped = 0,
   });
 
   /// A state this app does not know, or "fits" without its share, is a
@@ -169,6 +170,7 @@ class MealSuggestions {
       ],
       riceCups: (j['riceCups'] as num?)?.toDouble() ?? 1,
       riceFood: j['riceFood'] == null ? null : SuggestedFood.fromJson(j['riceFood'] as Map<String, dynamic>),
+      skipped: (j['skipped'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -187,6 +189,46 @@ class MealSuggestions {
 
   /// White rice, one cup; null when the server has none to offer.
   final SuggestedFood? riceFood;
+
+  /// Dishes left out because of the user's preferences (round 2): the page offers "Change meal preferences" when above 0.
+  final int skipped;
+}
+
+/// The food groups a dish can contain and a user can avoid, in the order the
+/// app lists them (spec 2026-11-13, round 2).
+const foodGroups = ['pork', 'beef', 'chicken', 'fish', 'shellfish', 'egg'];
+
+/// "Pork", "Shrimp & shellfish": a food group as the app shows it. A group
+/// this app does not know is shown as sent.
+String foodGroupLabel(String g) => switch (g) {
+  'pork' => 'Pork',
+  'beef' => 'Beef',
+  'chicken' => 'Chicken',
+  'fish' => 'Fish',
+  'shellfish' => 'Shrimp & shellfish',
+  'egg' => 'Egg',
+  _ => g,
+};
+
+/// A dish the user asked not to be suggested ("Don't suggest this").
+class HiddenSuggestion {
+  const HiddenSuggestion({required this.foodId, required this.name, required this.hiddenAt});
+
+  factory HiddenSuggestion.fromJson(Map<String, dynamic> j) => HiddenSuggestion(
+    foodId: (j['foodId'] as num).toInt(),
+    name: j['name'] as String,
+    hiddenAt: DateTime.parse(j['hiddenAt'] as String),
+  );
+
+  final int foodId;
+  final String name;
+  final DateTime hiddenAt;
+}
+
+/// Settings' Meal preferences summary: "1 cup rice", "No rice · avoids 2".
+String mealPrefsSummary(double riceCups, List<String> avoid) {
+  final rice = riceCups == 0 ? 'No rice' : '${cupsLabel(riceCups)} rice';
+  return avoid.isEmpty ? rice : '$rice · avoids ${avoid.length}';
 }
 
 /// "1 bowl" from "1 bowl (350 g)": a serving without its weight, for a line

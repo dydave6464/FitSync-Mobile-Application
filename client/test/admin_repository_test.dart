@@ -560,6 +560,43 @@ void main() {
       expect(result.suggestedCount, 0);
       expect(result.foods.single.suggestMeals, isEmpty);
       expect(result.foods.single.suggestWithRice, isFalse);
+      expect(result.foods.single.contains, isEmpty);
+    });
+
+    test('a food reads what it contains, and createFood sends it', () async {
+      final read = _repo(
+        [],
+        (_) => _ok({
+          'foods': [
+            {
+              ...foodJson(),
+              'contains': ['pork', 'egg'],
+            },
+          ],
+          'counts': {'shown': 412, 'hidden': 3},
+          'page': 1,
+          'limit': 30,
+          'total': 1,
+        }),
+      );
+      expect((await read.foods()).foods.single.contains, ['pork', 'egg']);
+
+      final sent = <http.Request>[];
+      final repo = _repo(sent, (_) => _ok({'food': foodJson()}));
+      await repo.createFood(
+        const FoodInput(
+          name: 'Chopsuey',
+          category: 'filipino',
+          foodType: 'home',
+          servingDesc: '1 cup (220 g)',
+          proteinG: 8,
+          carbsG: 12,
+          fatG: 6,
+          contains: ['pork', 'shellfish'],
+        ),
+      );
+      final body = jsonDecode(sent.single.body) as Map<String, dynamic>;
+      expect(body['contains'], ['pork', 'shellfish']);
     });
 
     test('createFood sends the chosen meals and the rice', () async {
@@ -616,6 +653,7 @@ void main() {
         'sodiumMg': null,
         'suggestMeals': <String>[],
         'suggestWithRice': false,
+        'contains': <String>[],
       });
       expect(food.id, 12);
     });
