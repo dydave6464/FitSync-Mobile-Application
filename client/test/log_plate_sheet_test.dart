@@ -44,6 +44,7 @@ Future<(FakeNutritionRepository, _Profile, _Logged)> _open(
   bool riceFood = true,
   _Profile? profile,
   ValueChanged<SuggestedFood>? onHidden,
+  bool fromPushedPage = false,
 }) async {
   final repo = FakeNutritionRepository()..days[fixtureToday] = emptyDay(fixtureToday);
   final p = profile ?? _Profile();
@@ -57,26 +58,42 @@ Future<(FakeNutritionRepository, _Profile, _Logged)> _open(
     ],
     child: MaterialApp(
       theme: fsLightTheme(),
-      home: Scaffold(
-        body: Builder(
-          builder: (context) => TextButton(
-            onPressed: () => showLogPlateSheet(
-              context,
-              plate: answer.suggestions.single,
-              meal: 'lunch',
-              date: fixtureToday,
-              riceFood: answer.riceFood,
-              usualRiceCups: answer.riceCups,
-              onLogged: (entries, {required whileOpen}) => logged.calls.add((entries.length, whileOpen)),
-              onFailedAfterClose: (_) {},
-              onHidden: onHidden,
+      home: Builder(
+        builder: (context) {
+          // The page the sheet opens over, as Meal ideas is.
+          Widget page() => Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => showLogPlateSheet(
+                  context,
+                  plate: answer.suggestions.single,
+                  meal: 'lunch',
+                  date: fixtureToday,
+                  riceFood: answer.riceFood,
+                  usualRiceCups: answer.riceCups,
+                  onLogged: (entries, {required whileOpen}) => logged.calls.add((entries.length, whileOpen)),
+                  onFailedAfterClose: (_) {},
+                  onHidden: onHidden,
+                ),
+                child: const Text('open'),
+              ),
             ),
-            child: const Text('open'),
-          ),
-        ),
+          );
+          if (!fromPushedPage) return page();
+          return Scaffold(
+            body: TextButton(
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page())),
+              child: const Text('page'),
+            ),
+          );
+        },
       ),
     ),
   ));
+  if (fromPushedPage) {
+    await tester.tap(find.text('page'));
+    await tester.pumpAndSettle();
+  }
   await tester.tap(find.text('open'));
   await tester.pumpAndSettle();
   return (repo, p, logged);
@@ -353,6 +370,30 @@ void main() {
       expect(hidden, hasLength(1));
       expect(find.byType(LogPlateSheet), findsNothing);
       semantics.dispose();
+    });
+
+    // The sheet stays mounted for its exit animation after a drag, while its
+    // route is already popping: a hide landing then must not pop the page
+    // under it.
+    testWidgets('dragged away mid-hide, a hide that goes through still tells the caller and keeps the page', (tester) async {
+      final hidden = <SuggestedFood>[];
+      final (repo, _, _) = await _open(tester, plate: plateJson(tinolaJson), onHidden: hidden.add, fromPushedPage: true);
+      final hold = repo.hiddenHold = Completer<void>();
+      await tester.tap(hideButton);
+      await tester.pump();
+      final height = tester.getSize(find.byType(LogPlateSheet)).height;
+      await tester.drag(find.byKey(const Key('sheet.handle')), Offset(0, height * 0.55));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 20));
+      expect(find.byType(LogPlateSheet), findsOneWidget, reason: 'still sliding away');
+
+      hold.complete();
+      await tester.pumpAndSettle();
+      expect(repo.hideCalls, [10]);
+      expect(hidden.map((d) => d.foodId), [10]);
+      expect(find.byType(LogPlateSheet), findsNothing);
+      expect(find.text('open'), findsOneWidget, reason: 'the page under the sheet stays');
+      expect(find.text('page'), findsNothing);
     });
 
     testWidgets('a failure stays in the sheet, says why and lets the user try again', (tester) async {
