@@ -116,7 +116,9 @@ class MealSuggestionsSection extends ConsumerWidget {
       plate: plate,
       meal: data.meal,
       date: data.date,
-      onLogged: (logged) {
+      riceFood: data.riceFood,
+      usualRiceCups: data.riceCups,
+      onLogged: (logged, {required whileOpen}) {
         // Replacing, not queueing behind, whatever message is up.
         messenger.hideCurrentSnackBar();
         messenger.showSnackBar(SnackBar(
