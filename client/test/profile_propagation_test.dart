@@ -240,5 +240,11 @@ void main() {
       await container.read(profileProvider.notifier).patch({'usualRiceCups': 1.5});
       expect(await fetchesAfter(container, nutrition), (1, 2));
     });
+
+    test('new avoided foods refetch the suggestions, not the day', () async {
+      final (container, nutrition) = await openNutrition();
+      await container.read(profileProvider.notifier).patch({'avoidFoods': ['pork']});
+      expect(await fetchesAfter(container, nutrition), (1, 2));
+    });
   });
 }

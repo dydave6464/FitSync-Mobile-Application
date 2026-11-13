@@ -147,6 +147,19 @@ void main() {
     expect(missing.usualRiceCups, 1.0);
   });
 
+  test('parses the avoided foods, defaulting to none', () {
+    final some = Profile.fromJson({
+      ...Map<String, dynamic>.from(_fullProfileJson),
+      'avoidFoods': ['pork', 'egg'],
+    });
+    expect(some.avoidFoods, ['pork', 'egg']);
+    // A server older than migration 051 sends no avoidFoods.
+    final missing = Profile.fromJson(
+      Map<String, dynamic>.from(_emptyProfileJson),
+    );
+    expect(missing.avoidFoods, isEmpty);
+  });
+
   test('normalises a date of birth the server returned as a timestamp', () {
     // Verified against the running server: PATCH /profile stores 1999-04-17
     // and GET returns "1999-04-17T00:00:00.000Z", but PATCH then REJECTS that

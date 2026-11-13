@@ -55,6 +55,34 @@ void main() {
     expect(reached.suggestions.single.items.map((f) => f.name), ['Hard-boiled egg']);
   });
 
+  test('skipped reads from the answer, and is 0 from a server that sends none', () {
+    expect(_read().skipped, 0);
+    final s = MealSuggestions.fromJson({
+      'date': '2026-11-13', 'meal': 'lunch', 'state': 'no_target', 'share': null, 'suggestions': const [],
+      'skipped': 4,
+    });
+    expect(s.skipped, 4);
+  });
+
+  test('the six food groups, in order, and their labels', () {
+    expect(foodGroups, ['pork', 'beef', 'chicken', 'fish', 'shellfish', 'egg']);
+    expect(foodGroups.map(foodGroupLabel), ['Pork', 'Beef', 'Chicken', 'Fish', 'Shrimp & shellfish', 'Egg']);
+    expect(foodGroupLabel('tofu'), 'tofu');
+  });
+
+  test('a hidden dish reads its id, name and when it was hidden', () {
+    final h = HiddenSuggestion.fromJson({'foodId': 10, 'name': 'Tinolang manok', 'hiddenAt': '2026-11-13T04:00:00.000Z'});
+    expect(h.foodId, 10);
+    expect(h.name, 'Tinolang manok');
+    expect(h.hiddenAt, DateTime.utc(2026, 11, 13, 4));
+  });
+
+  test("Settings' meal preferences summary: the rice, then how many foods are avoided", () {
+    expect(mealPrefsSummary(1, const []), '1 cup rice');
+    expect(mealPrefsSummary(0, const ['pork', 'egg']), 'No rice · avoids 2');
+    expect(mealPrefsSummary(1.5, const ['fish']), '1½ cups rice · avoids 1');
+  });
+
   test('an unknown state, or fits without its share, is refused', () {
     expect(() => _read(state: 'maybe'), throwsFormatException);
     expect(() => _read(share: null), throwsFormatException);

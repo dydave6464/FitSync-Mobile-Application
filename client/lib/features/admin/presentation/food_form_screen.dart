@@ -190,6 +190,8 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
     sodiumMg: _number('sodium'),
     suggestMeals: _suggestMeals,
     suggestWithRice: _withRice && _mainMealChosen,
+    // Every field is sent, so an edit carries the food's tags through.
+    contains: widget.food?.contains ?? const [],
   );
 
   Future<void> _save() async {

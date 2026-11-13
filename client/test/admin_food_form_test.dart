@@ -233,6 +233,7 @@ void main() {
       'sodiumMg': 870.5,
       'suggestMeals': <String>[],
       'suggestWithRice': false,
+      'contains': <String>[],
     });
     expect(find.byType(FoodFormScreen), findsNothing);
     expect(find.text('Food added.'), findsOneWidget);
@@ -416,6 +417,20 @@ void main() {
       expect(find.byType(FoodFormScreen), findsNothing);
       expect(find.text('Food saved.'), findsOneWidget);
       expect(repo.foodsCalls.length, greaterThan(listCalls));
+    });
+
+    testWidgets('Save keeps what the food contains', (tester) async {
+      final repo = FakeAdminRepository();
+      await _pump(
+        tester,
+        repo,
+        food: sampleFood(contains: const ['pork', 'egg']),
+      );
+
+      await _type(tester, 'fat', '20');
+      await _pressSave(tester);
+
+      expect(repo.updateFoodCalls.single.input.contains, ['pork', 'egg']);
     });
 
     testWidgets('Hide food asks first; Keep leaves it shown', (tester) async {
