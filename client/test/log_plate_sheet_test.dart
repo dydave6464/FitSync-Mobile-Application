@@ -82,13 +82,20 @@ String _total(WidgetTester tester) => tester
     .map((t) => t.data)
     .join(' | ');
 
+/// The rice item line's texts (White rice is food 1), joined.
+String _riceLine(WidgetTester tester) => tester
+    .widgetList<Text>(find.descendant(of: find.byKey(const Key('logPlate.item.1')), matching: find.byType(Text)))
+    .map((t) => t.data)
+    .join(' | ');
+
 void main() {
   testWidgets('a dish served with rice offers None to 2 cups, starting at the plate\'s own', (tester) async {
     await _open(tester, plate: plateJson(tinolaJson, cups: 1.5), usual: 1.5);
     expect(find.text('Rice'), findsOneWidget);
-    for (final label in ['None', '½ cup', '1 cup', '1½ cups', '2 cups']) {
-      expect(find.text(label), findsOneWidget, reason: label);
+    for (final (cups, label) in [(0.0, 'None'), (0.5, '½ cup'), (1.0, '1 cup'), (1.5, '1½ cups'), (2.0, '2 cups')]) {
+      expect(find.descendant(of: find.byKey(Key('logPlate.rice.$cups')), matching: find.text(label)), findsOneWidget, reason: label);
     }
+    expect(_riceLine(tester), contains('1½ cups'), reason: 'the rice line says the amount, not one cup');
     expect(tester.widget<FsChip>(find.byKey(const Key('logPlate.rice.1.5'))).selected, isTrue);
     expect(find.byKey(const Key('logPlate.rice.note')), findsNothing, reason: 'the usual: nothing to say');
   });
@@ -109,6 +116,8 @@ void main() {
     await tester.tap(find.byKey(const Key('logPlate.rice.2.0')));
     await tester.pump();
     expect(_total(tester), contains('672 kcal')); // 260 + 2 × 206
+    expect(_riceLine(tester), allOf(contains('2 cups'), contains('412 kcal')));
+    expect(_riceLine(tester), isNot(contains('1 cup (160 g)')));
     expect(find.text('Plates will use 2 cups from now on.'), findsOneWidget);
     await tester.tap(find.byKey(const Key('logPlate.rice.0.0')));
     await tester.pump();
@@ -120,10 +129,43 @@ void main() {
     expect(find.byKey(const Key('logPlate.rice.note')), findsNothing, reason: 'back to the usual');
   });
 
-  testWidgets('a plate sent without its rice starts at None and can take rice', (tester) async {
+  testWidgets('a plate sent without its rice starts at None, says nothing until a choice, and can take rice', (tester) async {
     await _open(tester, plate: plateJson(tinolaJson, rice: false, servedWithRice: true), usual: 1.5);
     expect(tester.widget<FsChip>(find.byKey(const Key('logPlate.rice.0.0'))).selected, isTrue);
-    expect(find.text('Plates will come without rice from now on.'), findsOneWidget);
+    expect(find.byKey(const Key('logPlate.rice.note')), findsNothing, reason: 'the server chose None, not the user');
+    await tester.tap(find.byKey(const Key('logPlate.rice.2.0')));
+    await tester.pump();
+    expect(find.text('Plates will use 2 cups from now on.'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('logPlate.rice.0.0')));
+    await tester.pump();
+    expect(find.text('Plates will come without rice from now on.'), findsOneWidget, reason: 'None, chosen');
+  });
+
+  testWidgets('an untouched plate sent without its rice logs the dish alone and remembers nothing', (tester) async {
+    final (repo, profile, logged) = await _open(
+      tester,
+      plate: plateJson(tinolaJson, rice: false, servedWithRice: true),
+      usual: 1.5,
+    );
+    await tester.tap(find.byKey(const Key('logPlate.log')));
+    await tester.pumpAndSettle();
+    expect(repo.calls.where((c) => c.startsWith('log ')), ['log $fixtureToday lunch Tinolang manok x1.0']);
+    expect(logged.calls, [(1, true)]);
+    expect(profile.patches, isEmpty, reason: 'the usual stays 1½ cups');
+  });
+
+  testWidgets('a rice chip answers a tap 7 dp above or below its row', (tester) async {
+    await _open(tester, plate: plateJson(tinolaJson));
+    final first = tester.getRect(find.byKey(const Key('logPlate.rice.0.0')));
+    await tester.tapAt(first.topCenter - const Offset(0, 7));
+    await tester.pump();
+    expect(tester.widget<FsChip>(find.byKey(const Key('logPlate.rice.0.0'))).selected, isTrue, reason: 'above');
+    // With the note now showing under the row, which must not take the tap.
+    expect(find.byKey(const Key('logPlate.rice.note')), findsOneWidget);
+    final last = tester.getRect(find.byKey(const Key('logPlate.rice.2.0')));
+    await tester.tapAt(last.bottomCenter + const Offset(0, 7));
+    await tester.pump();
+    expect(tester.widget<FsChip>(find.byKey(const Key('logPlate.rice.2.0'))).selected, isTrue, reason: 'below');
   });
 
   testWidgets('Log plate saves the rice at the chosen cups and remembers a changed amount', (tester) async {

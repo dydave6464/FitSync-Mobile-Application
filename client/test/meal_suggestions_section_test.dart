@@ -339,12 +339,14 @@ void main() {
     for (final text in [
       'Log to Lunch',
       'Tinolang manok', '1 bowl (350 g)', '260 kcal', 'Protein 26 g · Carbs 8 g · Fat 14 g',
-      'White rice', '1 cup (160 g)', '206 kcal', 'Protein 3 g · Carbs 45 g · Fat 0 g',
+      'White rice', '206 kcal', 'Protein 3 g · Carbs 45 g · Fat 0 g',
       'Plate total', '466 kcal', 'Protein 29 g · Carbs 53 g · Fat 14 g',
       'Log plate',
     ]) {
       expect(_inSheet(text), findsOneWidget, reason: text);
     }
+    // The rice line says the cups on the plate ("1 cup" is a rice chip too).
+    expect(find.descendant(of: find.byKey(const Key('logPlate.item.1')), matching: find.text('1 cup')), findsOneWidget);
   });
 
   testWidgets('one protein figure for one plate: the total is in whole grams, as the row is', (tester) async {

@@ -101,6 +101,14 @@ class _LogPlateSheetState extends ConsumerState<LogPlateSheet> {
   /// The cups chosen; starts at the plate's own (None when it came without).
   late double _cups = widget.plate.rice == null ? 0 : widget.plate.riceCups;
 
+  /// The user tapped a rice choice. Only their own choice is "from now on":
+  /// a plate the server sent without rice opens at None without changing
+  /// the usual (spec 2026-11-13, 1.3).
+  bool _changed = false;
+
+  /// The chosen cups become the usual: the user chose them, and they differ.
+  bool get _newUsual => _changed && _cups != widget.usualRiceCups;
+
   /// Log plate was tapped once: the plate is fixed from then on, so Retry
   /// sends the same one.
   bool _attempted = false;
@@ -160,7 +168,7 @@ class _LogPlateSheetState extends ConsumerState<LogPlateSheet> {
     }
     final open = route?.isCurrent ?? false;
     onLogged(logged, whileOpen: open);
-    if (_offersRice && _cups != widget.usualRiceCups) unawaited(_remember(container, _cups));
+    if (_offersRice && _newUsual) unawaited(_remember(container, _cups));
     // Only the sheet's own route, while it is still on top: a pop once it
     // is closing would take the screen under it. (A current route's sheet
     // is always mounted; the check is for the analyzer.)
@@ -206,22 +214,32 @@ class _LogPlateSheetState extends ConsumerState<LogPlateSheet> {
                 Text('Rice', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: t.text)),
                 const SizedBox(height: 8),
                 // Wraps at large text rather than shrinking a label.
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final cups in riceChoices)
-                      FsChip(
-                        key: Key('logPlate.rice.$cups'),
-                        label: cups == 0 ? 'None' : cupsLabel(cups),
-                        selected: _cups == cups,
-                        exclusive: true,
-                        onTap: _attempted ? null : () => setState(() => _cups = cups),
-                      ),
-                  ],
+                // FsTapRoom lets each chip's 48 dp band reach past the row.
+                FsTapRoom(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final cups in riceChoices)
+                        FsChip(
+                          key: Key('logPlate.rice.$cups'),
+                          label: cups == 0 ? 'None' : cupsLabel(cups),
+                          selected: _cups == cups,
+                          exclusive: true,
+                          onTap: _attempted
+                              ? null
+                              : () => setState(() {
+                                  _cups = cups;
+                                  _changed = true;
+                                }),
+                        ),
+                    ],
+                  ),
                 ),
-                if (_cups != widget.usualRiceCups) ...[
-                  const SizedBox(height: 6),
+                if (_newUsual) ...[
+                  // FsTapRoom's reach: the note would otherwise take a tap
+                  // meant for the chip above it.
+                  const SizedBox(height: 8),
                   Text(riceNote(_cups), key: const Key('logPlate.rice.note'), style: TextStyle(fontSize: 12, color: t.text2)),
                 ],
                 const SizedBox(height: 8),
@@ -230,7 +248,8 @@ class _LogPlateSheetState extends ConsumerState<LogPlateSheet> {
                 _ItemLine(
                   key: Key('logPlate.item.${item.foodId}'),
                   name: item.name,
-                  serving: item.servingDesc ?? '1 serving',
+                  // The rice line says the cups chosen: its servingDesc is one cup's.
+                  serving: identical(item, plate.rice) ? cupsLabel(plate.riceCups) : item.servingDesc ?? '1 serving',
                   kcal: item.kcal,
                   macros: 'Protein ${_g(item.proteinG)} g · Carbs ${_g(item.carbsG)} g · Fat ${_g(item.fatG)} g',
                 ),
