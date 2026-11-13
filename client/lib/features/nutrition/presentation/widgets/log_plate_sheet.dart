@@ -264,8 +264,9 @@ class _LogPlateSheetState extends ConsumerState<LogPlateSheet> {
               const SizedBox(height: 8),
               // The dish's photo leads the content, under the header that
               // holds the handle: full width at 16:9, at most 200 dp tall.
-              // None at all without a photo, or when it fails to load.
-              if (widget.plate.food.photoUrl case final url?) ...[
+              // None at all without a photo, or when it fails to load: its
+              // 12 dp gap goes with it.
+              if (widget.plate.food.photoUrl case final url?)
                 LayoutBuilder(
                   builder: (context, constraints) => DishPhoto(
                     url: url,
@@ -273,10 +274,9 @@ class _LogPlateSheetState extends ConsumerState<LogPlateSheet> {
                     height: math.min(constraints.maxWidth * 9 / 16, 200),
                     radius: FsRadius.md,
                     fallback: false,
+                    bottomMargin: 12,
                   ),
                 ),
-                const SizedBox(height: 12),
-              ],
               if (_offersRice) ...[
                 Text('Rice', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: t.text)),
                 const SizedBox(height: 8),

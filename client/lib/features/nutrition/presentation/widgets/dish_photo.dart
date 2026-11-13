@@ -12,7 +12,7 @@ import '../../../../core/theme.dart';
 /// (no spinner, nothing jumps); the first frame then fades in over 150 ms,
 /// at once with reduced motion. No [url], or a photo that fails, shows the
 /// leaf tile -- or, with [fallback] false (the Log sheet's banner), nothing
-/// at all, taking no space.
+/// at all, taking no space: not even its [bottomMargin].
 class DishPhoto extends StatelessWidget {
   const DishPhoto({
     super.key,
@@ -21,6 +21,7 @@ class DishPhoto extends StatelessWidget {
     required this.height,
     this.radius = FsRadius.sm,
     this.fallback = true,
+    this.bottomMargin = 0,
   });
 
   /// A full URL; null when the dish has no photo.
@@ -31,6 +32,10 @@ class DishPhoto extends StatelessWidget {
 
   /// The leaf tile when there is no photo; false: nothing.
   final bool fallback;
+
+  /// Space under the photo, its placeholder or the leaf, drawn only with
+  /// them: a banner that collapses leaves no gap behind.
+  final double bottomMargin;
 
   /// The image for [url], decoded at [cacheWidth] x [cacheHeight] pixels
   /// (the box's size on screen). Null: fetched from the network. A widget
@@ -87,11 +92,14 @@ class DishPhoto extends StatelessWidget {
     return ResizeImage(NetworkImage(url), width: side, height: side, policy: ResizeImagePolicy.fit);
   }
 
-  Widget _box({Key? key, required Widget child}) => SizedBox(
-    key: key,
-    width: width,
-    height: height,
-    child: ClipRRect(borderRadius: BorderRadius.circular(radius), child: child),
+  Widget _box({Key? key, required Widget child}) => Padding(
+    padding: EdgeInsets.only(bottom: bottomMargin),
+    child: SizedBox(
+      key: key,
+      width: width,
+      height: height,
+      child: ClipRRect(borderRadius: BorderRadius.circular(radius), child: child),
+    ),
   );
 
   /// The leaf tile: what a dish without a photo shows.

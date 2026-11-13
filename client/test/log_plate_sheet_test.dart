@@ -122,6 +122,8 @@ void main() {
   group('the dish photo', () {
     const url = 'http://fitsync.test/storage/foods/tinola.jpg';
     Finder photo() => find.descendant(of: find.byType(LogPlateSheet), matching: find.byType(DishPhoto));
+    // The photo itself, without the margin drawn under it.
+    Finder box() => find.descendant(of: photo(), matching: find.byType(RawImage));
 
     testWidgets("a full-width 16:9 photo under the sheet's title, 12 dp above the rest", (tester) async {
       final asked = fakeDishPhotos();
@@ -129,11 +131,13 @@ void main() {
       await _open(tester, plate: plateJson(tinolaJson, photoUrl: url), size: const Size(390, 1400));
       await decodeDishPhotos(tester);
       expect(asked, [url]);
-      final rect = tester.getRect(photo());
+      final rect = tester.getRect(box());
       expect(rect.width, closeTo(354, 0.01));
       expect(rect.height, closeTo(354 * 9 / 16, 0.01));
-      final image = find.descendant(of: photo(), matching: find.byType(RawImage));
-      expect(tester.getSize(image), rect.size);
+      final image = box();
+      // Its 12 dp margin is drawn with it, under the photo.
+      expect(tester.getRect(photo()).width, rect.width);
+      expect(tester.getRect(photo()).bottom - rect.bottom, closeTo(12, 0.01));
       final clip = tester.widget<ClipRRect>(find.ancestor(of: image, matching: find.byType(ClipRRect)).first);
       expect(clip.borderRadius, BorderRadius.circular(FsRadius.md));
       // The handle and the header stay at the very top; the photo leads
@@ -150,7 +154,7 @@ void main() {
       fakeDishPhotos();
       await _open(tester, plate: plateJson(tinolaJson, photoUrl: url), size: const Size(700, 1400));
       await decodeDishPhotos(tester);
-      final rect = tester.getRect(photo());
+      final rect = tester.getRect(box());
       expect(rect.height, 200);
       expect(rect.width, closeTo(tester.getSize(find.byKey(const Key('logPlate.log'))).width, 0.01),
           reason: 'as wide as the content');
@@ -182,6 +186,9 @@ void main() {
       expect(tester.getSize(photo()).height, 0);
       expect(find.byKey(const Key('dish.leaf')), findsNothing);
       expect(find.byKey(const Key('dish.loading')), findsNothing);
+      // No gap left where it was: as a dish without a photo.
+      final header = tester.getRect(find.byType(FsSheetHeader));
+      expect(tester.getRect(find.text('Rice')).top - header.bottom, closeTo(8, 0.01));
       expect(tester.takeException(), isNull);
     });
   });
