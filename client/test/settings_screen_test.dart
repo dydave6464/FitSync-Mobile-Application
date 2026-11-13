@@ -21,6 +21,8 @@ import 'package:fitsync/core/theme_controller.dart';
 import 'package:fitsync/core/token_store.dart' show InMemorySecureStore;
 import 'package:fitsync/features/health/domain/health_answers.dart';
 import 'package:fitsync/features/health/presentation/providers.dart';
+import 'package:fitsync/features/nutrition/presentation/providers.dart'
+    show nutritionRepositoryProvider;
 import 'package:fitsync/features/onboarding/presentation/steps/health_step.dart';
 import 'package:fitsync/features/plans/presentation/widgets/training_days_row.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
@@ -32,7 +34,7 @@ import 'package:fitsync/features/reminders/presentation/providers.dart';
 import 'package:fitsync/features/reminders/presentation/reminders_screen.dart';
 import 'package:fitsync/features/settings/presentation/change_password_screen.dart';
 import 'package:fitsync/features/settings/presentation/delete_account_screen.dart';
-import 'package:fitsync/features/settings/presentation/rice_with_meals_sheet.dart';
+import 'package:fitsync/features/settings/presentation/meal_preferences_screen.dart';
 import 'package:fitsync/features/settings/presentation/settings_screen.dart';
 import 'package:fitsync/features/streaks/domain/streaks.dart';
 import 'package:fitsync/features/streaks/presentation/providers.dart'
@@ -46,6 +48,7 @@ import 'helpers/a11y.dart' show contrast;
 import 'helpers/dialog_buttons.dart';
 import 'helpers/fake_health.dart';
 import 'helpers/fake_pro_repository.dart';
+import 'nutrition_controller_test.dart' show FakeNutritionRepository;
 
 const _baseProfile = Profile(
   userId: 7,
@@ -88,10 +91,14 @@ class FakeProfileNotifier extends ProfileNotifier {
     this.weightUnit = WeightUnit.kg,
     this.isPremium = false,
     this.usualRiceCups = 1,
+    this.avoidFoods = const [],
   });
 
   /// The cups of rice suggested plates carry.
   final double usualRiceCups;
+
+  /// The food groups suggestions skip.
+  final List<String> avoidFoods;
 
   /// Whether the profile says the account is Pro.
   final bool isPremium;
@@ -169,6 +176,7 @@ class FakeProfileNotifier extends ProfileNotifier {
     goalWeightKg: goalWeightKg,
     weightUnit: weightUnit,
     usualRiceCups: usualRiceCups,
+    avoidFoods: avoidFoods,
   );
 
   /// Every `patch` call, counted on arrival -- before [patchGate] holds it
@@ -324,6 +332,7 @@ Future<void> _pump(
   ThemeStore? themeStore,
   bool hasPassword = true,
   double usualRiceCups = 1,
+  List<String> avoidFoods = const [],
 }) async {
   _profile = FakeProfileNotifier(
     patches ?? <Map<String, dynamic>>[],
@@ -343,6 +352,7 @@ Future<void> _pump(
     weightUnit: weightUnit,
     isPremium: isPremium,
     usualRiceCups: usualRiceCups,
+    avoidFoods: avoidFoods,
   );
   await tester.pumpWidget(
     ProviderScope(
@@ -367,6 +377,10 @@ Future<void> _pump(
         proRepositoryProvider.overrideWithValue(pro ?? FakeProRepository()),
         healthRepositoryProvider.overrideWithValue(
           health ?? FakeHealthRepository(),
+        ),
+        // Meal preferences lists the dishes the user hid.
+        nutritionRepositoryProvider.overrideWithValue(
+          FakeNutritionRepository(),
         ),
         // In memory, so a theme pick never reaches the platform channel.
         themeStoreProvider.overrideWithValue(
@@ -2187,150 +2201,67 @@ void main() {
     });
   });
 
-  group('Rice with meals', () {
-    Finder valueOf(String text) => find.descendant(
-      of: find.byKey(const Key('settings.rice')),
+  // Round 2: the Rice with meals row became Meal preferences, whose screen
+  // holds the rice chips (meal_preferences_screen_test.dart).
+  group('Meal preferences', () {
+    Finder inRow(String text) => find.descendant(
+      of: find.byKey(const Key('settings.mealPrefs')),
       matching: find.text(text),
     );
 
-    testWidgets('says the usual amount beside its name', (tester) async {
-      await _pump(tester, usualRiceCups: 1.5);
+    testWidgets('named, with the usual rice beside it', (tester) async {
+      await _pump(tester);
       await tester.scrollUntilVisible(
-        find.byKey(const Key('settings.rice')),
+        find.byKey(const Key('settings.mealPrefs')),
         200,
       );
-      expect(find.text('Rice with meals'), findsOneWidget);
-      expect(valueOf('1½ cups'), findsOneWidget);
+      expect(inRow('Meal preferences'), findsOneWidget);
+      expect(inRow('1 cup rice'), findsOneWidget);
+      expect(find.text('Rice with meals'), findsNothing);
     });
 
-    testWidgets('no rice says None', (tester) async {
-      await _pump(tester, usualRiceCups: 0);
+    testWidgets('no rice and two foods avoided', (tester) async {
+      await _pump(tester, usualRiceCups: 0, avoidFoods: const ['pork', 'egg']);
       await tester.scrollUntilVisible(
-        find.byKey(const Key('settings.rice')),
+        find.byKey(const Key('settings.mealPrefs')),
         200,
       );
-      expect(valueOf('None'), findsOneWidget);
+      expect(inRow('No rice · avoids 2'), findsOneWidget);
     });
 
-    testWidgets('the sheet saves a new amount at once', (tester) async {
-      final patches = <Map<String, dynamic>>[];
-      await _pump(tester, patches: patches);
-      await _openRow(tester, const Key('settings.rice'));
-      expect(
-        find.text(
-          'Used for suggested plates. You can change it when you log a plate.',
-        ),
-        findsOneWidget,
-      );
-      await tester.tap(find.byKey(const Key('rice.2.0')));
-      await tester.pumpAndSettle();
-      expect(patches, [
-        {'usualRiceCups': 2.0},
-      ]);
-    });
-
-    testWidgets('a failed save says so and keeps the old amount', (
+    testWidgets('the longest summary fits a 320 dp phone at 2x text', (
       tester,
     ) async {
-      await _pump(tester, failPatch: true);
-      await _openRow(tester, const Key('settings.rice'));
-      await tester.tap(find.byKey(const Key('rice.0.5')));
-      await tester.pumpAndSettle();
-      // Inside the sheet, where it can be seen and is read out: a snack bar
-      // would be drawn under the open sheet.
-      expect(
-        find
-            .descendant(
-              of: find.byType(BottomSheet),
-              matching: find.text("Couldn't save your rice. Try again."),
-            )
-            .hitTestable(),
-        findsOneWidget,
-      );
-      expect(find.byType(SnackBar), findsNothing);
-      expect(
-        tester.widget<FsChip>(find.byKey(const Key('rice.1.0'))).selected,
-        isTrue,
-      );
-    });
-
-    testWidgets('a save that fails after the sheet closed says so on the '
-        'screen', (tester) async {
-      final gate = Completer<void>();
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1.0;
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
       await _pump(
         tester,
-        patchGate: gate,
-        patchError: const ApiException('NETWORK_ERROR', 'SocketException'),
+        usualRiceCups: 1.5,
+        avoidFoods: const [
+          'pork',
+          'beef',
+          'chicken',
+          'fish',
+          'shellfish',
+          'egg',
+        ],
       );
-      await _openRow(tester, const Key('settings.rice'));
-      await tester.tap(find.byKey(const Key('rice.2.0')));
-      await tester.pump();
-      // Closed while the save is still on its way.
-      Navigator.of(tester.element(find.byKey(const Key('rice.2.0')))).pop();
-      await tester.pumpAndSettle();
-      expect(find.byType(BottomSheet), findsNothing);
-      gate.complete();
-      await tester.pumpAndSettle();
-      expect(
-        find.text("Couldn't save your rice. Try again.").hitTestable(),
-        findsOneWidget,
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('settings.mealPrefs')),
+        200,
       );
-      expect(find.byType(SnackBar), findsOneWidget);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(inRow('1½ cups rice · avoids 6'), findsOneWidget);
     });
 
-    testWidgets('a tap just below the chips still picks one', (tester) async {
-      final patches = <Map<String, dynamic>>[];
-      await _pump(tester, patches: patches);
-      await _openRow(tester, const Key('settings.rice'));
-      // The chips are drawn 32 dp tall; their 48 dp band reaches 8 dp past
-      // the row, below as well as above.
-      final chip = tester.getRect(find.byKey(const Key('rice.2.0')));
-      await tester.tapAt(chip.bottomCenter + const Offset(0, 4));
-      await tester.pumpAndSettle();
-      expect(patches, [
-        {'usualRiceCups': 2.0},
-      ]);
+    testWidgets('opens the Meal preferences screen', (tester) async {
+      await _pump(tester);
+      await _openRow(tester, const Key('settings.mealPrefs'));
+      expect(find.byType(MealPreferencesScreen), findsOneWidget);
     });
-
-    for (final size in const [Size(360, 640), Size(640, 360), Size(844, 390)]) {
-      testWidgets('the sheet fits a ${size.width.toInt()}x'
-          '${size.height.toInt()} phone at 2x text', (tester) async {
-        tester.view.physicalSize = size;
-        tester.view.devicePixelRatio = 1.0;
-        tester.platformDispatcher.textScaleFactorTestValue = 2.0;
-        addTearDown(tester.view.reset);
-        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-        _profile = FakeProfileNotifier([], failPatch: true);
-        await tester.pumpWidget(
-          ProviderScope(
-            overrides: [profileProvider.overrideWith(() => _profile)],
-            child: MaterialApp(
-              home: Builder(
-                builder: (context) => Scaffold(
-                  body: TextButton(
-                    onPressed: () => showRiceWithMealsSheet(context),
-                    child: const Text('open'),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-        await tester.tap(find.text('open'));
-        await tester.pumpAndSettle();
-        expect(tester.takeException(), isNull);
-        // The error line makes it taller still. On a landscape phone the
-        // chips are below the fold: the sheet scrolls to them.
-        await tester.ensureVisible(find.byKey(const Key('rice.0.5')));
-        await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const Key('rice.0.5')));
-        await tester.pumpAndSettle();
-        expect(tester.takeException(), isNull);
-        expect(
-          find.text("Couldn't save your rice. Try again."),
-          findsOneWidget,
-        );
-      });
-    }
   });
 }

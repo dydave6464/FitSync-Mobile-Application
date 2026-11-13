@@ -11,7 +11,7 @@ import '../../../core/widgets/fs_kit.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../health/domain/health_answers.dart';
 import '../../health/presentation/providers.dart';
-import '../../nutrition/domain/meal_suggestion.dart' show cupsLabel;
+import '../../nutrition/domain/meal_suggestion.dart' show mealPrefsSummary;
 import '../../onboarding/presentation/edit_scaffold.dart';
 import '../../onboarding/presentation/steps/about_checks.dart';
 import '../../onboarding/presentation/steps/about_step.dart';
@@ -31,7 +31,7 @@ import '../../streaks/presentation/streaks_screen.dart';
 import '../../schedule/presentation/schedule_screen.dart';
 import 'change_password_screen.dart';
 import 'delete_account_screen.dart';
-import 'rice_with_meals_sheet.dart';
+import 'meal_preferences_screen.dart';
 
 /// FR-1.4: change any onboarding answer later.
 ///
@@ -391,16 +391,22 @@ class _SettingsList extends ConsumerWidget {
                   trailing: _WeightUnitSwitch(profile: profile),
                 ),
                 _SettingsRow(
-                  rowKey: const Key('settings.rice'),
-                  icon: Icons.rice_bowl_outlined,
-                  label: 'Rice with meals',
-                  trailing: Text(
-                    profile.usualRiceCups == 0
-                        ? 'None'
-                        : cupsLabel(profile.usualRiceCups),
-                    style: TextStyle(fontSize: 13, color: context.fs.text2),
+                  rowKey: const Key('settings.mealPrefs'),
+                  icon: Icons.restaurant_menu_outlined,
+                  label: 'Meal preferences',
+                  // Wraps rather than overflows at large text: "1½ cups
+                  // rice · avoids 6" is longer than any other row's value.
+                  trailing: Flexible(
+                    child: Text(
+                      mealPrefsSummary(
+                        profile.usualRiceCups,
+                        profile.avoidFoods,
+                      ),
+                      textAlign: TextAlign.end,
+                      style: TextStyle(fontSize: 13, color: context.fs.text2),
+                    ),
                   ),
-                  onTap: () => showRiceWithMealsSheet(context),
+                  onTap: () => _open(context, const MealPreferencesScreen()),
                 ),
                 _SettingsRow(
                   rowKey: const Key('notifications'),

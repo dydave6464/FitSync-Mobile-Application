@@ -16,6 +16,7 @@ import 'package:fitsync/features/nutrition/presentation/widgets/log_plate_sheet.
 import 'package:fitsync/features/nutrition/presentation/widgets/meal_idea_rows.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
+import 'package:fitsync/features/settings/presentation/meal_preferences_screen.dart';
 
 import 'helpers/meal_suggestion_fixtures.dart';
 import 'nutrition_controller_test.dart' show FakeNutritionRepository, emptyDay;
@@ -252,6 +253,51 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Nothing to suggest for breakfast right now.'), findsOneWidget);
     expect(find.byKey(const Key('ideas.more')), findsNothing);
+  });
+
+  group('Meal preferences from the page', () {
+    MealSuggestions empty(int skipped) =>
+        MealSuggestions(date: fixtureToday, meal: 'lunch', state: SuggestionState.noTarget, suggestions: const [], skipped: skipped);
+
+    testWidgets('the settings icon, named and 48 dp, opens the screen', (tester) async {
+      await _pump(tester, answers: {'lunch': _lunch});
+      final icon = find.byKey(const Key('ideas.prefs'));
+      expect(tester.widget<IconButton>(icon).tooltip, 'Meal preferences');
+      final size = tester.getSize(icon);
+      expect(size.width, greaterThanOrEqualTo(48));
+      expect(size.height, greaterThanOrEqualTo(48));
+      expect(
+        tester.getTopLeft(icon).dx,
+        lessThan(tester.getTopLeft(find.descendant(of: find.byType(AppBar), matching: find.byType(FsTag))).dx),
+        reason: 'before the Local tag',
+      );
+      await tester.tap(icon);
+      await tester.pumpAndSettle();
+      expect(find.byType(MealPreferencesScreen), findsOneWidget);
+    });
+
+    testWidgets('a meal emptied by the preferences offers to change them', (tester) async {
+      await _pump(tester, answers: {'lunch': empty(2)});
+      expect(find.text('Nothing to suggest for lunch right now.'), findsOneWidget);
+      final link = find.byKey(const Key('ideas.prefsLink'));
+      expect(find.descendant(of: link, matching: find.text('Change meal preferences')), findsOneWidget);
+      expect(tester.getSize(link).height, greaterThanOrEqualTo(48));
+      expect(tester.getTopLeft(link).dy, greaterThan(tester.getTopLeft(find.byKey(const Key('ideas.empty'))).dy));
+      expect(
+        tester.getTopLeft(link).dx,
+        tester.getTopLeft(find.byKey(const Key('ideas.empty'))).dx,
+        reason: 'aligned to the start',
+      );
+      await tester.tap(link);
+      await tester.pumpAndSettle();
+      expect(find.byType(MealPreferencesScreen), findsOneWidget);
+    });
+
+    testWidgets('an empty meal with nothing skipped offers no link', (tester) async {
+      await _pump(tester, answers: {'lunch': empty(0)});
+      expect(find.text('Nothing to suggest for lunch right now.'), findsOneWidget);
+      expect(find.byKey(const Key('ideas.prefsLink')), findsNothing);
+    });
   });
 
   testWidgets('a failed meal shows the error line; the buttons still work', (tester) async {

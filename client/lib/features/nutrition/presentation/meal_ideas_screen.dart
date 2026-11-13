@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
+import '../../settings/presentation/meal_preferences_screen.dart';
 import '../domain/meal_suggestion.dart';
 import '../domain/nutrition.dart';
 import 'error_snack_bar.dart';
@@ -86,8 +87,24 @@ class _MealIdeasScreenState extends ConsumerState<MealIdeasScreen> {
       body = Padding(
         key: ValueKey('empty $_meal'),
         padding: const EdgeInsets.only(top: 4),
-        child: Text('Nothing to suggest for $_meal right now.',
-            key: const Key('ideas.empty'), style: TextStyle(fontSize: 13, color: t.text2)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Nothing to suggest for $_meal right now.',
+                key: const Key('ideas.empty'), style: TextStyle(fontSize: 13, color: t.text2)),
+            // Only when the user's own choices emptied the meal.
+            if (data.skipped > 0)
+              TextButton(
+                key: const Key('ideas.prefsLink'),
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(48, 48),
+                  padding: const EdgeInsets.symmetric(horizontal: 0),
+                ),
+                onPressed: _openPreferences,
+                child: const Text('Change meal preferences'),
+              ),
+          ],
+        ),
       );
     } else {
       body = _Ideas(
@@ -107,6 +124,12 @@ class _MealIdeasScreenState extends ConsumerState<MealIdeasScreen> {
       appBar: AppBar(
         title: const Text('Meal ideas'),
         actions: [
+          IconButton(
+            key: const Key('ideas.prefs'),
+            tooltip: 'Meal preferences',
+            icon: const Icon(Icons.tune),
+            onPressed: _openPreferences,
+          ),
           ExcludeSemantics(child: Icon(Icons.eco_outlined, size: 16, color: t.accentText)),
           const SizedBox(width: 4),
           const FsTag('Local'),
@@ -151,6 +174,11 @@ class _MealIdeasScreenState extends ConsumerState<MealIdeasScreen> {
       ),
     );
   }
+
+  /// Its saves refetch the suggestions themselves: coming back needs nothing.
+  void _openPreferences() => Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => const MealPreferencesScreen()),
+      );
 
   /// Opens "Log to Lunch" for [plate]. Logged with the sheet still open, the
   /// page closes and the tab says so; dragged away first, the user is still

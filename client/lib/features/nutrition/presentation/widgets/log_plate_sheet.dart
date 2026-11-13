@@ -225,7 +225,7 @@ class _LogPlateSheetState extends ConsumerState<LogPlateSheet> {
   }
 
   /// Makes [cups] the usual rice. Not awaited, and a failure is only logged:
-  /// the plate is logged, and Settings > Rice with meals shows the amount
+  /// the plate is logged, and Settings > Meal preferences shows the amount
   /// kept (spec 2026-11-13, 1.3). The patch itself refetches the suggestions.
   static Future<void> _remember(ProviderContainer container, double cups) async {
     try {
