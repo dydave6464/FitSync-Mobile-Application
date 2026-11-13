@@ -6,6 +6,7 @@ import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
 import '../../domain/meal_suggestion.dart';
 import '../providers.dart';
+import 'dish_photo.dart';
 import 'meal_idea_rows.dart';
 
 /// The card's two lines, by state (spec 2026-11-13, 1.1).
@@ -94,7 +95,14 @@ class MealIdeasCard extends ConsumerWidget {
           hint: 'Opens meal ideas',
           onTap: onOpen,
           excludeSemantics: true,
-          child: _CardFace(title: 'Suggested for ${data.meal}', line1: lines.line1, line2: lines.line2, onTap: onOpen),
+          child: _CardFace(
+            title: 'Suggested for ${data.meal}',
+            // The top plate's dish: in "reached", the top light option.
+            photoUrl: data.suggestions.first.food.photoUrl,
+            line1: lines.line1,
+            line2: lines.line2,
+            onTap: onOpen,
+          ),
         ),
       );
     }
@@ -102,12 +110,22 @@ class MealIdeasCard extends ConsumerWidget {
   }
 }
 
-/// The card itself, styled as Snap a meal: leaf tile, title, one or two
-/// lines, chevron.
+/// The card itself, styled as Snap a meal: the top dish's photo (or the
+/// leaf tile), title, one or two lines, chevron.
 class _CardFace extends StatelessWidget {
-  const _CardFace({required this.title, required this.line1, required this.line2, required this.onTap, this.keyed = true});
+  const _CardFace({
+    required this.title,
+    this.photoUrl,
+    required this.line1,
+    required this.line2,
+    required this.onTap,
+    this.keyed = true,
+  });
 
   final String title;
+
+  /// The top dish's photo; null: the leaf tile.
+  final String? photoUrl;
   final String line1;
   final String? line2;
   final VoidCallback? onTap;
@@ -125,12 +143,7 @@ class _CardFace extends StatelessWidget {
         onTap: onTap,
         child: Row(
           children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(color: t.surface2, borderRadius: BorderRadius.circular(FsRadius.sm)),
-              child: Icon(Icons.eco_outlined, size: 20, color: t.accentText),
-            ),
+            DishPhoto(url: photoUrl, width: 48, height: 48),
             const SizedBox(width: 12),
             Expanded(
               child: Column(

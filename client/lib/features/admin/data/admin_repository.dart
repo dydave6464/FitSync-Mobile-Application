@@ -95,14 +95,33 @@ class AdminRepository {
       '/api/v1/admin/foods',
       query: {'show': show, 'q': q, 'page': '$page'},
     ),
+    // Each dish's photo comes as a `/storage/...` path, as ad images do.
+    mediaBase: _api.baseUrl,
   );
 
-  /// `400` per field (`details: [{ field }]`); `409 FOOD_NAME_TAKEN`.
-  Future<AdminFood> createFood(FoodInput input) async =>
-      _food(await _api.postJson('/api/v1/admin/foods', input.toJson()));
+  /// `400` per field (`details: [{ field }]`); `409 FOOD_NAME_TAKEN`;
+  /// `400 INVALID_IMAGE` for a photo the server can't take.
+  Future<AdminFood> createFood(FoodInput input) async => _food(
+    await _api.postJson(
+      '/api/v1/admin/foods',
+      input.toJson(),
+      timeout: _foodTimeoutFor(input),
+    ),
+  );
 
-  Future<AdminFood> updateFood(int id, FoodInput input) async =>
-      _food(await _api.patchJson('/api/v1/admin/foods/$id', input.toJson()));
+  /// The photo is replaced only when [input] has one, and removed only when
+  /// it says so.
+  Future<AdminFood> updateFood(int id, FoodInput input) async => _food(
+    await _api.patchJson(
+      '/api/v1/admin/foods/$id',
+      input.toJson(),
+      timeout: _foodTimeoutFor(input),
+    ),
+  );
+
+  /// [imageTimeout] with a photo, as an ad's image; otherwise the usual.
+  static Duration? _foodTimeoutFor(FoodInput input) =>
+      input.image == null ? null : imageTimeout;
 
   /// Leaves the food out of search, Recents and Snap a meal. Meals already
   /// logged keep it.
@@ -159,6 +178,8 @@ class AdminRepository {
   AdminExercise _exercise(Map<String, dynamic> data) =>
       AdminExercise.fromJson(data['exercise'] as Map<String, dynamic>);
 
-  AdminFood _food(Map<String, dynamic> data) =>
-      AdminFood.fromJson(data['food'] as Map<String, dynamic>);
+  AdminFood _food(Map<String, dynamic> data) => AdminFood.fromJson(
+    data['food'] as Map<String, dynamic>,
+    mediaBase: _api.baseUrl,
+  );
 }

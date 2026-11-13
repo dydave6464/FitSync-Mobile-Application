@@ -46,6 +46,48 @@ void main() {
     expect(plate.items.map((f) => f.name), ['Tinolang manok', 'White rice']);
   });
 
+  group('dish photos', () {
+    Map<String, dynamic> withPhoto(Object? photoUrl) => {
+      ..._tinola,
+      'food': {...(_tinola['food'] as Map<String, dynamic>), 'photoUrl': photoUrl},
+    };
+    MealSuggestions answer(List<Map<String, dynamic>> plates, {String? mediaBase}) => MealSuggestions.fromJson({
+      'date': '2026-11-13', 'meal': 'lunch', 'state': 'fits', 'share': {'kcal': 650, 'proteinG': 40},
+      'riceFood': _rice, 'suggestions': plates,
+    }, mediaBase: mediaBase);
+
+    test("the dish's photo is joined to the server's address", () {
+      final s = answer([withPhoto('/storage/foods/a.jpg')], mediaBase: 'http://10.0.2.2:3000');
+      expect(s.suggestions.single.food.photoUrl, 'http://10.0.2.2:3000/storage/foods/a.jpg');
+    });
+
+    test('without an address the photo is left as sent', () {
+      expect(answer([withPhoto('/storage/foods/a.jpg')]).suggestions.single.food.photoUrl, '/storage/foods/a.jpg');
+      expect(
+        SuggestedFood.fromJson({...(_tinola['food'] as Map<String, dynamic>), 'photoUrl': '/storage/foods/b.png'}).photoUrl,
+        '/storage/foods/b.png',
+      );
+    });
+
+    test('a dish without a photo, or from an older server, has none', () {
+      final s = answer([withPhoto(null), _egg], mediaBase: 'http://10.0.2.2:3000');
+      expect(s.suggestions.map((p) => p.food.photoUrl), [null, null]);
+    });
+
+    test('rice never has one', () {
+      final s = answer([withPhoto('/storage/foods/a.jpg')], mediaBase: 'http://10.0.2.2:3000');
+      expect(s.suggestions.single.rice!.photoUrl, isNull);
+      expect(s.riceFood!.photoUrl, isNull);
+    });
+
+    test('the photo stays with the dish when the rice changes', () {
+      final s = answer([withPhoto('/storage/foods/a.jpg')], mediaBase: 'http://10.0.2.2:3000');
+      final p = withRiceCups(s.suggestions.single, s.riceFood!, 2);
+      expect(p.food.photoUrl, 'http://10.0.2.2:3000/storage/foods/a.jpg');
+      expect(p.rice!.photoUrl, isNull);
+    });
+  });
+
   test('no_target and reached come without a share', () {
     expect(_read(state: 'no_target', share: null).state, SuggestionState.noTarget);
     final reached = _read(state: 'reached', share: null, plates: const [_egg]);

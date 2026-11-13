@@ -1,4 +1,5 @@
 import '../../../core/numbers.dart';
+import '../../admin/domain/admin_format.dart' show mediaUrl;
 import 'nutrition.dart' show Food;
 
 /// What `GET /api/v1/nutrition/suggestions` says about today (spec
@@ -27,17 +28,24 @@ class SuggestedFood {
     required this.proteinG,
     required this.carbsG,
     required this.fatG,
+    this.photoUrl,
   });
 
-  factory SuggestedFood.fromJson(Map<String, dynamic> j) => SuggestedFood(
-    foodId: (j['foodId'] as num).toInt(),
-    name: j['name'] as String,
-    servingDesc: j['servingDesc'] as String?,
-    kcal: (j['kcal'] as num).round(),
-    proteinG: _d(j['proteinG']),
-    carbsG: _d(j['carbsG']),
-    fatG: _d(j['fatG']),
-  );
+  /// [mediaBase], the server's address, turns the photo's `/storage/...`
+  /// path into a full URL; without it the path is kept as sent.
+  factory SuggestedFood.fromJson(Map<String, dynamic> j, {String? mediaBase}) {
+    final photo = j['photoUrl'] as String?;
+    return SuggestedFood(
+      foodId: (j['foodId'] as num).toInt(),
+      name: j['name'] as String,
+      servingDesc: j['servingDesc'] as String?,
+      kcal: (j['kcal'] as num).round(),
+      proteinG: _d(j['proteinG']),
+      carbsG: _d(j['carbsG']),
+      fatG: _d(j['fatG']),
+      photoUrl: photo == null || mediaBase == null ? photo : mediaUrl(mediaBase, photo),
+    );
+  }
 
   final int foodId;
   final String name;
@@ -46,6 +54,10 @@ class SuggestedFood {
   final double proteinG;
   final double carbsG;
   final double fatG;
+
+  /// The dish's photo, a full URL; null when it has none (rice never does,
+  /// nor does a server older than round 3).
+  final String? photoUrl;
 
   /// The FitSync food to log, one serving. Sent by its id, so the server
   /// logs its own numbers, as for any food picked from search.
@@ -89,10 +101,11 @@ class MealSuggestion {
     this.servedWithRice = false,
   });
 
-  factory MealSuggestion.fromJson(Map<String, dynamic> j) {
+  /// [mediaBase]: see [SuggestedFood.fromJson]; only the dish has a photo.
+  factory MealSuggestion.fromJson(Map<String, dynamic> j, {String? mediaBase}) {
     final rice = j['rice'] as Map<String, dynamic>?;
     return MealSuggestion(
-      food: SuggestedFood.fromJson(j['food'] as Map<String, dynamic>),
+      food: SuggestedFood.fromJson(j['food'] as Map<String, dynamic>, mediaBase: mediaBase),
       rice: rice == null ? null : SuggestedFood.fromJson(rice),
       // A server older than round 1 sends neither: its rice is 1 cup, and
       // only a plate with rice was served with it.
@@ -148,8 +161,9 @@ class MealSuggestions {
   });
 
   /// A state this app does not know, or "fits" without its share, is a
-  /// [FormatException]: the section then says it couldn't load.
-  factory MealSuggestions.fromJson(Map<String, dynamic> j) {
+  /// [FormatException]: the section then says it couldn't load. [mediaBase]:
+  /// see [SuggestedFood.fromJson].
+  factory MealSuggestions.fromJson(Map<String, dynamic> j, {String? mediaBase}) {
     final state = switch (j['state']) {
       'fits' => SuggestionState.fits,
       'no_target' => SuggestionState.noTarget,
@@ -166,7 +180,7 @@ class MealSuggestions {
       state: state,
       share: share,
       suggestions: [
-        for (final s in j['suggestions'] as List) MealSuggestion.fromJson(s as Map<String, dynamic>),
+        for (final s in j['suggestions'] as List) MealSuggestion.fromJson(s as Map<String, dynamic>, mediaBase: mediaBase),
       ],
       riceCups: (j['riceCups'] as num?)?.toDouble() ?? 1,
       riceFood: j['riceFood'] == null ? null : SuggestedFood.fromJson(j['riceFood'] as Map<String, dynamic>),

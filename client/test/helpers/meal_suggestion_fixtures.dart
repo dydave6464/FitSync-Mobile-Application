@@ -10,13 +10,15 @@ Map<String, dynamic> suggestedFoodJson(int id, String name, String serving, int 
 final riceJson = suggestedFoodJson(1, 'White rice', '1 cup (160 g)', 206, 3, 45, 0);
 
 /// A plate as the server sends it: the dish, [cups] of rice (none for 0 or
-/// [rice] false) and the two added up.
+/// [rice] false) and the two added up. [photoUrl] is the dish's photo (none
+/// by default, so no test loads an image unless it asks to).
 Map<String, dynamic> plateJson(
   Map<String, dynamic> food, {
   bool rice = true,
   double cups = 1,
   bool? servedWithRice,
   bool high = false,
+  String? photoUrl,
 }) {
   final withRice = rice && cups > 0;
   final scaled = withRice
@@ -32,7 +34,7 @@ Map<String, dynamic> plateJson(
   final items = [food, ?scaled];
   num sum(String key) => items.fold<num>(0, (total, f) => total + (f[key] as num));
   return {
-    'food': food,
+    'food': {...food, 'photoUrl': ?photoUrl},
     'rice': scaled,
     'total': {'kcal': sum('kcal'), 'proteinG': sum('proteinG'), 'carbsG': sum('carbsG'), 'fatG': sum('fatG')},
     'servedWithRice': servedWithRice ?? rice,

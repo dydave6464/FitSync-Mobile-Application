@@ -690,6 +690,105 @@ void main() {
       expect(body['sodiumMg'], 900);
     });
 
+    test('a food reads its photo as a full URL, or null for none', () async {
+      final read = _repo(
+        [],
+        (_) => _ok({
+          'foods': [
+            {...foodJson(), 'photoUrl': '/storage/foods/abc.jpg'},
+            {...foodJson(), 'photoUrl': null},
+            foodJson(),
+          ],
+          'counts': {'shown': 412, 'hidden': 3},
+          'page': 1,
+          'limit': 30,
+          'total': 3,
+        }),
+      );
+      final foods = (await read.foods()).foods;
+      expect(foods[0].photoUrl, '${read.baseUrl}/storage/foods/abc.jpg');
+      expect(foods[1].photoUrl, isNull);
+      expect(foods[2].photoUrl, isNull);
+
+      // A saved food's answer is read the same way.
+      final saved = _repo(
+        [],
+        (_) => _ok({
+          'food': {...foodJson(), 'photoUrl': '/storage/foods/new.png'},
+        }),
+      );
+      expect(
+        (await saved.createFood(input)).photoUrl,
+        '${saved.baseUrl}/storage/foods/new.png',
+      );
+      expect(
+        (await saved.updateFood(12, input)).photoUrl,
+        '${saved.baseUrl}/storage/foods/new.png',
+      );
+    });
+
+    test('a picked photo is sent as plain base64 with its type', () async {
+      final sent = <http.Request>[];
+      final repo = _repo(sent, (_) => _ok({'food': foodJson()}));
+      final bytes = Uint8List.fromList(const [0xFF, 0xD8, 0xFF, 0xE0, 1, 2]);
+
+      await repo.updateFood(
+        12,
+        FoodInput(
+          name: 'Chicken adobo',
+          category: 'filipino',
+          foodType: 'home',
+          servingDesc: '1 cup (240 g)',
+          proteinG: 28.5,
+          carbsG: 4,
+          fatG: 21.25,
+          image: bytes,
+          mimeType: 'image/jpeg',
+        ),
+      );
+
+      final body = jsonDecode(sent.single.body) as Map<String, dynamic>;
+      expect(body['image'], base64Encode(bytes));
+      expect(body['mimeType'], 'image/jpeg');
+      expect(body.containsKey('removePhoto'), isFalse);
+    });
+
+    test('a removed photo is sent as removePhoto, with no image', () async {
+      final sent = <http.Request>[];
+      final repo = _repo(sent, (_) => _ok({'food': foodJson()}));
+
+      await repo.updateFood(
+        12,
+        const FoodInput(
+          name: 'Chicken adobo',
+          category: 'filipino',
+          foodType: 'home',
+          servingDesc: '1 cup (240 g)',
+          proteinG: 28.5,
+          carbsG: 4,
+          fatG: 21.25,
+          removePhoto: true,
+        ),
+      );
+
+      final body = jsonDecode(sent.single.body) as Map<String, dynamic>;
+      expect(body['removePhoto'], isTrue);
+      expect(body.containsKey('image'), isFalse);
+      expect(body.containsKey('mimeType'), isFalse);
+    });
+
+    test('an untouched photo sends neither image nor removePhoto', () async {
+      final sent = <http.Request>[];
+      final repo = _repo(sent, (_) => _ok({'food': foodJson()}));
+
+      await repo.updateFood(12, input);
+
+      final body = jsonDecode(sent.single.body) as Map<String, dynamic>;
+      for (final key in ['image', 'mimeType', 'removePhoto']) {
+        expect(body.containsKey(key), isFalse, reason: key);
+      }
+    });
+
     test('a taken name keeps the server code and message', () async {
       final repo = _repo(
         [],
