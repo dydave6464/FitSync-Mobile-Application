@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -117,16 +118,31 @@ void main() {
   });
 
   testWidgets('three at a time, up to nine; the first new plate takes focus', (tester) async {
+    final semantics = tester.ensureSemantics();
     await _pump(tester, answers: {'lunch': suggestionsAnswer('fits', _nine, share: {'kcal': 650, 'proteinG': 40})});
     expect(find.byKey(const Key('suggest.row.3')), findsNothing);
     await tester.tap(find.byKey(const Key('ideas.more')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('suggest.row.5')), findsOneWidget);
-    expect(Focus.of(tester.element(find.byKey(const Key('suggest.row.3')))).hasPrimaryFocus, isTrue);
+    // The focus is on row 3's card, and its own labelled node says so: no
+    // unlabelled wrapper node above it.
+    final focused = FocusManager.instance.primaryFocus!.context!;
+    expect(find.descendant(of: find.byKey(const Key('suggest.row.3')), matching: find.byWidget(focused.widget)), findsOneWidget);
+    final row = tester.getSemantics(find.byKey(const Key('suggest.row.3')));
+    expect(row.label, isNotEmpty);
+    expect(row, isSemantics(isButton: true, isFocusable: true, isFocused: true, hasFocusAction: true));
+    expect(row.parent, isNot(isSemantics(isFocusable: true)));
+    // One keyboard stop per row: Tab goes straight on to row 4.
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.pump();
+    final next = FocusManager.instance.primaryFocus!.context!;
+    expect(find.descendant(of: find.byKey(const Key('suggest.row.4')), matching: find.byWidget(next.widget)), findsOneWidget);
+    expect(tester.getSemantics(find.byKey(const Key('suggest.row.3'))), isSemantics(isFocusable: true, isFocused: false));
     await tester.tap(find.byKey(const Key('ideas.more')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('suggest.row.8')), findsOneWidget);
     expect(find.byKey(const Key('ideas.more')), findsNothing);
+    semantics.dispose();
   });
 
   testWidgets('switching meal goes back to three', (tester) async {

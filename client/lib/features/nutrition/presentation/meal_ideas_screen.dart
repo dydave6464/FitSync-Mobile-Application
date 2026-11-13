@@ -203,9 +203,12 @@ class _Ideas extends StatelessWidget {
         const SizedBox(height: 10),
         for (final (i, plate) in plates.indexed) ...[
           if (i > 0) const SizedBox(height: 8),
-          Focus(
+          PlateRow(
+            index: i,
+            plate: plate,
+            meal: data.meal,
+            onTap: () => onOpen(plate),
             focusNode: i == firstNew ? firstNewNode : null,
-            child: PlateRow(index: i, plate: plate, meal: data.meal, onTap: () => onOpen(plate)),
           ),
         ],
         if (data.suggestions.length > shown) ...[

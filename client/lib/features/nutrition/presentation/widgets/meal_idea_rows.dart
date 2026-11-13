@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme.dart';
@@ -54,18 +55,66 @@ Future<void> _undo(
 
 /// One plate: the whole row is the button. One screen-reader node, its words
 /// said once in the label; the + is decoration.
-class PlateRow extends StatelessWidget {
-  const PlateRow({super.key, required this.index, required this.plate, required this.meal, required this.onTap});
+class PlateRow extends StatefulWidget {
+  const PlateRow({
+    super.key,
+    required this.index,
+    required this.plate,
+    required this.meal,
+    required this.onTap,
+    this.focusNode,
+  });
 
   final int index;
   final MealSuggestion plate;
   final String meal;
   final VoidCallback? onTap;
 
+  /// The card's keyboard focus, for a page that moves focus onto this row;
+  /// the row's own otherwise. Either way the row's one node reports it, so
+  /// the row stays one screen-reader node and one Tab stop.
+  final FocusNode? focusNode;
+
+  @override
+  State<PlateRow> createState() => _PlateRowState();
+}
+
+class _PlateRowState extends State<PlateRow> {
+  FocusNode? _own;
+
+  FocusNode get _focus => widget.focusNode ?? (_own ??= FocusNode(debugLabel: 'plate row'));
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(_focusChanged);
+  }
+
+  @override
+  void didUpdateWidget(PlateRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final was = oldWidget.focusNode ?? _own;
+    if (was != _focus) {
+      was?.removeListener(_focusChanged);
+      _focus.addListener(_focusChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    _focus.removeListener(_focusChanged);
+    _own?.dispose();
+    super.dispose();
+  }
+
+  void _focusChanged() => setState(() {});
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
+    final PlateRow(:index, :plate, :meal, :onTap) = widget;
     final meta = plateMeta(plate);
+    final focusable = onTap != null;
     return Semantics(
       key: Key('suggest.row.$index'),
       container: true,
@@ -74,6 +123,11 @@ class PlateRow extends StatelessWidget {
       label: plateSpoken(plate),
       hint: 'Log to $meal',
       onTap: onTap,
+      // The card's InkWell holds the focus, but its Focus's node is excluded
+      // below with the rest, so this one node reports it as Focus would.
+      focusable: focusable,
+      focused: focusable ? _focus.hasPrimaryFocus : null,
+      onFocus: focusable && defaultTargetPlatform != TargetPlatform.iOS ? _focus.requestFocus : null,
       excludeSemantics: true,
       // Faded like a disabled FsButton while the tab loads a day; eased so
       // a quick reload does not flash, at once with reduced motion.
@@ -85,6 +139,7 @@ class PlateRow extends StatelessWidget {
           child: FsCard(
             small: true,
             onTap: onTap,
+            focusNode: _focus,
             padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
             child: Row(
               children: [
