@@ -13,6 +13,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const localDriver = require('../src/services/storage/local');
+const { Writable } = require('node:stream');
+const { createLogger } = require('../src/lib/logger');
 
 const FOOD_KEYS = [
   'carbsG', 'category', 'contains', 'fatG', 'fiberG', 'foodType', 'hidden', 'id', 'kcal', 'name', 'photoUrl',
@@ -429,6 +431,34 @@ test('admin foods endpoints', async (t) => {
     assert.notEqual(food.photoUrl, photoUrl);
     assert.deepEqual(fs.readFileSync(fileOf(food.photoUrl)), JPEG_2);
     assert.equal(fs.existsSync(fileOf(photoUrl)), false);
+    photoUrl = food.photoUrl;
+  });
+
+  await t.test('an old photo that will not delete is only logged: the replace still succeeds', async () => {
+    // Same disk, but every delete fails; a capturing logger sees the warning.
+    let logged = '';
+    const destination = new Writable({ write(chunk, _enc, cb) { logged += chunk.toString(); cb(); } });
+    const busyApp = buildTestApp({
+      pool,
+      storage: {
+        ...localDriver.create(storageDir),
+        delete: async () => { throw Object.assign(new Error('busy'), { code: 'EBUSY' }); },
+      },
+      logger: createLogger({ level: 'warn', env: 'production', destination }),
+    });
+    const res = await request(busyApp).patch(`/api/v1/admin/foods/${photoFood}`).set(auth)
+      .send({ image: b64(JPEG), mimeType: 'image/jpeg' }).expect(200);
+    const { food } = res.body.data;
+    assert.match(food.photoUrl, PHOTO_URL);
+    assert.notEqual(food.photoUrl, photoUrl);
+    assert.equal(await photoKeyOf(photoFood), keyOf(food.photoUrl));
+    assert.ok(fs.existsSync(fileOf(photoUrl)), 'the old file is still on disk');
+    const warning = logged.split('\n').filter(Boolean).map((line) => JSON.parse(line))
+      .find((entry) => entry.msg === 'old food photo not deleted');
+    assert.ok(warning, 'the failed delete is logged');
+    assert.equal(warning.code, 'EBUSY');
+    // Tidy up through the real driver so later tests see one file per photo.
+    fs.rmSync(fileOf(photoUrl));
     photoUrl = food.photoUrl;
   });
 
