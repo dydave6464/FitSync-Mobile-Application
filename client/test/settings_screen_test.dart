@@ -2254,6 +2254,30 @@ void main() {
       );
     });
 
+    testWidgets('a save that fails after the sheet closed says so on the '
+        'screen', (tester) async {
+      final gate = Completer<void>();
+      await _pump(
+        tester,
+        patchGate: gate,
+        patchError: const ApiException('NETWORK_ERROR', 'SocketException'),
+      );
+      await _openRow(tester, const Key('settings.rice'));
+      await tester.tap(find.byKey(const Key('rice.2.0')));
+      await tester.pump();
+      // Closed while the save is still on its way.
+      Navigator.of(tester.element(find.byKey(const Key('rice.2.0')))).pop();
+      await tester.pumpAndSettle();
+      expect(find.byType(BottomSheet), findsNothing);
+      gate.complete();
+      await tester.pumpAndSettle();
+      expect(
+        find.text("Couldn't save your rice. Try again.").hitTestable(),
+        findsOneWidget,
+      );
+      expect(find.byType(SnackBar), findsOneWidget);
+    });
+
     testWidgets('a tap just below the chips still picks one', (tester) async {
       final patches = <Map<String, dynamic>>[];
       await _pump(tester, patches: patches);

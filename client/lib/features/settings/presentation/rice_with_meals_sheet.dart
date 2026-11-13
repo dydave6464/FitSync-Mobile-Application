@@ -41,6 +41,11 @@ class _RiceSheetState extends ConsumerState<_RiceSheet> {
       _pending = cups;
       _failed = false;
     });
+    // Captured before the await: the sheet can be closed while the save runs
+    // (the close button, the scrim, a drag, system back), and the app-level
+    // messenger outlives it.
+    final messenger = ScaffoldMessenger.of(context);
+    final route = ModalRoute.of(context);
     try {
       await ref.read(profileProvider.notifier).patch({'usualRiceCups': cups});
     } catch (error) {
@@ -49,7 +54,15 @@ class _RiceSheetState extends ConsumerState<_RiceSheet> {
       if (error is! ApiException) {
         debugPrint('Saving $cups cups of rice failed: $error');
       }
-      if (mounted) setState(() => _failed = true);
+      // On the sheet while it is open; once it is closing or closed, as a
+      // snack bar on the screen under it, so the failure is never silent.
+      if (mounted && (route?.isCurrent ?? false)) {
+        setState(() => _failed = true);
+      } else {
+        messenger.showSnackBar(
+          const SnackBar(content: Text("Couldn't save your rice. Try again.")),
+        );
+      }
     } finally {
       if (mounted) setState(() => _pending = null);
     }
@@ -103,8 +116,8 @@ class _RiceSheetState extends ConsumerState<_RiceSheet> {
             // FsTapRoom's reach below the row: room inside the column, which
             // hit-tests only its own box, not the padding around it.
             const SizedBox(height: 8),
-            // In the sheet, not a snack bar: one would be drawn under it.
-            // FsErrorLine is a live region, so it is read out.
+            // In the sheet while it is open, not a snack bar: one would be
+            // drawn under it. FsErrorLine is a live region, so it is read out.
             if (_failed) ...[
               const FsErrorLine("Couldn't save your rice. Try again."),
               const SizedBox(height: 8),
