@@ -632,4 +632,79 @@ void main() {
       expect(find.byKey(const Key('suggest.row.0')), findsOneWidget);
     });
   });
+
+  group("Don't suggest this from a row's sheet", () {
+    Future<FakeNutritionRepository> hideFirst(WidgetTester tester) async {
+      final (repo, _) = await _pump(tester, answers: {'lunch': _lunch});
+      await tester.tap(find.byKey(const Key('suggest.row.0')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('logPlate.hide')));
+      await tester.pumpAndSettle();
+      return repo;
+    }
+
+    testWidgets('says "Won\'t suggest" with Undo on the page, which stays; the suggestions are asked again',
+        (tester) async {
+      final (repo, popped) = await _pump(tester, answers: {'lunch': _lunch});
+      await tester.tap(find.byKey(const Key('suggest.row.0')));
+      await tester.pumpAndSettle();
+      final asked = repo.suggestionCalls.length;
+      await tester.tap(find.byKey(const Key('logPlate.hide')));
+      await tester.pumpAndSettle();
+      expect(repo.hideCalls, [10]);
+      expect(find.byType(LogPlateSheet), findsNothing);
+      expect(find.byType(MealIdeasScreen), findsOneWidget, reason: 'the page stays');
+      expect(popped.value, isNull);
+      final bar = find.byType(SnackBar);
+      expect(find.descendant(of: bar, matching: find.text("Won't suggest Tinolang manok")), findsOneWidget);
+      expect(find.descendant(of: bar, matching: find.text('Undo')), findsOneWidget);
+      expect(tester.widget<SnackBar>(bar).duration, const Duration(seconds: 4));
+      expect(repo.suggestionCalls.length, greaterThan(asked));
+    });
+
+    testWidgets('Undo shows the dish again and asks for the suggestions again', (tester) async {
+      final repo = await hideFirst(tester);
+      final asked = repo.suggestionCalls.length;
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      expect(repo.showCalls, [10]);
+      expect(repo.suggestionCalls.length, greaterThan(asked));
+      expect(find.text("Couldn't undo. Show it again in Meal preferences."), findsNothing);
+    });
+
+    testWidgets('Undo failing says where to show the dish again', (tester) async {
+      final repo = await hideFirst(tester);
+      repo.failHidden = true;
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      expect(repo.showCalls, [10]);
+      expect(find.text("Couldn't undo. Show it again in Meal preferences."), findsOneWidget);
+      expect(find.text("Won't suggest Tinolang manok"), findsNothing, reason: 'replaced');
+    });
+
+    testWidgets('dragged away mid-hide, a failure is said on the page', (tester) async {
+      final (repo, _) = await _pump(tester, answers: {'lunch': _lunch});
+      await tester.tap(find.byKey(const Key('suggest.row.0')));
+      await tester.pumpAndSettle();
+      repo
+        ..hiddenHold = Completer<void>()
+        ..failHidden = true;
+      await tester.tap(find.byKey(const Key('logPlate.hide')));
+      await tester.pump();
+      await tester.drag(find.byKey(const Key('sheet.handle')), const Offset(0, 600));
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.byType(LogPlateSheet), findsNothing);
+      repo.hiddenHold!.complete();
+      await tester.pumpAndSettle();
+      expect(find.byType(MealIdeasScreen), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(SnackBar),
+          matching: find.text("Couldn't hide it. Something went wrong on our side. Please try again."),
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining("Won't suggest"), findsNothing);
+    });
+  });
 }

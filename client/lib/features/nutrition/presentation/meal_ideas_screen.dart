@@ -154,12 +154,13 @@ class _MealIdeasScreenState extends ConsumerState<MealIdeasScreen> {
 
   /// Opens "Log to Lunch" for [plate]. Logged with the sheet still open, the
   /// page closes and the tab says so; dragged away first, the user is still
-  /// browsing, so it is said here.
+  /// browsing, so it is said here. "Don't suggest this" is said here too.
   Future<void> _open(MealSuggestions data, MealSuggestion plate) async {
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     final screenReader = MediaQuery.accessibleNavigationOf(context);
     final controller = ref.read(nutritionDayProvider.notifier);
+    final container = ProviderScope.containerOf(context, listen: false);
     PlateLogged? done;
     await showLogPlateSheet(
       context,
@@ -176,6 +177,8 @@ class _MealIdeasScreenState extends ConsumerState<MealIdeasScreen> {
         }
       },
       onFailedAfterClose: (message) => showErrorSnackBar(messenger, message),
+      // Hidden, the page stays: the user is still browsing.
+      onHidden: (dish) => showDishHiddenSnackBar(messenger, container, dish, screenReader: screenReader),
     );
     // The sheet's route is gone by now, so this pop is the page's own.
     final result = done;
