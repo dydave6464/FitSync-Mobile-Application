@@ -86,7 +86,11 @@ class FakeProfileNotifier extends ProfileNotifier {
     this.patchGate,
     this.weightUnit = WeightUnit.kg,
     this.isPremium = false,
+    this.usualRiceCups = 1,
   });
+
+  /// The cups of rice suggested plates carry.
+  final double usualRiceCups;
 
   /// Whether the profile says the account is Pro.
   final bool isPremium;
@@ -163,6 +167,7 @@ class FakeProfileNotifier extends ProfileNotifier {
     weightKg: weightKg,
     goalWeightKg: goalWeightKg,
     weightUnit: weightUnit,
+    usualRiceCups: usualRiceCups,
   );
 
   /// Every `patch` call, counted on arrival -- before [patchGate] holds it
@@ -317,6 +322,7 @@ Future<void> _pump(
   bool isPremium = false,
   ThemeStore? themeStore,
   bool hasPassword = true,
+  double usualRiceCups = 1,
 }) async {
   _profile = FakeProfileNotifier(
     patches ?? <Map<String, dynamic>>[],
@@ -335,6 +341,7 @@ Future<void> _pump(
     patchGate: patchGate,
     weightUnit: weightUnit,
     isPremium: isPremium,
+    usualRiceCups: usualRiceCups,
   );
   await tester.pumpWidget(
     ProviderScope(
@@ -2175,6 +2182,63 @@ void main() {
       expect(
         tester.widget<AboutStep>(find.byType(AboutStep)).mainGoal,
         'lose_weight',
+      );
+    });
+  });
+
+  group('Rice with meals', () {
+    Finder valueOf(String text) => find.descendant(
+      of: find.byKey(const Key('settings.rice')),
+      matching: find.text(text),
+    );
+
+    testWidgets('says the usual amount beside its name', (tester) async {
+      await _pump(tester, usualRiceCups: 1.5);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('settings.rice')),
+        200,
+      );
+      expect(find.text('Rice with meals'), findsOneWidget);
+      expect(valueOf('1½ cups'), findsOneWidget);
+    });
+
+    testWidgets('no rice says None', (tester) async {
+      await _pump(tester, usualRiceCups: 0);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('settings.rice')),
+        200,
+      );
+      expect(valueOf('None'), findsOneWidget);
+    });
+
+    testWidgets('the sheet saves a new amount at once', (tester) async {
+      final patches = <Map<String, dynamic>>[];
+      await _pump(tester, patches: patches);
+      await _openRow(tester, const Key('settings.rice'));
+      expect(
+        find.text(
+          'Used for suggested plates. You can change it when you log a plate.',
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const Key('rice.2.0')));
+      await tester.pumpAndSettle();
+      expect(patches, [
+        {'usualRiceCups': 2.0},
+      ]);
+    });
+
+    testWidgets('a failed save says so and keeps the old amount', (
+      tester,
+    ) async {
+      await _pump(tester, failPatch: true);
+      await _openRow(tester, const Key('settings.rice'));
+      await tester.tap(find.byKey(const Key('rice.0.5')));
+      await tester.pumpAndSettle();
+      expect(find.text("Couldn't save your rice. Try again."), findsOneWidget);
+      expect(
+        tester.widget<FsChip>(find.byKey(const Key('rice.1.0'))).selected,
+        isTrue,
       );
     });
   });
