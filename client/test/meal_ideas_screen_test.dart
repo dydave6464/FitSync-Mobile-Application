@@ -383,6 +383,20 @@ void main() {
       }
     });
 
+    testWidgets('a placeholder is as tall as a row with no tag, so nothing jumps', (tester) async {
+      final repo = FakeNutritionRepository()..suggestionsHold = Completer<void>();
+      // Wide, so the test font's square glyphs keep the row's text on one
+      // line each: a row as short as it gets, its photo's 56 plus padding.
+      await _pump(tester, repo: repo, answers: {'lunch': _lunch}, size: const Size(1000, 1400));
+      final placeholder = tester.getSize(find.byKey(const Key('suggest.placeholder.0'))).height;
+      repo.suggestionsHold!.complete();
+      await tester.pumpAndSettle();
+      // Row 0 (tinola) has no High protein tag.
+      expect(find.descendant(of: find.byKey(const Key('suggest.row.0')), matching: find.byType(FsTag)), findsNothing);
+      expect(placeholder, tester.getSize(find.byKey(const Key('suggest.row.0'))).height);
+      expect(placeholder, 76);
+    });
+
     testWidgets("the protein figure is in the Protein bar's green, with its number", (tester) async {
       await _pump(tester, answers: {'lunch': _lunch});
       final meta = find.byKey(const Key('suggest.meta.0'));

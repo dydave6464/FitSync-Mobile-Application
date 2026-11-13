@@ -243,7 +243,8 @@ class SuggestionPlaceholders extends StatelessWidget {
             SizedBox(height: i == 0 ? 10 : 8),
             Container(
               key: Key('suggest.placeholder.$i'),
-              height: 64,
+              // A row with no tag: its photo's 56 plus 10 above and below.
+              height: 76,
               decoration: BoxDecoration(color: t.surface2, borderRadius: BorderRadius.circular(FsRadius.md)),
             ),
           ],
