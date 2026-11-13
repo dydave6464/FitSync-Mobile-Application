@@ -50,4 +50,11 @@ async function readRice(pool) {
   return row ? asFood(row) : null;
 }
 
-module.exports = { readSuggestionPool, readRice };
+/// The cups of white rice this user's plates carry (users.usual_rice_cups,
+/// 049): 0 to 2 in halves, 1 unless they chose. DECIMAL arrives as a string.
+async function readUsualRiceCups(pool, userId) {
+  const [[row]] = await pool.query('SELECT usual_rice_cups FROM users WHERE user_id = ?', [userId]);
+  return row ? Number(row.usual_rice_cups) : 1;
+}
+
+module.exports = { readSuggestionPool, readRice, readUsualRiceCups };

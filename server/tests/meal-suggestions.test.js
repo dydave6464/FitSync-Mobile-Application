@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { pickSuggestions, dayNumber } = require('../src/lib/meal-suggestions');
+const { pickSuggestions, dayNumber, asRiceFood } = require('../src/lib/meal-suggestions');
 
 const RICE = {
   foodId: 1, name: 'White rice', servingDesc: '1 cup (160 g)', kcal: 206, proteinG: 3.4, carbsG: 47.5, fatG: 0.3,
@@ -70,9 +70,10 @@ test('a plate is the dish and the rice added up, as the app shows it', () => {
       foodId: 5, name: 'Tinolang manok', servingDesc: '1 bowl (350 g)', kcal: 260, proteinG: 26, carbsG: 10, fatG: 12,
     },
     rice: {
-      foodId: 1, name: 'White rice', servingDesc: '1 cup (160 g)', kcal: 206, proteinG: 3.4, carbsG: 47.5, fatG: 0.3,
+      foodId: 1, name: 'White rice', servingDesc: '1 cup (160 g)', servings: 1, kcal: 206, proteinG: 3.4, carbsG: 47.5, fatG: 0.3,
     },
     total: { kcal: 466, proteinG: 29.4, carbsG: 57.5, fatG: 12.3 },
+    servedWithRice: true,
     highProtein: false,
   }]);
 });
@@ -126,7 +127,7 @@ test('ranks by closeness to the share, less a bonus for protein', () => {
     ],
   });
   // P matches the calories exactly, yet Q and S give more protein.
-  assert.deepEqual(names(result), ['Q', 'S', 'P']);
+  assert.deepEqual(names(result), ['Q', 'S', 'P', 'R']);
 });
 
 test('the protein bonus stops at the share', () => {
@@ -184,7 +185,7 @@ test('no target: the most protein for the calories first, nothing dropped for si
   });
   assert.equal(result.state, 'no_target');
   assert.equal(result.share, null);
-  assert.deepEqual(names(result), ['Grilled bangus', 'Tinolang manok', 'Lechon belly']);
+  assert.deepEqual(names(result), ['Grilled bangus', 'Tinolang manok', 'Lechon belly', 'Pinakbet']);
   assert.equal(result.suggestions[0].rice.foodId, RICE.foodId);
 });
 
@@ -202,7 +203,7 @@ test('under 100 kcal left: light snacks, most protein first, never with rice', (
   assert.equal(result.state, 'reached');
   assert.equal(result.share, null);
   // Papaya before pineapple: the same protein, fewer calories.
-  assert.deepEqual(names(result), ['Hard-boiled egg', 'Lakatan banana', 'Papaya fresh fruit']);
+  assert.deepEqual(names(result), ['Hard-boiled egg', 'Lakatan banana', 'Papaya fresh fruit', 'Pinya (pineapple)']);
   assert.ok(result.suggestions.every((s) => s.rice === null));
   // Exactly 100 kcal left still fits.
   assert.equal(pick({ totals: { kcal: 1900, proteinG: 80 }, pool }).state, 'fits');
@@ -216,9 +217,93 @@ test('high protein is 30% of the calories or more', () => {
   assert.equal(snack(14.9), false); // 59.6 / 200
 });
 
-test('at most three, fewer when fewer qualify, none from an empty list', () => {
-  const pool = [1, 2, 3, 4, 5].map((i) => dish(i + 10, `Dish ${i}`, 200 + i, 20));
-  assert.equal(pick({ pool }).suggestions.length, 3);
+test('at most nine, fewer when fewer qualify, none from an empty list', () => {
+  const pool = Array.from({ length: 11 }, (_, i) => dish(i + 10, `Dish ${i}`, 200 + i, 20));
+  assert.equal(pick({ pool }).suggestions.length, 9);
   assert.equal(pick({ pool: pool.slice(0, 2) }).suggestions.length, 2);
   assert.deepEqual(pick({ pool: [] }), { state: 'fits', share: { kcal: 1000, proteinG: 50 }, suggestions: [] });
+});
+
+/// Rice with round numbers, so scaled figures compare exactly.
+const ROUND_RICE = {
+  foodId: 1, name: 'White rice', servingDesc: '1 cup (160 g)', kcal: 200, proteinG: 4, carbsG: 40, fatG: 0.4,
+};
+const TINOLA = dish(5, 'Tinolang manok', 260, 26, { carbsG: 10, fatG: 12, servingDesc: '1 bowl (350 g)' });
+
+test("rice is the user's usual cups: its numbers scaled, its servings said", () => {
+  const plateAt = (riceCups) => pick({ pool: [TINOLA], rice: ROUND_RICE, riceCups }).suggestions[0];
+  assert.deepEqual(plateAt(1.5).rice, {
+    foodId: 1, name: 'White rice', servingDesc: '1 cup (160 g)', servings: 1.5, kcal: 300, proteinG: 6, carbsG: 60, fatG: 0.6,
+  });
+  assert.deepEqual(plateAt(1.5).total, { kcal: 560, proteinG: 32, carbsG: 70, fatG: 12.6 });
+  assert.deepEqual(plateAt(0.5).total, { kcal: 360, proteinG: 28, carbsG: 30, fatG: 12.2 });
+  assert.deepEqual(plateAt(2).total, { kcal: 660, proteinG: 34, carbsG: 90, fatG: 12.8 });
+  assert.equal(plateAt(2).rice.servings, 2);
+});
+
+test('no rice as the usual: the dish alone, still marked as served with rice', () => {
+  const [plate] = pick({ pool: [TINOLA], rice: ROUND_RICE, riceCups: 0 }).suggestions;
+  assert.equal(plate.rice, null);
+  assert.equal(plate.total.kcal, 260);
+  assert.equal(plate.servedWithRice, true);
+});
+
+test('served with rice: a main meal, a dish served with it, and rice in the list', () => {
+  const pool = [
+    dish(5, 'Tinolang manok', 260, 26, { meals: ['lunch', 'snack'] }),
+    dish(6, 'Tapsilog', 650, 35, { meals: ['lunch'], withRice: false }),
+  ];
+  const served = (over) => Object.fromEntries(pick({ pool, ...over }).suggestions.map((s) => [s.food.name, s.servedWithRice]));
+  assert.deepEqual(served({}), { 'Tinolang manok': true, Tapsilog: false });
+  assert.deepEqual(served({ meal: 'snack' }), { 'Tinolang manok': false });
+  assert.deepEqual(served({ rice: null }), { 'Tinolang manok': false, Tapsilog: false });
+});
+
+test('a dish that comes back without its rice is still served with rice', () => {
+  // As 'plates over what is left are dropped': B fits only without rice.
+  const result = pick({
+    totals: { kcal: 1600, proteinG: 0 },
+    pool: [dish(5, 'A', 150, 20), dish(6, 'B', 250, 15), dish(8, 'D', 180, 10, { withRice: false })],
+  });
+  const byName = Object.fromEntries(result.suggestions.map((s) => [s.food.name, s]));
+  assert.equal(byName.B.rice, null);
+  assert.equal(byName.B.servedWithRice, true);
+  assert.equal(byName.D.servedWithRice, false);
+});
+
+test("a dish eaten yesterday comes after every other, in each state, but still comes", () => {
+  const yesterday = [{ foodId: 5 }, { foodId: null }];
+  // fits: P would lead (it matches the share), but it was yesterday's.
+  const fits = pick({
+    meal: 'dinner', rice: null, totals: { kcal: 1400, proteinG: 60 }, yesterday,
+    pool: [dish(5, 'P', 600, 40), dish(6, 'Q', 500, 30), dish(7, 'R', 300, 20)],
+  });
+  assert.deepEqual(names(fits), ['Q', 'R', 'P']);
+  // no target: the most protein first, yesterday's last.
+  const noTarget = pick({
+    target: null, rice: null, yesterday, pool: [dish(5, 'Bangus', 206, 35), dish(6, 'Pinakbet', 150, 6)],
+  });
+  assert.deepEqual(names(noTarget), ['Pinakbet', 'Bangus']);
+  // reached: the light snacks, yesterday's last.
+  const snack = (id, name, kcal, proteinG) => dish(id, name, kcal, proteinG, { meals: ['snack'], withRice: false });
+  const reached = pick({
+    totals: { kcal: 1950, proteinG: 80 }, yesterday,
+    pool: [snack(5, 'Egg', 78, 6.3), snack(6, 'Banana', 89, 1.1)],
+  });
+  assert.deepEqual(names(reached), ['Banana', 'Egg']);
+  // The only dish there is still comes.
+  assert.deepEqual(names(pick({ rice: null, yesterday, pool: [dish(5, 'P', 300, 20)] })), ['P']);
+});
+
+test("today's dishes are still skipped, yesterday's only moved", () => {
+  const pool = [dish(5, 'A', 300, 20), dish(6, 'B', 300, 20)];
+  const result = pick({ rice: null, pool, entries: [{ mealType: 'breakfast', foodId: 5 }], yesterday: [{ foodId: 6 }] });
+  assert.deepEqual(names(result), ['B']);
+});
+
+test('White rice per cup, as the response gives it', () => {
+  assert.deepEqual(asRiceFood(RICE), {
+    foodId: 1, name: 'White rice', servingDesc: '1 cup (160 g)', kcal: 206, proteinG: 3.4, carbsG: 47.5, fatG: 0.3,
+  });
+  assert.equal(asRiceFood(null), null);
 });

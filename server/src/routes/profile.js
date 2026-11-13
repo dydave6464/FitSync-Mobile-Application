@@ -19,15 +19,17 @@ const ENUMS = {
   trainingLocation: ['home_gym', 'commercial_gym', 'both', 'other'],
   weightUnit: ['kg', 'lb'],
 };
+/// The cups of rice a suggested plate can carry (Meal ideas, spec 2026-11-13).
+const RICE_CUPS = [0, 0.5, 1, 1.5, 2];
 // heightCm, weightKg and goalWeightKg: each has a plausible hard range
 // (bodyWeight.BODY_RANGES), wider than the app's soft "ask once" ranges.
 const NUMERIC = Object.keys(bodyWeight.BODY_RANGES);
 const SIDES = ['left', 'right', 'both'];
 
-// users.full_name, users.notifications_enabled and users.weight_unit are
-// NOT NULL. Every other
+// users.full_name, users.notifications_enabled, users.weight_unit and
+// users.usual_rice_cups are NOT NULL. Every other
 // WRITABLE column allows NULL, and clearing an optional field is legitimate.
-const REQUIRED_NOT_NULL = ['fullName', 'notificationsEnabled', 'weightUnit'];
+const REQUIRED_NOT_NULL = ['fullName', 'notificationsEnabled', 'weightUnit', 'usualRiceCups'];
 
 // Both columns are VARCHAR(255). An over-length string must be rejected here,
 // not discovered as ER_DATA_TOO_LONG from the database.
@@ -96,6 +98,15 @@ function validatePatch(body) {
     }
     if (key === 'notificationsEnabled') {
       if (typeof value !== 'boolean') throw invalid(key, 'notificationsEnabled must be a boolean.');
+      fields[key] = value;
+      continue;
+    }
+    if (key === 'usualRiceCups') {
+      // A number from the set only: '1' or true would otherwise reach the
+      // DECIMAL column as 1.
+      if (typeof value !== 'number' || !RICE_CUPS.includes(value)) {
+        throw invalid(key, `usualRiceCups must be one of: ${RICE_CUPS.join(', ')}.`);
+      }
       fields[key] = value;
       continue;
     }
