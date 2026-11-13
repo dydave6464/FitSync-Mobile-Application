@@ -15,7 +15,7 @@ const EXPECTED_TABLES = [
   'progress_reports', 'reminder_settings', 'revenue_payments', 'reminders', 'routine_checks', 'routine_habit_days', 'routine_habits', 'routine_items', 'session_exercises', 'session_outcomes', 'set_logs',
   'shared_reports', 'streaks',
   'subscriptions', 'training_settings', 'user_equipment', 'user_goals', 'user_identities', 'user_injuries', 'user_training_days',
-  'users', 'workout_plans', 'workout_sessions',
+  'user_hidden_suggestions', 'users', 'workout_plans', 'workout_sessions',
 ];
 
 test('complete FitSync schema', async (t) => {
@@ -28,10 +28,10 @@ test('complete FitSync schema', async (t) => {
     await pool.end();
   });
 
-  await t.test('creates exactly the 56 tables from the data dictionary', async () => {
+  await t.test('creates exactly the 57 tables from the data dictionary', async () => {
     const names = (await tableNames(pool)).filter((n) => n !== 'schema_migrations');
     assert.deepEqual(names.sort(), [...EXPECTED_TABLES].sort());
-    assert.equal(names.length, 56);
+    assert.equal(names.length, 57);
   });
 
   await t.test('every table is InnoDB and utf8mb4', async () => {
@@ -55,11 +55,12 @@ test('complete FitSync schema', async (t) => {
       [testDbConfig().database],
     );
     // meal_log_client_ids is keyed by (user_id, client_id): a client id is
-    // unique per user, never app-wide.
+    // unique per user, never app-wide. user_hidden_suggestions is keyed by
+    // (user_id, food_id): a dish is hidden once per user.
     const composite = rows.filter((r) => r.cols > 1
-      && !['schema_migrations', 'auth_codes', 'meal_log_client_ids'].includes(r.t));
+      && !['schema_migrations', 'auth_codes', 'meal_log_client_ids', 'user_hidden_suggestions'].includes(r.t));
     assert.deepEqual(composite, [], 'no table may use a composite primary key');
-    assert.equal(rows.length, 57); // 56 tables + schema_migrations
+    assert.equal(rows.length, 58); // 57 tables + schema_migrations
   });
 
   await t.test('a user has exactly one streak record', async () => {
@@ -156,7 +157,7 @@ test('complete FitSync schema', async (t) => {
     assert.equal(srows[0].plan_day_no, null, 'a session predating 013 has no day');
   });
 
-  await t.test('all forty-nine migrations are recorded', async () => {
+  await t.test('all fifty-two migrations are recorded', async () => {
     const [rows] = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
     assert.deepEqual(rows.map((r) => r.version), [
       '001_account_and_profile.sql',
@@ -206,6 +207,9 @@ test('complete FitSync schema', async (t) => {
       '047_revenue_payments.sql',
       '048_meal_suggestions.sql',
       '049_usual_rice_cups.sql',
+      '050_food_contains.sql',
+      '051_user_avoid_foods.sql',
+      '052_user_hidden_suggestions.sql',
     ]);
   });
 
