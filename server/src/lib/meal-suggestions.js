@@ -106,18 +106,31 @@ const asRiceFood = (rice) => (rice ? foodOf(rice) : null);
 /// missing fields. [totals]: today's { kcal, proteinG } so far. [entries]:
 /// today's entries ({ mealType, foodId }). [pool]: every visible suggested
 /// food, { foodId, name, servingDesc, kcal, proteinG, carbsG, fatG, meals,
-/// withRice }. [rice]: the visible "White rice" food, or null.
+/// withRice, contains }. [rice]: the visible "White rice" food, or null.
 /// [riceCups]: the user's usual cups of rice (0–2 in halves, 1 if unknown).
 /// [yesterday]: yesterday's entries ({ foodId }).
+/// [avoid]: the food groups the user avoids. [hidden]: food ids the user
+/// asked not to be suggested.
 ///
-/// Returns { state, share, suggestions }: state 'fits', 'no_target' or
-/// 'reached'; share { kcal, proteinG } in 'fits' only, else null.
-function pickSuggestions({ meal, date, target, totals, entries, pool, rice, riceCups = 1, yesterday = [] }) {
+/// Returns { state, share, skipped, suggestions }: state 'fits', 'no_target'
+/// or 'reached'; share { kcal, proteinG } in 'fits' only, else null; skipped
+/// the dishes for this meal (when reached, of the light snacks) left out for
+/// what the user avoids or hid.
+function pickSuggestions({
+  meal, date, target, totals, entries, pool, rice, riceCups = 1, yesterday = [], avoid = [], hidden = [],
+}) {
   const day = dayNumber(date);
   // Rule 5: nothing already logged today, at any meal.
   const logged = new Set(entries.map((e) => e.foodId).filter((id) => id != null));
   const fresh = pool.filter((dish) => !logged.has(dish.foodId));
-  const forMeal = fresh.filter((dish) => dish.meals.includes(meal));
+  // Round 2 (spec 2026-11-13, 2.4): what the user avoids and the dishes
+  // they hid, after rule 5, so a dish eaten today is never counted here.
+  const avoided = new Set(avoid);
+  const hiddenIds = new Set(hidden);
+  const allowed = (dish) => !hiddenIds.has(dish.foodId) && !(dish.contains || []).some((g) => avoided.has(g));
+  const offered = fresh.filter((dish) => dish.meals.includes(meal));
+  const forMeal = offered.filter(allowed);
+  const skipped = offered.length - forMeal.length;
   const main = MAIN_MEALS.includes(meal);
   // Rule 5b: yesterday's dishes are not dropped, only put after the rest.
   const eatenYesterday = new Set(yesterday.map((e) => e.foodId).filter((id) => id != null));
@@ -133,7 +146,7 @@ function pickSuggestions({ meal, date, target, totals, entries, pool, rice, rice
     const proteinShare = (p) => (p.kcal > 0 ? (p.proteinG * 4) / p.kcal : 0);
     const plates = forMeal.map(plate)
       .sort((a, b) => later(a) - later(b) || proteinShare(b) - proteinShare(a) || byRotation(a, b));
-    return { state: 'no_target', share: null, suggestions: plates.slice(0, TOP).map(asSuggestion) };
+    return { state: 'no_target', share: null, skipped, suggestions: plates.slice(0, TOP).map(asSuggestion) };
   }
 
   // Rule 1.
@@ -143,11 +156,17 @@ function pickSuggestions({ meal, date, target, totals, entries, pool, rice, rice
   // Rule 9: the day is reached, so light snacks only, never with rice,
   // whatever the meal.
   if (remainingKcal < REACHED_BELOW_KCAL) {
-    const light = fresh
-      .filter((dish) => dish.meals.includes('snack') && Number(dish.kcal) <= LIGHT_MAX_KCAL)
+    const lightAll = fresh.filter((dish) => dish.meals.includes('snack') && Number(dish.kcal) <= LIGHT_MAX_KCAL);
+    const lightAllowed = lightAll.filter(allowed);
+    const light = lightAllowed
       .map((dish) => plateOf(dish, null))
       .sort((a, b) => later(a) - later(b) || b.proteinG - a.proteinG || a.kcal - b.kcal || byRotation(a, b));
-    return { state: 'reached', share: null, suggestions: light.slice(0, TOP).map(asSuggestion) };
+    return {
+      state: 'reached',
+      share: null,
+      skipped: lightAll.length - lightAllowed.length,
+      suggestions: light.slice(0, TOP).map(asSuggestion),
+    };
   }
 
   const share = shareFor(meal, remainingKcal, remainingProtein, entries);
@@ -170,6 +189,7 @@ function pickSuggestions({ meal, date, target, totals, entries, pool, rice, rice
   return {
     state: 'fits',
     share: { kcal: Math.round(share.kcal), proteinG: round1(share.proteinG) },
+    skipped,
     suggestions: picked.slice(0, TOP).map(asSuggestion),
   };
 }

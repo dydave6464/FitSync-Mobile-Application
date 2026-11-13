@@ -9,9 +9,9 @@ const RICE = {
 
 /// A suggested food. Lunch and dinner with rice unless told otherwise.
 const dish = (foodId, name, kcal, proteinG, {
-  meals = ['lunch', 'dinner'], withRice = true, carbsG = 10, fatG = 10, servingDesc = '1 serving',
+  meals = ['lunch', 'dinner'], withRice = true, carbsG = 10, fatG = 10, servingDesc = '1 serving', contains = [],
 } = {}) => ({
-  foodId, name, servingDesc, kcal, proteinG, carbsG, fatG, meals, withRice,
+  foodId, name, servingDesc, kcal, proteinG, carbsG, fatG, meals, withRice, contains,
 });
 
 const TARGET = { kcal: 2000, proteinG: 100 };
@@ -221,7 +221,7 @@ test('at most nine, fewer when fewer qualify, none from an empty list', () => {
   const pool = Array.from({ length: 11 }, (_, i) => dish(i + 10, `Dish ${i}`, 200 + i, 20));
   assert.equal(pick({ pool }).suggestions.length, 9);
   assert.equal(pick({ pool: pool.slice(0, 2) }).suggestions.length, 2);
-  assert.deepEqual(pick({ pool: [] }), { state: 'fits', share: { kcal: 1000, proteinG: 50 }, suggestions: [] });
+  assert.deepEqual(pick({ pool: [] }), { state: 'fits', share: { kcal: 1000, proteinG: 50 }, skipped: 0, suggestions: [] });
 });
 
 /// Rice with round numbers, so scaled figures compare exactly.
@@ -306,4 +306,40 @@ test('White rice per cup, as the response gives it', () => {
     foodId: 1, name: 'White rice', servingDesc: '1 cup (160 g)', kcal: 206, proteinG: 3.4, carbsG: 47.5, fatG: 0.3,
   });
   assert.equal(asRiceFood(null), null);
+});
+
+test('dishes with a food the user avoids are skipped, in every state, and counted', () => {
+  const pool = [
+    dish(5, 'Sinigang na baboy', 300, 20, { contains: ['pork'] }),
+    dish(6, 'Tinolang manok', 260, 26, { contains: ['chicken'] }),
+    dish(7, 'Chopsuey', 200, 10, { contains: ['pork', 'shellfish', 'egg'] }),
+    dish(8, 'Pinakbet', 150, 6, { contains: [] }),
+  ];
+  const fits = pick({ rice: null, pool, avoid: ['pork'] });
+  assert.deepEqual(names(fits).sort(), ['Pinakbet', 'Tinolang manok']);
+  assert.equal(fits.skipped, 2);
+  const noTarget = pick({ target: null, rice: null, pool, avoid: ['egg', 'chicken'] });
+  assert.deepEqual(names(noTarget).sort(), ['Pinakbet', 'Sinigang na baboy']);
+  assert.equal(noTarget.skipped, 2);
+  const snack = (id, name, kcal, p, contains) => dish(id, name, kcal, p, { meals: ['snack'], withRice: false, contains });
+  const reached = pick({
+    totals: { kcal: 1950, proteinG: 80 }, avoid: ['egg'],
+    pool: [snack(9, 'Hard-boiled egg', 78, 6.3, ['egg']), snack(10, 'Lakatan banana', 89, 1.1, [])],
+  });
+  assert.equal(reached.state, 'reached');
+  assert.deepEqual(names(reached), ['Lakatan banana']);
+  assert.equal(reached.skipped, 1);
+});
+
+test('dishes the user hid are skipped and counted; today\'s dishes never count', () => {
+  const pool = [dish(5, 'A', 300, 20), dish(6, 'B', 300, 20), dish(7, 'C', 300, 20)];
+  const result = pick({ rice: null, pool, hidden: [6], entries: [{ mealType: 'breakfast', foodId: 7 }] });
+  assert.deepEqual(names(result), ['A']);
+  assert.equal(result.skipped, 1, 'C was eaten today: skipped by rule 5, not by a preference');
+  const both = pick({ rice: null, pool, hidden: [6], avoid: ['pork'] });
+  assert.equal(both.skipped, 1);
+});
+
+test('nothing avoided or hidden: skipped is 0', () => {
+  assert.equal(pick({ pool: [dish(5, 'A', 300, 20)] }).skipped, 0);
 });

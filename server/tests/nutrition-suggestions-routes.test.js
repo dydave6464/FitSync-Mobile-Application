@@ -21,17 +21,21 @@ test('GET /nutrition/suggestions', async (t) => {
   const app = buildTestApp({ pool });
   t.after(async () => { await dropAllTables(pool); await pool.end(); });
 
-  const food = async (name, kcal, proteinG, carbsG, fatG, serving, { meals = '', rice = false, hidden = false } = {}) => {
+  const food = async (name, kcal, proteinG, carbsG, fatG, serving, {
+    meals = '', rice = false, hidden = false, contains = '',
+  } = {}) => {
     const [r] = await pool.query(
       `INSERT INTO foods (name, category, serving_desc, calories, protein_g, carbs_g, fat_g, suggest_meals,
-                          suggest_with_rice, hidden_at)
-       VALUES (?, 'filipino', ?, ?, ?, ?, ?, ?, ?, IF(?, NOW(), NULL))`,
-      [name, serving, kcal, proteinG, carbsG, fatG, meals, rice, hidden],
+                          suggest_with_rice, hidden_at, contains)
+       VALUES (?, 'filipino', ?, ?, ?, ?, ?, ?, ?, IF(?, NOW(), NULL), ?)`,
+      [name, serving, kcal, proteinG, carbsG, fatG, meals, rice, hidden, contains],
     );
     return r.insertId;
   };
   const RICE = await food('White rice', 206, 3.4, 47.5, 0.3, '1 cup (160 g)');
-  const TINOLA = await food('Tinolang manok', 260, 26, 10, 12, '1 bowl (350 g)', { meals: 'lunch,dinner', rice: true });
+  const TINOLA = await food('Tinolang manok', 260, 26, 10, 12, '1 bowl (350 g)', {
+    meals: 'lunch,dinner', rice: true, contains: 'chicken',
+  });
   const BANGUS = await food('Grilled bangus', 206, 35.1, 0, 7.2, '1 piece (150 g)', { meals: 'lunch,dinner', rice: true });
   const PINAKBET = await food('Pinakbet', 150, 6, 14, 8, '1 cup', { meals: 'lunch,dinner', rice: true });
   // Hidden: shown, it would lead the list (336 kcal and 32.6 g with rice).
@@ -57,6 +61,7 @@ test('GET /nutrition/suggestions', async (t) => {
       ask: (query) => request(app).get(`/api/v1/nutrition/suggestions${query}`).set(auth),
       log: (body) => request(app).post('/api/v1/nutrition/entries').set(auth).send(body).expect(201),
       patch: (body) => request(app).patch('/api/v1/profile').set(auth).send(body).expect(200),
+      hide: (id) => request(app).put(`/api/v1/nutrition/suggestions/hidden/${id}`).set(auth).send({}),
     };
   };
   const ids = (data) => data.suggestions.map((s) => s.food.foodId);
@@ -209,5 +214,20 @@ test('GET /nutrition/suggestions', async (t) => {
     assert.deepEqual([data.state, data.share], ['reached', null]);
     assert.deepEqual(ids(data), [EGG, BANANA]);
     assert.ok(data.suggestions.every((s) => s.rice === null));
+  });
+
+  await t.test('avoided and hidden dishes are skipped, and counted', async () => {
+    const u = await freshUser();
+    const before = (await u.ask('?meal=lunch').expect(200)).body.data;
+    assert.equal(before.skipped, 0);
+    assert.ok(ids(before).includes(TINOLA));
+    await u.patch({ avoidFoods: ['chicken'] });
+    const avoiding = (await u.ask('?meal=lunch').expect(200)).body.data;
+    assert.ok(!ids(avoiding).includes(TINOLA));
+    assert.equal(avoiding.skipped, 1);
+    await u.hide(BANGUS).expect(200);
+    const both = (await u.ask('?meal=lunch').expect(200)).body.data;
+    assert.ok(!ids(both).includes(BANGUS));
+    assert.equal(both.skipped, 2);
   });
 });
