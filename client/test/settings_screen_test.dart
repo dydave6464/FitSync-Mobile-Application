@@ -2258,6 +2258,32 @@ void main() {
       expect(inRow('1½ cups rice · avoids 6'), findsOneWidget);
     });
 
+    testWidgets('the summary ends flush with the row, as other values do', (
+      tester,
+    ) async {
+      await _pump(tester);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('settings.mealPrefs')),
+        200,
+      );
+      await tester.pumpAndSettle();
+      final row = tester.getRect(
+        find
+            .descendant(
+              of: find.byKey(const Key('settings.mealPrefs')),
+              matching: find.byType(Row),
+            )
+            .first,
+      );
+      // Where the last letter is drawn, not just the text's box.
+      final text = tester.renderObject<RenderParagraph>(inRow('1 cup rice'));
+      final glyphs = text.getBoxesForSelection(
+        const TextSelection(baseOffset: 0, extentOffset: '1 cup rice'.length),
+      );
+      final drawnRight = text.localToGlobal(Offset(glyphs.last.right, 0)).dx;
+      expect(drawnRight, moreOrLessEquals(row.right, epsilon: 0.5));
+    });
+
     testWidgets('opens the Meal preferences screen', (tester) async {
       await _pump(tester);
       await _openRow(tester, const Key('settings.mealPrefs'));

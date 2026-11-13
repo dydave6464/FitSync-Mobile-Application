@@ -36,10 +36,10 @@ class _MealPreferencesScreenState extends ConsumerState<MealPreferencesScreen> {
         24 + MediaQuery.paddingOf(context).bottom,
       ),
       children: const [
-        _Heading('Rice with meals'),
+        _Heading('Rice with meals', bottom: 2),
         _RiceSection(),
         SizedBox(height: 20),
-        _Heading('Foods I avoid'),
+        _Heading('Foods I avoid', bottom: 2),
         _AvoidSection(),
         SizedBox(height: 20),
         _Heading('Dishes you hid'),
@@ -52,13 +52,17 @@ class _MealPreferencesScreenState extends ConsumerState<MealPreferencesScreen> {
 /// A section's heading, announced as one, as the admin food form's are.
 /// Two lines at most rather than cut short at large text.
 class _Heading extends StatelessWidget {
-  const _Heading(this.text);
+  const _Heading(this.text, {this.bottom = 10});
 
   final String text;
 
+  /// The gap under the heading. A chip section keeps the rest of its 10 dp
+  /// inside itself, where its chips' bands can reach it.
+  final double bottom;
+
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: 8, bottom: 10),
+    padding: EdgeInsets.only(top: 8, bottom: bottom),
     child: Semantics(header: true, child: FsEyebrow(text, maxLines: 2)),
   );
 }
@@ -132,6 +136,9 @@ class _RiceSectionState extends ConsumerState<_RiceSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // FsTapRoom's reach above the row, inside the column: a tap in the
+        // heading's padding would never reach the chips.
+        const SizedBox(height: 8),
         // Wraps at large text rather than shrinking a label. FsTapRoom lets
         // each chip's 48 dp band reach past the row, as on the Log sheet's
         // rice line.
@@ -218,6 +225,8 @@ class _AvoidSectionState extends ConsumerState<_AvoidSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // The room above the row, inside the column, as in the rice section.
+        const SizedBox(height: 8),
         // Wraps at large text; each chip's 48 dp band reaches past the row.
         FsTapRoom(
           child: Wrap(

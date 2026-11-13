@@ -396,7 +396,9 @@ class _SettingsList extends ConsumerWidget {
                   label: 'Meal preferences',
                   // Wraps rather than overflows at large text: "1½ cups
                   // rice · avoids 6" is longer than any other row's value.
-                  trailing: Flexible(
+                  // Expanded, so the text box reaches the row's end and
+                  // sits flush right, as every other value does.
+                  trailing: Expanded(
                     child: Text(
                       mealPrefsSummary(
                         profile.usualRiceCups,

@@ -247,6 +247,20 @@ void main() {
       ]);
     });
 
+    testWidgets('a tap just above the first row still picks one', (
+      tester,
+    ) async {
+      final (profile, _) = await _pump(tester);
+      // The room above the first row is inside the section, not in the
+      // heading above it, so the chip's band can reach it.
+      final chip = tester.getRect(find.byKey(const Key('prefs.rice.0.0')));
+      await tester.tapAt(chip.topCenter - const Offset(0, 4));
+      await tester.pumpAndSettle();
+      expect(profile.patches, [
+        {'usualRiceCups': 0.0},
+      ]);
+    });
+
     for (final size in const [Size(360, 640), Size(640, 360), Size(844, 390)]) {
       testWidgets('fits a ${size.width.toInt()}x${size.height.toInt()} '
           'phone at 2x text, the error line too', (tester) async {
@@ -340,6 +354,22 @@ void main() {
         },
       ]);
       expect(_avoided(tester), ['beef', 'egg']);
+    });
+
+    testWidgets('a tap just above the first row still toggles one', (
+      tester,
+    ) async {
+      final (profile, _) = await _pump(tester);
+      // The room above the first row is inside the section, not in the
+      // heading above it, so the chip's band can reach it.
+      final pork = tester.getRect(find.byKey(const Key('prefs.avoid.pork')));
+      await tester.tapAt(pork.topCenter - const Offset(0, 4));
+      await tester.pumpAndSettle();
+      expect(profile.patches, [
+        {
+          'avoidFoods': ['pork'],
+        },
+      ]);
     });
 
     testWidgets('while it saves, the new set shows and further taps wait', (
