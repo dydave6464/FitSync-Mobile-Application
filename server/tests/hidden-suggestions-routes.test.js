@@ -47,6 +47,8 @@ test('hidden suggestions', async (t) => {
 
   await t.test('requires sign-in', async () => {
     await request(app).get('/api/v1/nutrition/suggestions/hidden').expect(401);
+    await request(app).put(`/api/v1/nutrition/suggestions/hidden/${TINOLA}`).send({}).expect(401);
+    await request(app).delete(`/api/v1/nutrition/suggestions/hidden/${TINOLA}`).expect(401);
   });
 
   await t.test('hide, list newest first, hide again harmlessly, show again', async () => {
