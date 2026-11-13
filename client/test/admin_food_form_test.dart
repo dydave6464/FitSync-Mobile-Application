@@ -1273,6 +1273,30 @@ void main() {
       );
     });
 
+    testWidgets("a PAYLOAD_TOO_LARGE shows the photo's size rule there", (
+      tester,
+    ) async {
+      final repo = FakeAdminRepository(
+        updateFood: (_, _) async => throw const ApiException(
+          'PAYLOAD_TOO_LARGE',
+          'The request body is larger than allowed.',
+        ),
+      );
+      await _pump(tester, repo, food: sampleFood(id: 12));
+      await _tap(tester, upload);
+
+      await _pressSave(tester);
+
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('admin.food.photo.error')),
+          matching: find.text('The photo must be at most 1.5 MB.'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('error')), findsNothing);
+    });
+
     testWidgets("the server's refusal of the image field shows there too", (
       tester,
     ) async {

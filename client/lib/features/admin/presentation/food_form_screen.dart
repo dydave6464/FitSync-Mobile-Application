@@ -244,7 +244,7 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
       picked = await picker.pick();
       if (picked != null && picked.bytes.length > _maxPhotoBytes) {
         picked = null;
-        problem = 'The photo must be at most 1.5 MB.';
+        problem = _photoTooBig;
       }
     } on UnsupportedPhoto {
       problem = 'The photo must be a JPEG or PNG.';
@@ -323,6 +323,11 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
         _photoError = message;
         return;
       }
+      // The body limit refused it before the photo rule could: say the rule.
+      if (error.code == 'PAYLOAD_TOO_LARGE') {
+        _photoError = _photoTooBig;
+        return;
+      }
       for (final detail in error.details) {
         final field = detail['field'];
         if (field == 'image' || field == 'mimeType' || field == 'removePhoto') {
@@ -337,6 +342,8 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
     }
     _error = message;
   }
+
+  static const _photoTooBig = 'The photo must be at most 1.5 MB.';
 
   static const _fieldsShown = {
     'name',

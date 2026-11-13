@@ -457,7 +457,7 @@ test('admin foods endpoints', async (t) => {
       .find((entry) => entry.msg === 'old food photo not deleted');
     assert.ok(warning, 'the failed delete is logged');
     assert.equal(warning.code, 'EBUSY');
-    // Tidy up through the real driver so later tests see one file per photo.
+    // Tidy up by hand (the busy driver could not) so later tests see one file per photo.
     fs.rmSync(fileOf(photoUrl));
     photoUrl = food.photoUrl;
   });
@@ -536,6 +536,17 @@ test('admin foods endpoints', async (t) => {
     assert.equal(food.photoUrl, null);
     assert.equal(await photoKeyOf(photoFood), null);
     assert.equal(fs.existsSync(fileOf(photoUrl)), false);
+    assert.deepEqual(filesIn(), []);
+  });
+
+  await t.test('a 1.4 MB photo fits the route\'s body limit, added and edited', async () => {
+    const photo = Buffer.alloc(1_400_000);
+    JPEG.copy(photo);
+    const { food } = (await post('/foods', {
+      ...NEW_FOOD, name: 'Puto with a big photo', image: b64(photo), mimeType: 'image/jpeg',
+    }).expect(201)).body.data;
+    await patch(`/foods/${food.id}`, { image: b64(photo), mimeType: 'image/jpeg' }).expect(200);
+    await patch(`/foods/${food.id}`, { removePhoto: true }).expect(200);
     assert.deepEqual(filesIn(), []);
   });
 });
