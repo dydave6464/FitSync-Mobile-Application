@@ -9,18 +9,34 @@ const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { createTestAdmin, TEST_JWT } = require('./helpers/admin');
 const { signToken } = require('../src/lib/tokens');
 const { seedFoods } = require('../src/db/seed-foods');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const localDriver = require('../src/services/storage/local');
 
 const FOOD_KEYS = [
-  'carbsG', 'category', 'contains', 'fatG', 'fiberG', 'foodType', 'hidden', 'id', 'kcal', 'name', 'proteinG',
-  'servingDesc', 'sodiumMg', 'sugarG', 'suggestMeals', 'suggestWithRice',
+  'carbsG', 'category', 'contains', 'fatG', 'fiberG', 'foodType', 'hidden', 'id', 'kcal', 'name', 'photoUrl',
+  'proteinG', 'servingDesc', 'sodiumMg', 'sugarG', 'suggestMeals', 'suggestWithRice',
 ];
+// Tiny images built here, never files in git: the magic bytes and padding.
+const JPEG = Buffer.from([0xff, 0xd8, 0xff, ...Array(64).fill(0)]);
+const JPEG_2 = Buffer.from([0xff, 0xd8, 0xff, ...Array(64).fill(1)]);
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d]);
+const b64 = (buf) => buf.toString('base64');
+const PHOTO_URL = /^\/storage\/foods\/[0-9a-f-]{36}\.jpg$/;
 
 test('admin foods endpoints', async (t) => {
   const pool = createPool(testDbConfig());
   await dropAllTables(pool);
   await migrate(testDbConfig());
-  const app = buildTestApp({ pool });
-  t.after(async () => { await dropAllTables(pool); await pool.end(); });
+  // A real disk driver in a temp folder, so tests can see files come and go.
+  const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fitsync-food-photos-'));
+  const app = buildTestApp({ pool, storage: localDriver.create(storageDir) });
+  t.after(async () => {
+    await dropAllTables(pool);
+    await pool.end();
+    fs.rmSync(storageDir, { recursive: true, force: true });
+  });
 
   const { auth, adminId } = await createTestAdmin(pool);
   const get = (path) => request(app).get(`/api/v1/admin${path}`).set(auth);
@@ -76,7 +92,7 @@ test('admin foods endpoints', async (t) => {
     assert.deepEqual(data.foods[0], {
       id: adobo, name: 'Chicken adobo', category: 'filipino', foodType: 'home', servingDesc: '1 cup',
       kcal: 300, proteinG: 20, carbsG: 10, fatG: 15, fiberG: 1.5, sugarG: 2, sodiumMg: 400, hidden: false,
-      suggestMeals: [], suggestWithRice: false, contains: [],
+      suggestMeals: [], suggestWithRice: false, contains: [], photoUrl: null,
     });
   });
 
@@ -118,7 +134,7 @@ test('admin foods endpoints', async (t) => {
     assert.deepEqual({ ...food, id: 0 }, {
       id: 0, name: 'Ginataang bilo-bilo', category: 'filipino', foodType: 'snack_sweet', servingDesc: '1 bowl (250 g)',
       kcal: Math.round(4 * 4 + 4 * 50 + 9 * 12), proteinG: 4, carbsG: 50, fatG: 12, fiberG: 2, sugarG: 20, sodiumMg: 30,
-      hidden: false, suggestMeals: [], suggestWithRice: false, contains: [],
+      hidden: false, suggestMeals: [], suggestWithRice: false, contains: [], photoUrl: null,
     });
     assert.equal((await foodRow(food.id)).added_by, adminId);
     // An added food has no place in the food list: it comes after the
@@ -187,7 +203,7 @@ test('admin foods endpoints', async (t) => {
     assert.deepEqual(res.body.data.food, {
       id: sinigang, name: 'Sinigang', category: 'international', foodType: 'home', servingDesc: '1 bowl',
       kcal: 300, proteinG: 20, carbsG: 10, fatG: 15, fiberG: 1.5, sugarG: 2, sodiumMg: 400, hidden: false,
-      suggestMeals: [], suggestWithRice: false, contains: [],
+      suggestMeals: [], suggestWithRice: false, contains: [], photoUrl: null,
     });
     assert.equal((await foodRow(sinigang)).added_by, adminId);
   });
@@ -360,6 +376,137 @@ test('admin foods endpoints', async (t) => {
     assert.deepEqual(data.foods.map((f) => f.id), [adobo, tortang]);
     assert.equal(data.counts.suggested, 2);
     await post(`/foods/${turon}/show`).expect(200);
+  });
+
+  // Dish photos (round 3, spec 2026-11-13): the file lives in storage, the
+  // row keeps its key, and answers carry only its URL.
+  const keyOf = (url) => url.replace(/^\/storage\//, '');
+  const fileOf = (url) => path.join(storageDir, keyOf(url));
+  const photoKeyOf = async (id) => (await pool.query('SELECT photo_key FROM foods WHERE food_id = ?', [id]))[0][0]
+    .photo_key;
+  const filesIn = () => {
+    const dir = path.join(storageDir, 'foods');
+    return fs.existsSync(dir) ? fs.readdirSync(dir).sort() : [];
+  };
+  let photoFood;
+  let photoUrl;
+
+  await t.test('a food added with a photo stores it and answers its URL', async () => {
+    const res = await post('/foods', {
+      ...NEW_FOOD, name: 'Puto with photo', image: b64(JPEG), mimeType: 'image/jpeg',
+    }).expect(201);
+    const { food } = res.body.data;
+    assert.deepEqual(Object.keys(food).sort(), FOOD_KEYS);
+    assert.match(food.photoUrl, PHOTO_URL);
+    assert.deepEqual(fs.readFileSync(fileOf(food.photoUrl)), JPEG);
+    assert.equal(await photoKeyOf(food.id), keyOf(food.photoUrl));
+    photoFood = food.id;
+    photoUrl = food.photoUrl;
+  });
+
+  await t.test('an edit with only a name keeps the photo', async () => {
+    const { food } = (await patch(`/foods/${photoFood}`, { name: 'Puto (with photo)' }).expect(200)).body.data;
+    assert.equal(food.photoUrl, photoUrl);
+    assert.ok(fs.existsSync(fileOf(photoUrl)));
+  });
+
+  await t.test('the food list carries photoUrl and never photoKey', async () => {
+    const data = await list('?show=shown&q=with%20photo');
+    assert.deepEqual(data.foods.map((f) => [f.id, f.photoUrl]), [[photoFood, photoUrl]]);
+    const all = await list('?show=shown');
+    assert.ok(all.foods.every((f) => Object.hasOwn(f, 'photoUrl') && !Object.hasOwn(f, 'photoKey')));
+  });
+
+  await t.test('hide and show answer the photo URL too', async () => {
+    assert.equal((await post(`/foods/${photoFood}/hide`).expect(200)).body.data.food.photoUrl, photoUrl);
+    assert.equal((await post(`/foods/${photoFood}/show`).expect(200)).body.data.food.photoUrl, photoUrl);
+  });
+
+  await t.test('another photo replaces it: a new URL, the old file gone', async () => {
+    const { food } = (await patch(`/foods/${photoFood}`, { image: b64(JPEG_2), mimeType: 'image/jpeg' })
+      .expect(200)).body.data;
+    assert.match(food.photoUrl, PHOTO_URL);
+    assert.notEqual(food.photoUrl, photoUrl);
+    assert.deepEqual(fs.readFileSync(fileOf(food.photoUrl)), JPEG_2);
+    assert.equal(fs.existsSync(fileOf(photoUrl)), false);
+    photoUrl = food.photoUrl;
+  });
+
+  await t.test('a photoKey a client sends is ignored', async () => {
+    const { food } = (await patch(`/foods/${photoFood}`, { photoKey: 'foods/other.jpg' }).expect(200)).body.data;
+    assert.equal(food.photoUrl, photoUrl);
+    assert.equal(await photoKeyOf(photoFood), keyOf(photoUrl));
+  });
+
+  await t.test('removePhoto with a new image is a 400 naming removePhoto, and changes nothing', async () => {
+    const before = filesIn();
+    const res = await patch(`/foods/${photoFood}`, {
+      removePhoto: true, image: b64(JPEG), mimeType: 'image/jpeg',
+    }).expect(400);
+    assert.equal(res.body.error.code, 'INVALID_ADMIN_FIELD');
+    assert.deepEqual(res.body.error.details, [{ field: 'removePhoto' }]);
+    assert.equal(await photoKeyOf(photoFood), keyOf(photoUrl));
+    assert.deepEqual(filesIn(), before);
+  });
+
+  await t.test('removePhoto anything but true is a 400 naming removePhoto', async () => {
+    const res = await patch(`/foods/${photoFood}`, { removePhoto: 'yes' }).expect(400);
+    assert.equal(res.body.error.code, 'INVALID_ADMIN_FIELD');
+    assert.deepEqual(res.body.error.details, [{ field: 'removePhoto' }]);
+    assert.equal(await photoKeyOf(photoFood), keyOf(photoUrl));
+    assert.ok(fs.existsSync(fileOf(photoUrl)));
+  });
+
+  await t.test('a bad image is 400 INVALID_IMAGE: no file written, the food unchanged', async () => {
+    const before = filesIn();
+    for (const body of [
+      { name: 'Renamed', image: b64(JPEG), mimeType: 'image/gif' },
+      { name: 'Renamed', image: b64(JPEG), mimeType: 'image/png' },
+      { name: 'Renamed', image: b64(PNG), mimeType: 'image/jpeg' },
+    ]) {
+      const res = await patch(`/foods/${photoFood}`, body).expect(400);
+      assert.equal(res.body.error.code, 'INVALID_IMAGE', JSON.stringify(body.mimeType));
+    }
+    const added = await post('/foods', {
+      ...NEW_FOOD, name: 'Bad photo food', image: b64(JPEG), mimeType: 'image/gif',
+    }).expect(400);
+    assert.equal(added.body.error.code, 'INVALID_IMAGE');
+    assert.deepEqual(filesIn(), before);
+    assert.equal((await foodRow(photoFood)).name, 'Puto (with photo)');
+    assert.equal(await photoKeyOf(photoFood), keyOf(photoUrl));
+    const [[{ n }]] = await pool.query("SELECT COUNT(*) AS n FROM foods WHERE name = 'Bad photo food'");
+    assert.equal(n, 0);
+  });
+
+  await t.test('a food refused for its fields leaves no photo behind', async () => {
+    const before = filesIn();
+    const taken = await post('/foods', {
+      ...NEW_FOOD, name: 'Puto (with photo)', image: b64(JPEG), mimeType: 'image/jpeg',
+    }).expect(409);
+    assert.equal(taken.body.error.code, 'FOOD_NAME_TAKEN');
+    const bad = await patch(`/foods/${photoFood}`, { name: '', image: b64(JPEG), mimeType: 'image/jpeg' })
+      .expect(400);
+    assert.equal(bad.body.error.code, 'INVALID_ADMIN_FIELD');
+    assert.deepEqual(bad.body.error.details, [{ field: 'name' }]);
+    assert.deepEqual(filesIn(), before);
+    assert.equal(await photoKeyOf(photoFood), keyOf(photoUrl));
+  });
+
+  await t.test('a photo for a FatSecret copy or an unknown food is 404, and nothing is stored', async () => {
+    const before = filesIn();
+    for (const id of [copy, 999999]) {
+      const res = await patch(`/foods/${id}`, { image: b64(JPEG), mimeType: 'image/jpeg' }).expect(404);
+      assert.equal(res.body.error.code, 'FOOD_NOT_FOUND');
+    }
+    assert.deepEqual(filesIn(), before);
+  });
+
+  await t.test('removePhoto clears it and deletes the file', async () => {
+    const { food } = (await patch(`/foods/${photoFood}`, { removePhoto: true }).expect(200)).body.data;
+    assert.equal(food.photoUrl, null);
+    assert.equal(await photoKeyOf(photoFood), null);
+    assert.equal(fs.existsSync(fileOf(photoUrl)), false);
+    assert.deepEqual(filesIn(), []);
   });
 });
 

@@ -32,7 +32,7 @@ function totalsOf(entries) {
 module.exports = function buildNutritionRouter(deps) {
   const router = express.Router();
   const auth = requireAuth(deps);
-  const { pool } = deps;
+  const { pool, storage = null } = deps;
 
   router.get('/day', auth, async (req, res, next) => {
     try {
@@ -72,7 +72,15 @@ module.exports = function buildNutritionRouter(deps) {
         meal, date, target, totals: totalsOf(entries), entries, pool: dishes, rice,
         riceCups: prefs.riceCups, avoid: prefs.avoid, hidden, yesterday,
       });
-      res.json({ data: { date, meal, riceCups: prefs.riceCups, riceFood: asRiceFood(rice), ...picked } });
+      // Round 3: each plate's dish photo, from the pool just read; the picker
+      // never sees it, and rice has none.
+      const photoKeys = new Map(dishes.map((d) => [d.foodId, d.photoKey]));
+      const photoUrl = (foodId) => {
+        const key = photoKeys.get(foodId);
+        return key && storage ? storage.url(key) : null;
+      };
+      const suggestions = picked.suggestions.map((s) => ({ ...s, food: { ...s.food, photoUrl: photoUrl(s.food.foodId) } }));
+      res.json({ data: { date, meal, riceCups: prefs.riceCups, riceFood: asRiceFood(rice), ...picked, suggestions } });
     } catch (err) { next(err); }
   });
 
