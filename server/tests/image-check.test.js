@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { checkImage } = require('../src/lib/image-check');
+const { checkImage, imageTypeOf, MAX_IMAGE_BYTES } = require('../src/lib/image-check');
 
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01]);
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d]);
@@ -59,5 +59,23 @@ test('checkImage', async (t) => {
     const opts = { noun: 'image' };
     assert.equal(refusal({ image: b64(big), mimeType: 'image/jpeg' }, opts), 'The image must be at most 1.5 MB.');
     assert.equal(refusal({ image: b64(PNG), mimeType: 'image/jpeg' }, opts), 'The image is not the image type it says it is.');
+  });
+});
+
+// The same rule for bytes read from disk (the dish photo import).
+test('imageTypeOf', async (t) => {
+  await t.test('a JPEG or PNG answers its type and extension', () => {
+    assert.deepEqual(imageTypeOf(JPEG), { mime: 'image/jpeg', ext: 'jpg' });
+    assert.deepEqual(imageTypeOf(PNG), { mime: 'image/png', ext: 'png' });
+  });
+
+  await t.test('anything else, or too big, answers null', () => {
+    assert.equal(imageTypeOf(Buffer.from('GIF89a')), null);
+    assert.equal(imageTypeOf(Buffer.alloc(0)), null);
+    assert.equal(imageTypeOf(PNG.subarray(0, 4)), null);
+    assert.equal(imageTypeOf('not a buffer'), null);
+    const atLimit = Buffer.concat([JPEG, Buffer.alloc(MAX_IMAGE_BYTES - JPEG.length)]);
+    assert.deepEqual(imageTypeOf(atLimit), { mime: 'image/jpeg', ext: 'jpg' });
+    assert.equal(imageTypeOf(Buffer.concat([atLimit, Buffer.alloc(1)])), null);
   });
 });
