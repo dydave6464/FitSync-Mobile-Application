@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -33,6 +35,9 @@ class FakeProfileRepository implements ProfileRepository {
   /// Thrown by [logBodyWeight] instead of saving, when set.
   final Object? logError;
 
+  /// Completes [logBodyWeight] when set, so a test can look mid-save.
+  Completer<void>? gate;
+
   final logged = <double>[];
 
   /// The day each save was for; null for today (the server's own day).
@@ -54,6 +59,7 @@ class FakeProfileRepository implements ProfileRepository {
     double weightKg, {
     String? loggedOn,
   }) async {
+    if (gate != null) await gate!.future;
     if (logError != null) throw logError!;
     logged.add(weightKg);
     this.loggedOn.add(loggedOn);
@@ -116,6 +122,66 @@ Future<void> _pump(
       ),
     ),
   );
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('open'));
+  await tester.pumpAndSettle();
+}
+
+/// The sheet opened from a pushed page that, as the Progress, Profile and
+/// Nutrition screens do, watches everything a save refreshes, so an
+/// invalidate refetches it even once the sheet is gone. A pop that misses
+/// the sheet takes the page with it, and a test can see that.
+Future<void> _pumpOnPushedPage(
+  WidgetTester tester, {
+  required FakeProfileRepository repo,
+  required _FetchCount fetches,
+  required FakeNutritionRepository nutrition,
+}) async {
+  final opener = Scaffold(
+    body: Consumer(
+      builder: (context, ref, _) {
+        ref.watch(profileProvider);
+        ref.watch(bodyWeightProvider('week'));
+        ref.watch(nutritionDayProvider);
+        ref.watch(mealSuggestionsProvider('lunch'));
+        return ElevatedButton(
+          onPressed: () => showLogBodyWeightSheet(context),
+          child: const Text('open'),
+        );
+      },
+    ),
+  );
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        bodyWeightClockProvider.overrideWithValue(() => _noonNov6),
+        profileRepositoryProvider.overrideWithValue(repo),
+        nutritionRepositoryProvider.overrideWithValue(nutrition),
+        bodyWeightProvider.overrideWith((ref, period) async {
+          fetches.value += 1;
+          return const BodyWeightSeries(
+            widened: false,
+            points: [],
+            reference: null,
+            unit: 'kg',
+          );
+        }),
+      ],
+      child: MaterialApp(
+        theme: fsLightTheme(),
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute<void>(builder: (_) => opener)),
+            child: const Text('go'),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('go'));
   await tester.pumpAndSettle();
   await tester.tap(find.text('open'));
   await tester.pumpAndSettle();
@@ -312,6 +378,155 @@ void main() {
     await tester.pumpAndSettle();
 
     expect((days(), nutrition.suggestionCalls.length), (2, 2));
+  });
+
+  // The sheet can be closed while a save runs: the close button, the scrim,
+  // a drag or system back. The weigh-in still lands on the server, so what
+  // shows the weight still refreshes, and a failure is still said.
+  group('closed while a save runs', () {
+    Future<void> saveThenClose(WidgetTester tester) async {
+      await tester.enterText(find.byKey(const Key('bodyWeight.field')), '72.5');
+      await tester.tap(find.byKey(const Key('bodyWeight.save')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('bodyWeight.close')));
+    }
+
+    int days(FakeNutritionRepository nutrition) =>
+        nutrition.calls.where((c) => c.startsWith('get ')).length;
+
+    testWidgets('still refreshes the chart, profile, target and suggestions', (
+      tester,
+    ) async {
+      final repo = FakeProfileRepository()..gate = Completer<void>();
+      final fetches = _FetchCount();
+      final nutrition = FakeNutritionRepository();
+      await _pumpOnPushedPage(
+        tester,
+        repo: repo,
+        fetches: fetches,
+        nutrition: nutrition,
+      );
+
+      await saveThenClose(tester);
+      await tester.pumpAndSettle();
+      expect(find.text('Log your weight'), findsNothing);
+      final loads = repo.loads;
+      final charts = fetches.value;
+      final targets = days(nutrition);
+      final suggestions = nutrition.suggestionCalls.length;
+
+      repo.gate!.complete();
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(repo.logged, [72.5]);
+      expect(
+        (
+          repo.loads,
+          fetches.value,
+          days(nutrition),
+          nutrition.suggestionCalls.length,
+        ),
+        (loads + 1, charts + 1, targets + 1, suggestions + 1),
+      );
+      // Nothing else was popped in the sheet's place.
+      expect(find.text('open'), findsOneWidget);
+    });
+
+    // After a drag the sheet stays mounted for its exit animation while its
+    // route is already popping: a save landing then must not pop the page
+    // under it.
+    testWidgets('landing as the sheet slides away leaves the page under it', (
+      tester,
+    ) async {
+      final repo = FakeProfileRepository()..gate = Completer<void>();
+      await _pumpOnPushedPage(
+        tester,
+        repo: repo,
+        fetches: _FetchCount(),
+        nutrition: FakeNutritionRepository(),
+      );
+
+      await saveThenClose(tester);
+      // One frame into the exit: the sheet is still mounted.
+      await tester.pump();
+      expect(find.text('Log your weight'), findsOneWidget);
+
+      repo.gate!.complete();
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('Log your weight'), findsNothing);
+      expect(find.text('open'), findsOneWidget);
+      expect(find.text('go'), findsNothing);
+    });
+
+    // Without the sheet there is nowhere else to say it: the user would
+    // take the weigh-in for saved.
+    testWidgets('a failure after closing is still said', (tester) async {
+      final repo = FakeProfileRepository(
+        logError: const ApiException('NETWORK_ERROR', 'No connection.'),
+      )..gate = Completer<void>();
+      await _pumpOnPushedPage(
+        tester,
+        repo: repo,
+        fetches: _FetchCount(),
+        nutrition: FakeNutritionRepository(),
+      );
+
+      await saveThenClose(tester);
+      await tester.pumpAndSettle();
+      expect(find.text('Log your weight'), findsNothing);
+
+      repo.gate!.complete();
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(
+        find.descendant(
+          of: find.byType(SnackBar),
+          matching: find.text(
+            "Your weight wasn't saved. ${userMessage(repo.logError!)}",
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('open'), findsOneWidget);
+    });
+
+    testWidgets('a failure landing as the sheet slides away is still said', (
+      tester,
+    ) async {
+      final repo = FakeProfileRepository(
+        logError: const ApiException('NETWORK_ERROR', 'No connection.'),
+      )..gate = Completer<void>();
+      await _pumpOnPushedPage(
+        tester,
+        repo: repo,
+        fetches: _FetchCount(),
+        nutrition: FakeNutritionRepository(),
+      );
+
+      await saveThenClose(tester);
+      await tester.pump();
+      expect(find.text('Log your weight'), findsOneWidget);
+
+      repo.gate!.complete();
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('Log your weight'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(SnackBar),
+          matching: find.text(
+            "Your weight wasn't saved. ${userMessage(repo.logError!)}",
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('open'), findsOneWidget);
+    });
   });
 
   // L-85: a weight the sheet turns down is flagged on its card too, as the
