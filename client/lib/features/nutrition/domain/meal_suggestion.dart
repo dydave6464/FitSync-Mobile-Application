@@ -78,23 +78,46 @@ class PlateTotal {
   final double fatG;
 }
 
-/// One suggested plate: a dish, with 1 cup of white rice on a main meal.
+/// One suggested plate: a dish, with the user's usual rice on a main meal.
 class MealSuggestion {
-  const MealSuggestion({required this.food, this.rice, required this.total, required this.highProtein});
+  const MealSuggestion({
+    required this.food,
+    this.rice,
+    this.riceCups = 1,
+    required this.total,
+    required this.highProtein,
+    this.servedWithRice = false,
+  });
 
-  factory MealSuggestion.fromJson(Map<String, dynamic> j) => MealSuggestion(
-    food: SuggestedFood.fromJson(j['food'] as Map<String, dynamic>),
-    rice: j['rice'] == null ? null : SuggestedFood.fromJson(j['rice'] as Map<String, dynamic>),
-    total: PlateTotal.fromJson(j['total'] as Map<String, dynamic>),
-    highProtein: j['highProtein'] as bool,
-  );
+  factory MealSuggestion.fromJson(Map<String, dynamic> j) {
+    final rice = j['rice'] as Map<String, dynamic>?;
+    return MealSuggestion(
+      food: SuggestedFood.fromJson(j['food'] as Map<String, dynamic>),
+      rice: rice == null ? null : SuggestedFood.fromJson(rice),
+      // A server older than round 1 sends neither: its rice is 1 cup, and
+      // only a plate with rice was served with it.
+      riceCups: (rice?['servings'] as num?)?.toDouble() ?? 1,
+      total: PlateTotal.fromJson(j['total'] as Map<String, dynamic>),
+      highProtein: j['highProtein'] as bool,
+      servedWithRice: j['servedWithRice'] as bool? ?? rice != null,
+    );
+  }
 
   final SuggestedFood food;
   final SuggestedFood? rice;
+
+  /// The cups of rice [rice] stands for (its numbers are for that amount).
+  /// Meaningless without rice.
+  final double riceCups;
+
   final PlateTotal total;
 
   /// Protein brings 30% of the plate's calories or more.
   final bool highProtein;
+
+  /// The dish is served with rice on this meal and rice exists, so Log to
+  /// Lunch offers a rice choice -- also when this plate came without it.
+  final bool servedWithRice;
 
   /// What Log plate saves, in order: the dish, then its rice.
   List<SuggestedFood> get items => [food, ?rice];
@@ -111,7 +134,7 @@ class MealShare {
   final double proteinG;
 }
 
-/// Today's suggestions for one meal: up to three plates, best first.
+/// Today's suggestions for one meal: up to nine plates, best first.
 class MealSuggestions {
   const MealSuggestions({
     required this.date,
@@ -119,6 +142,8 @@ class MealSuggestions {
     required this.state,
     this.share,
     required this.suggestions,
+    this.riceCups = 1,
+    this.riceFood,
   });
 
   /// A state this app does not know, or "fits" without its share, is a
@@ -142,6 +167,8 @@ class MealSuggestions {
       suggestions: [
         for (final s in j['suggestions'] as List) MealSuggestion.fromJson(s as Map<String, dynamic>),
       ],
+      riceCups: (j['riceCups'] as num?)?.toDouble() ?? 1,
+      riceFood: j['riceFood'] == null ? null : SuggestedFood.fromJson(j['riceFood'] as Map<String, dynamic>),
     );
   }
 
@@ -153,6 +180,13 @@ class MealSuggestions {
   final SuggestionState state;
   final MealShare? share;
   final List<MealSuggestion> suggestions;
+
+  /// The user's usual cups of rice (0–2 in halves): what Log to Lunch starts
+  /// from and what "from now on" is measured against.
+  final double riceCups;
+
+  /// White rice, one cup; null when the server has none to offer.
+  final SuggestedFood? riceFood;
 }
 
 /// "1 bowl" from "1 bowl (350 g)": a serving without its weight, for a line
@@ -160,6 +194,65 @@ class MealSuggestions {
 String shortServing(String? desc) {
   final short = (desc ?? '').replaceAll(RegExp(r'\s*\([^)]*\)'), '').trim();
   return short.isEmpty ? '1 serving' : short;
+}
+
+/// The rice a plate can take, in cups (spec 2026-11-13).
+const riceChoices = <double>[0, 0.5, 1, 1.5, 2];
+
+/// "½ cup", "1 cup", "1½ cups", "2 cups". For an amount above 0.
+String cupsLabel(double cups) {
+  final whole = cups.floor();
+  final half = cups - whole >= 0.5;
+  final number = whole == 0 ? '½' : '$whole${half ? '½' : ''}';
+  return '$number ${cups > 1 ? 'cups' : 'cup'}';
+}
+
+/// "half a cup", "1 cup", "1 and a half cups", "2 cups": as a screen reader
+/// says it. For an amount above 0.
+String cupsSpoken(double cups) {
+  final whole = cups.floor();
+  final half = cups - whole >= 0.5;
+  if (whole == 0) return 'half a cup';
+  if (half) return '$whole and a half cups';
+  return whole == 1 ? '1 cup' : '$whole cups';
+}
+
+/// What Log to Lunch says once the rice differs from the usual.
+String riceNote(double cups) =>
+    cups == 0 ? 'Plates will come without rice from now on.' : 'Plates will use ${cupsLabel(cups)} from now on.';
+
+double _r1(double v) => (v * 10).roundToDouble() / 10;
+
+/// [p] with [cups] cups of [riceFood] (one cup's numbers) in place of its own
+/// rice: Log to Lunch's figures as the rice changes. Rounded as the server
+/// rounds: kcal whole, grams to 1 decimal.
+MealSuggestion withRiceCups(MealSuggestion p, SuggestedFood riceFood, double cups) {
+  final rice = cups == 0
+      ? null
+      : SuggestedFood(
+          foodId: riceFood.foodId,
+          name: riceFood.name,
+          servingDesc: riceFood.servingDesc,
+          kcal: (riceFood.kcal * cups).round(),
+          proteinG: _r1(riceFood.proteinG * cups),
+          carbsG: _r1(riceFood.carbsG * cups),
+          fatG: _r1(riceFood.fatG * cups),
+        );
+  final dish = p.food;
+  final total = PlateTotal(
+    kcal: dish.kcal + (rice?.kcal ?? 0),
+    proteinG: _r1(dish.proteinG + (rice?.proteinG ?? 0)),
+    carbsG: _r1(dish.carbsG + (rice?.carbsG ?? 0)),
+    fatG: _r1(dish.fatG + (rice?.fatG ?? 0)),
+  );
+  return MealSuggestion(
+    food: dish,
+    rice: rice,
+    riceCups: cups == 0 ? 1 : cups,
+    total: total,
+    highProtein: total.kcal > 0 && total.proteinG * 4 / total.kcal >= 0.3,
+    servedWithRice: p.servedWithRice,
+  );
 }
 
 /// The line under "Suggested for lunch", by state.
@@ -171,8 +264,9 @@ String suggestionHeading(MealSuggestions s) => switch (s.state) {
   SuggestionState.reached => "You've reached today's calories. Light options:",
 };
 
-/// "Tinolang manok + 1 cup rice", or the dish alone.
-String plateTitle(MealSuggestion p) => p.rice == null ? p.food.name : '${p.food.name} + 1 cup rice';
+/// "Tinolang manok + 1½ cups rice", or the dish alone.
+String plateTitle(MealSuggestion p) =>
+    p.rice == null ? p.food.name : '${p.food.name} + ${cupsLabel(p.riceCups)} rice';
 
 /// A plate's protein in whole grams: the one figure the row, its spoken
 /// label and Log to Lunch's plate total all show, so they never disagree.
@@ -181,7 +275,7 @@ int plateProteinG(MealSuggestion p) => p.total.proteinG.round();
 /// A row's second line, in two parts so the protein figure can take the
 /// Protein bar's colour: ("1 bowl + 1 cup · 466 kcal", "29 g protein").
 ({String lead, String protein}) plateMeta(MealSuggestion p) => (
-  lead: '${shortServing(p.food.servingDesc)}${p.rice == null ? '' : ' + 1 cup'} · '
+  lead: '${shortServing(p.food.servingDesc)}${p.rice == null ? '' : ' + ${cupsLabel(p.riceCups)}'} · '
       '${groupThousands(p.total.kcal.toDouble())} kcal',
   protein: '${plateProteinG(p)} g protein',
 );
@@ -189,7 +283,7 @@ int plateProteinG(MealSuggestion p) => p.total.proteinG.round();
 /// A row as a screen reader says it: "Tinolang manok with 1 cup rice, 466
 /// kilocalories, 29 grams protein", and "high protein" when it is.
 String plateSpoken(MealSuggestion p) => [
-  p.rice == null ? p.food.name : '${p.food.name} with 1 cup rice',
+  p.rice == null ? p.food.name : '${p.food.name} with ${cupsSpoken(p.riceCups)} rice',
   '${p.total.kcal} kilocalories',
   '${plateProteinG(p)} grams protein',
   if (p.highProtein) 'high protein',

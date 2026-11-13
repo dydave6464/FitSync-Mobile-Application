@@ -113,6 +113,8 @@ class Profile {
     // NOT NULL DEFAULT 'kg': a fixture that does not care about units
     // should not have to name one.
     this.weightUnit = WeightUnit.kg,
+    // Defaulted as the column is: 1 cup.
+    this.usualRiceCups = 1,
   });
 
   final int userId;
@@ -125,6 +127,9 @@ class Profile {
   /// Which unit every weight in the app is shown in and typed in. Storage
   /// stays metric whatever this says -- see [WeightUnit].
   final WeightUnit weightUnit;
+
+  /// The cups of white rice suggested plates carry: 0–2 in halves.
+  final double usualRiceCups;
   final List<EquipmentOption> equipment;
   final List<SelectedInjury> injuries;
 
@@ -195,6 +200,7 @@ class Profile {
     isPremium: json['isPremium'] as bool? ?? false,
     notificationsEnabled: json['notificationsEnabled'] as bool? ?? true,
     weightUnit: WeightUnit.fromApi(json['weightUnit'] as String?),
+    usualRiceCups: _toDouble(json['usualRiceCups']) ?? 1,
     equipment: ((json['equipment'] as List<dynamic>?) ?? const [])
         .map((e) => EquipmentOption.fromJson(e as Map<String, dynamic>))
         .toList(growable: false),
