@@ -375,6 +375,7 @@ AdminFood sampleFood({
   List<String> suggestMeals = const [],
   bool suggestWithRice = false,
   List<String> contains = const [],
+  String? photoUrl,
 }) => AdminFood(
   id: id,
   name: name,
@@ -392,6 +393,7 @@ AdminFood sampleFood({
   suggestMeals: suggestMeals,
   suggestWithRice: suggestWithRice,
   contains: contains,
+  photoUrl: photoUrl,
 );
 
 AdminFoodsPage foodsPage(

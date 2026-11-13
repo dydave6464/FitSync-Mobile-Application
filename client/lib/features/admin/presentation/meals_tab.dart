@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/numbers.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
+import '../../nutrition/presentation/widgets/dish_photo.dart';
 import '../domain/admin_format.dart';
 import '../domain/admin_models.dart';
 import 'food_form_screen.dart';
@@ -100,6 +101,9 @@ class _FoodRow extends StatelessWidget {
           excludeSemantics: true,
           child: Row(
             children: [
+              // Decorative: the row's label already names the dish.
+              DishPhoto(url: food.photoUrl, width: 40, height: 40),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

@@ -7,8 +7,10 @@ import 'package:fitsync/features/admin/domain/admin_models.dart';
 import 'package:fitsync/features/admin/presentation/meals_tab.dart';
 import 'package:fitsync/features/admin/presentation/providers.dart';
 import 'package:fitsync/features/admin/presentation/widgets/admin_widgets.dart';
+import 'package:fitsync/features/nutrition/presentation/widgets/dish_photo.dart';
 
 import 'helpers/fake_admin_repository.dart';
+import 'helpers/fake_dish_photos.dart';
 
 Future<ProviderContainer> _pump(
   WidgetTester tester,
@@ -386,6 +388,43 @@ void main() {
     expect(tag('Hidden'), findsOneWidget);
     expect(tag('Suggested'), findsNothing);
     expect(find.bySemanticsLabel('Tinolang manok, 1 bowl (350 g) · 260 kcal, Home-cooked, Hidden'), findsOneWidget);
+    handle.dispose();
+  });
+
+  testWidgets('a row starts with its dish photo, 40 x 40, or the leaf tile', (tester) async {
+    final asked = fakeDishPhotos();
+    final handle = tester.ensureSemantics();
+    await _pump(
+      tester,
+      FakeAdminRepository(
+        foods: (_, _, _) async => foodsPage([
+          sampleFood(id: 12, name: 'Chicken adobo', photoUrl: 'http://media.test/storage/foods/a.jpg'),
+          sampleFood(id: 13, name: 'Turon'),
+        ]),
+      ),
+    );
+    await decodeDishPhotos(tester);
+
+    Finder inRow(int id, Finder matching) =>
+        find.descendant(of: find.byKey(ValueKey('admin.food.$id')), matching: matching);
+
+    final photo = inRow(12, find.byType(DishPhoto));
+    expect(photo, findsOneWidget);
+    expect(tester.widget<DishPhoto>(photo).url, 'http://media.test/storage/foods/a.jpg');
+    expect(tester.getSize(photo), const Size(40, 40));
+    expect(inRow(12, find.byKey(const Key('dish.photo'))), findsOneWidget);
+    expect(asked, ['http://media.test/storage/foods/a.jpg']);
+    // At the start of the row, 12 dp before the name.
+    expect(tester.getTopRight(photo).dx + 12, tester.getTopLeft(inRow(12, find.text('Chicken adobo'))).dx);
+
+    final leaf = inRow(13, find.byType(DishPhoto));
+    expect(tester.widget<DishPhoto>(leaf).url, isNull);
+    expect(tester.getSize(leaf), const Size(40, 40));
+    expect(inRow(13, find.byKey(const Key('dish.leaf'))), findsOneWidget);
+
+    // One spoken label per row, as before: the photo adds nothing.
+    expect(find.bySemanticsLabel('Chicken adobo, 1 cup · 320 kcal, Home-cooked'), findsOneWidget);
+    expect(find.bySemanticsLabel('Turon, 1 cup · 320 kcal, Home-cooked'), findsOneWidget);
     handle.dispose();
   });
 }

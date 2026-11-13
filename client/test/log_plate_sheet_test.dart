@@ -8,10 +8,12 @@ import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/nutrition/domain/meal_suggestion.dart';
 import 'package:fitsync/features/nutrition/presentation/providers.dart';
+import 'package:fitsync/features/nutrition/presentation/widgets/dish_photo.dart';
 import 'package:fitsync/features/nutrition/presentation/widgets/log_plate_sheet.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 
+import 'helpers/fake_dish_photos.dart';
 import 'helpers/meal_suggestion_fixtures.dart';
 import 'nutrition_controller_test.dart' show FakeNutritionRepository, emptyDay;
 
@@ -45,7 +47,13 @@ Future<(FakeNutritionRepository, _Profile, _Logged)> _open(
   _Profile? profile,
   ValueChanged<SuggestedFood>? onHidden,
   bool fromPushedPage = false,
+  Size? size,
 }) async {
+  if (size != null) {
+    tester.view.physicalSize = size;
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+  }
   final repo = FakeNutritionRepository()..days[fixtureToday] = emptyDay(fixtureToday);
   final p = profile ?? _Profile();
   final logged = _Logged();
@@ -111,6 +119,80 @@ String _riceLine(WidgetTester tester) => tester
     .join(' | ');
 
 void main() {
+  group('the dish photo', () {
+    const url = 'http://fitsync.test/storage/foods/tinola.jpg';
+    Finder photo() => find.descendant(of: find.byType(LogPlateSheet), matching: find.byType(DishPhoto));
+    // The photo itself, without the margin drawn under it.
+    Finder box() => find.descendant(of: photo(), matching: find.byType(RawImage));
+
+    testWidgets("a full-width 16:9 photo under the sheet's title, 12 dp above the rest", (tester) async {
+      final asked = fakeDishPhotos();
+      // A 390 dp phone: the sheet's content is 390 - 2 x 18 = 354 wide.
+      await _open(tester, plate: plateJson(tinolaJson, photoUrl: url), size: const Size(390, 1400));
+      await decodeDishPhotos(tester);
+      expect(asked, [url]);
+      final rect = tester.getRect(box());
+      expect(rect.width, closeTo(354, 0.01));
+      expect(rect.height, closeTo(354 * 9 / 16, 0.01));
+      final image = box();
+      // Its 12 dp margin is drawn with it, under the photo.
+      expect(tester.getRect(photo()).width, rect.width);
+      expect(tester.getRect(photo()).bottom - rect.bottom, closeTo(12, 0.01));
+      final clip = tester.widget<ClipRRect>(find.ancestor(of: image, matching: find.byType(ClipRRect)).first);
+      expect(clip.borderRadius, BorderRadius.circular(FsRadius.md));
+      // The handle and the header stay at the very top; the photo leads
+      // the sheet's content.
+      final handle = tester.getRect(find.byKey(const Key('sheet.handle')));
+      final title = tester.getRect(find.text('Log to Lunch'));
+      expect(handle.bottom, lessThanOrEqualTo(title.top));
+      expect(rect.top, greaterThan(title.bottom));
+      expect(tester.getRect(find.text('Rice')).top - rect.bottom, closeTo(12, 0.01));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('no taller than 200 dp on a wide screen', (tester) async {
+      fakeDishPhotos();
+      await _open(tester, plate: plateJson(tinolaJson, photoUrl: url), size: const Size(700, 1400));
+      await decodeDishPhotos(tester);
+      final rect = tester.getRect(box());
+      expect(rect.height, 200);
+      expect(rect.width, closeTo(tester.getSize(find.byKey(const Key('logPlate.log'))).width, 0.01),
+          reason: 'as wide as the content');
+    });
+
+    testWidgets('while it loads, a box of the same size holds its place', (tester) async {
+      DishPhoto.debugImage = (_, _, _) => PendingImage();
+      addTearDown(() => DishPhoto.debugImage = null);
+      await _open(tester, plate: plateJson(tinolaJson, photoUrl: url), size: const Size(390, 1400));
+      expect(tester.getSize(find.byKey(const Key('dish.loading'))), Size(354, 354 * 9 / 16));
+    });
+
+    testWidgets('a dish without a photo: none, and the sheet starts with its header as before', (tester) async {
+      final asked = fakeDishPhotos();
+      await _open(tester, plate: plateJson(tinolaJson), size: const Size(390, 1400));
+      expect(asked, isEmpty);
+      expect(photo(), findsNothing);
+      expect(find.byKey(const Key('dish.leaf')), findsNothing, reason: 'no leaf banner');
+      final header = tester.getRect(find.byType(FsSheetHeader));
+      expect(tester.getRect(find.text('Rice')).top - header.bottom, closeTo(8, 0.01));
+    });
+
+    testWidgets('a photo that fails: no leaf banner, no box', (tester) async {
+      DishPhoto.debugImage = (_, _, _) => brokenPhoto();
+      addTearDown(() => DishPhoto.debugImage = null);
+      await _open(tester, plate: plateJson(tinolaJson, photoUrl: url), size: const Size(390, 1400));
+      await decodeDishPhotos(tester);
+      // Stretched across the column, but takes no height.
+      expect(tester.getSize(photo()).height, 0);
+      expect(find.byKey(const Key('dish.leaf')), findsNothing);
+      expect(find.byKey(const Key('dish.loading')), findsNothing);
+      // No gap left where it was: as a dish without a photo.
+      final header = tester.getRect(find.byType(FsSheetHeader));
+      expect(tester.getRect(find.text('Rice')).top - header.bottom, closeTo(8, 0.01));
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   testWidgets('a dish served with rice offers None to 2 cups, starting at the plate\'s own', (tester) async {
     await _open(tester, plate: plateJson(tinolaJson, cups: 1.5), usual: 1.5);
     expect(find.text('Rice'), findsOneWidget);

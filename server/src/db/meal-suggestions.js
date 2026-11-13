@@ -23,7 +23,7 @@ function asFood(r) {
 async function readSuggestionPool(pool) {
   const [rows] = await pool.query(
     `SELECT f.food_id, f.name, f.serving_desc, f.calories, f.protein_g, f.carbs_g, f.fat_g,
-            f.suggest_meals, f.suggest_with_rice, f.contains
+            f.suggest_meals, f.suggest_with_rice, f.contains, f.photo_key
        FROM foods f
       WHERE f.hidden_at IS NULL AND f.suggest_meals <> ''
       ORDER BY f.food_id`,
@@ -34,6 +34,8 @@ async function readSuggestionPool(pool) {
     withRice: Boolean(r.suggest_with_rice),
     // A SET column reads as 'pork,egg' in the groups' own order, '' for none.
     contains: r.contains ? String(r.contains).split(',') : [],
+    // The stored photo's key (053), or null; the route turns it into a URL.
+    photoKey: r.photo_key || null,
   }));
 }
 

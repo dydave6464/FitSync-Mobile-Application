@@ -33,4 +33,13 @@ function checkImage(body, { noun = 'photo' } = {}) {
   return { bytes, ext: EXT[mimeType] };
 }
 
-module.exports = { checkImage, MAX_IMAGE_BYTES };
+/// The same rule for bytes read from disk (the dish photo import): answers
+/// { mime, ext } when [bytes] start like a JPEG or PNG and are at most 1.5 MB,
+/// else null.
+function imageTypeOf(bytes) {
+  if (!Buffer.isBuffer(bytes) || bytes.length > MAX_IMAGE_BYTES) return null;
+  const mime = Object.keys(MAGIC).find((m) => MAGIC[m].every((b, i) => bytes[i] === b));
+  return mime ? { mime, ext: EXT[mime] } : null;
+}
+
+module.exports = { checkImage, imageTypeOf, MAX_IMAGE_BYTES };

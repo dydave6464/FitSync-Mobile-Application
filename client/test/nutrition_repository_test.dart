@@ -251,6 +251,23 @@ void main() {
     expect(s.suggestions.single.rice, isNull);
   });
 
+  test("suggestions joins each dish's photo to the server's address", () async {
+    final repo = _repo(MockClient((r) async => _ok({
+      'date': '2026-10-14', 'meal': 'lunch', 'state': 'no_target', 'share': null,
+      'suggestions': [{
+        'food': {
+          'foodId': 10, 'name': 'Tinolang manok', 'servingDesc': '1 bowl', 'kcal': 260, 'proteinG': 26,
+          'carbsG': 8, 'fatG': 14, 'photoUrl': '/storage/foods/a.jpg',
+        },
+        'rice': null,
+        'total': {'kcal': 260, 'proteinG': 26, 'carbsG': 8, 'fatG': 14},
+        'highProtein': true,
+      }],
+    })));
+    final s = await repo.suggestions('lunch');
+    expect(s.suggestions.single.food.photoUrl, 'http://test.local/storage/foods/a.jpg');
+  });
+
   const hiddenAnswer = {
     'hidden': [
       {'foodId': 10, 'name': 'Tinolang manok', 'hiddenAt': '2026-11-13T04:00:00.000Z'},

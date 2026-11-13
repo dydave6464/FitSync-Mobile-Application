@@ -1,19 +1,51 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show SemanticsNode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
+import 'package:fitsync/features/admin/data/dish_photo_picker.dart';
 import 'package:fitsync/features/admin/domain/admin_models.dart';
 import 'package:fitsync/features/admin/presentation/content_screen.dart';
 import 'package:fitsync/features/admin/presentation/food_form_screen.dart';
 import 'package:fitsync/features/admin/presentation/meals_tab.dart';
 import 'package:fitsync/features/admin/presentation/providers.dart';
+import 'package:fitsync/features/nutrition/data/meal_photo_picker.dart'
+    show PickedPhoto, UnsupportedPhoto;
+import 'package:fitsync/features/nutrition/presentation/widgets/dish_photo.dart';
 
 import 'helpers/fake_admin_repository.dart';
+import 'helpers/fake_dish_photos.dart';
+
+/// A 1 x 1 PNG, as a picked dish photo.
+final _png = PickedPhoto(
+  base64Decode(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA'
+    '60e6kgAAAABJRU5ErkJggg==',
+  ),
+  'image/png',
+);
+
+/// Hands over [results] in turn: a photo, null (backed out) or an
+/// exception to throw.
+class _FakePhotoPicker implements DishPhotoPicker {
+  _FakePhotoPicker([this.results = const []]);
+
+  final List<Object?> results;
+  int calls = 0;
+
+  @override
+  Future<PickedPhoto?> pick() async {
+    final result = results[calls++];
+    if (result is Exception) throw result;
+    return result as PickedPhoto?;
+  }
+}
 
 /// The form pushed over a page that keeps the Meals list alive, so a test
 /// can see the list asked again and the SnackBar left behind on save.
@@ -21,11 +53,17 @@ Future<ProviderContainer> _pump(
   WidgetTester tester,
   FakeAdminRepository repo, {
   AdminFood? food,
+  DishPhotoPicker? picker,
   bool dark = false,
   double textScale = 1.0,
 }) async {
   final container = ProviderContainer(
-    overrides: [adminRepositoryProvider.overrideWithValue(repo)],
+    overrides: [
+      adminRepositoryProvider.overrideWithValue(repo),
+      dishPhotoPickerProvider.overrideWithValue(
+        picker ?? _FakePhotoPicker([_png]),
+      ),
+    ],
   );
   addTearDown(container.dispose);
   container.listen(adminFoodsProvider, (_, _) {});
@@ -90,6 +128,23 @@ Future<void> _fillRequired(WidgetTester tester) async {
 
 VoidCallback? _save(WidgetTester tester) =>
     tester.widget<FsButton>(find.byKey(const Key('save'))).onPressed;
+
+/// Every semantics node that is an image: none, when photos are decorative.
+List<SemanticsNode> _imageNodes(WidgetTester tester) {
+  final found = <SemanticsNode>[];
+  bool visit(SemanticsNode node) {
+    if (node.getSemanticsData().flagsCollection.isImage) found.add(node);
+    node.visitChildren(visit);
+    return true;
+  }
+
+  var root = tester.getSemantics(find.byType(FoodFormScreen));
+  while (root.parent != null) {
+    root = root.parent!;
+  }
+  visit(root);
+  return found;
+}
 
 Future<void> _pressSave(WidgetTester tester) async {
   await tester.tap(find.byKey(const Key('save')));
@@ -986,6 +1041,372 @@ void main() {
         200,
         scrollable: find.byType(Scrollable).first,
       );
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('photo', () {
+    const url = 'http://media.test/storage/foods/a.jpg';
+    final preview = find.byKey(const Key('admin.food.photo'));
+    final upload = find.byKey(const Key('admin.food.photo.upload'));
+    final replace = find.byKey(const Key('admin.food.photo.replace'));
+    final remove = find.byKey(const Key('admin.food.photo.remove'));
+    Finder inPreview(Finder matching) =>
+        find.descendant(of: preview, matching: matching);
+    final picked = inPreview(
+      find.byWidgetPredicate((w) => w is Image && w.image is MemoryImage),
+    );
+
+    testWidgets('a food with no photo shows the leaf and Upload photo', (
+      tester,
+    ) async {
+      await _pump(tester, FakeAdminRepository(), food: sampleFood(id: 12));
+      await tester.ensureVisible(preview);
+      await tester.pumpAndSettle();
+
+      // The eyebrow draws "Photo" in capitals.
+      expect(
+        find.byWidgetPredicate((w) => w is FsEyebrow && w.text == 'Photo'),
+        findsOneWidget,
+      );
+      expect(tester.getSize(preview), const Size(96, 96));
+      expect(inPreview(find.byKey(const Key('dish.leaf'))), findsOneWidget);
+      expect(upload, findsOneWidget);
+      expect(
+        find.descendant(of: upload, matching: find.text('Upload photo')),
+        findsOneWidget,
+      );
+      expect(replace, findsNothing);
+      expect(remove, findsNothing);
+      // Before "Suggest as a local meal".
+      expect(
+        tester.getTopLeft(find.text('PHOTO')).dy,
+        lessThan(tester.getTopLeft(find.text('SUGGEST AS A LOCAL MEAL')).dy),
+      );
+    });
+
+    testWidgets('a picked photo is previewed, and Save sends it', (
+      tester,
+    ) async {
+      final repo = FakeAdminRepository();
+      await _pump(tester, repo);
+      await _fillRequired(tester);
+
+      await _tap(tester, upload);
+
+      expect(picked, findsOneWidget);
+      expect(tester.getSize(preview), const Size(96, 96));
+      expect(replace, findsOneWidget);
+      expect(remove, findsOneWidget);
+      expect(upload, findsNothing);
+
+      await _pressSave(tester);
+      final input = repo.createFoodCalls.single;
+      expect(input.image, _png.bytes);
+      expect(input.mimeType, 'image/png');
+      expect(input.removePhoto, isFalse);
+    });
+
+    testWidgets('backing out of the gallery changes nothing', (tester) async {
+      final picker = _FakePhotoPicker([null]);
+      await _pump(
+        tester,
+        FakeAdminRepository(),
+        food: sampleFood(id: 12),
+        picker: picker,
+      );
+
+      await _tap(tester, upload);
+
+      expect(picker.calls, 1);
+      expect(inPreview(find.byKey(const Key('dish.leaf'))), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Discard your changes?'), findsNothing);
+    });
+
+    testWidgets('a food with a photo shows it, with Replace and Remove', (
+      tester,
+    ) async {
+      final asked = fakeDishPhotos();
+      await _pump(
+        tester,
+        FakeAdminRepository(),
+        food: sampleFood(id: 12, photoUrl: url),
+      );
+      await tester.ensureVisible(preview);
+      await decodeDishPhotos(tester);
+
+      final photo = inPreview(find.byType(DishPhoto));
+      expect(tester.widget<DishPhoto>(photo).url, url);
+      expect(inPreview(find.byKey(const Key('dish.photo'))), findsOneWidget);
+      expect(asked, [url]);
+      expect(tester.getSize(preview), const Size(96, 96));
+      expect(
+        find.descendant(of: replace, matching: find.text('Replace')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: remove, matching: find.text('Remove')),
+        findsOneWidget,
+      );
+      expect(upload, findsNothing);
+    });
+
+    testWidgets('an untouched photo sends neither image nor removePhoto', (
+      tester,
+    ) async {
+      fakeDishPhotos();
+      final repo = FakeAdminRepository();
+      await _pump(tester, repo, food: sampleFood(id: 12, photoUrl: url));
+
+      await _type(tester, 'name', 'Adobong manok');
+      await _pressSave(tester);
+
+      final input = repo.updateFoodCalls.single.input;
+      expect(input.image, isNull);
+      expect(input.mimeType, isNull);
+      expect(input.removePhoto, isFalse);
+    });
+
+    testWidgets('Remove shows the leaf, and Save sends removePhoto', (
+      tester,
+    ) async {
+      fakeDishPhotos();
+      final repo = FakeAdminRepository();
+      await _pump(tester, repo, food: sampleFood(id: 12, photoUrl: url));
+
+      await _tap(tester, remove);
+
+      expect(inPreview(find.byKey(const Key('dish.leaf'))), findsOneWidget);
+      expect(inPreview(find.byKey(const Key('dish.photo'))), findsNothing);
+      expect(upload, findsOneWidget);
+      expect(replace, findsNothing);
+      expect(remove, findsNothing);
+
+      await _pressSave(tester);
+      final input = repo.updateFoodCalls.single.input;
+      expect(input.removePhoto, isTrue);
+      expect(input.image, isNull);
+      expect(input.mimeType, isNull);
+    });
+
+    testWidgets('picking again after Remove sends the new photo instead', (
+      tester,
+    ) async {
+      fakeDishPhotos();
+      final repo = FakeAdminRepository();
+      await _pump(tester, repo, food: sampleFood(id: 12, photoUrl: url));
+
+      await _tap(tester, remove);
+      await _tap(tester, upload);
+
+      expect(picked, findsOneWidget);
+      await _pressSave(tester);
+      final input = repo.updateFoodCalls.single.input;
+      expect(input.image, _png.bytes);
+      expect(input.mimeType, 'image/png');
+      expect(input.removePhoto, isFalse);
+    });
+
+    testWidgets('Replace picks a new photo, and Save sends it', (
+      tester,
+    ) async {
+      fakeDishPhotos();
+      final repo = FakeAdminRepository();
+      await _pump(tester, repo, food: sampleFood(id: 12, photoUrl: url));
+
+      await _tap(tester, replace);
+
+      expect(picked, findsOneWidget);
+      await _pressSave(tester);
+      final input = repo.updateFoodCalls.single.input;
+      expect(input.image, _png.bytes);
+      expect(input.removePhoto, isFalse);
+    });
+
+    testWidgets('a picked photo alone is an unsaved change', (tester) async {
+      await _pump(tester, FakeAdminRepository(), food: sampleFood(id: 12));
+      await _tap(tester, upload);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Discard your changes?'), findsOneWidget);
+    });
+
+    testWidgets('a removed photo alone is an unsaved change', (tester) async {
+      fakeDishPhotos();
+      await _pump(
+        tester,
+        FakeAdminRepository(),
+        food: sampleFood(id: 12, photoUrl: url),
+      );
+      await _tap(tester, remove);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Discard your changes?'), findsOneWidget);
+    });
+
+    testWidgets("the server's INVALID_IMAGE shows under the preview", (
+      tester,
+    ) async {
+      const message = 'The photo must be a JPEG or PNG of at most 1.5 MB.';
+      final repo = FakeAdminRepository(
+        updateFood: (_, _) async =>
+            throw const ApiException('INVALID_IMAGE', message),
+      );
+      await _pump(tester, repo, food: sampleFood(id: 12));
+      await _tap(tester, upload);
+
+      await _pressSave(tester);
+
+      final error = find.byKey(const Key('admin.food.photo.error'));
+      expect(
+        find.descendant(of: error, matching: find.text(message)),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('error')), findsNothing);
+      expect(
+        tester.getTopLeft(error).dy,
+        greaterThan(tester.getBottomLeft(preview).dy),
+      );
+    });
+
+    testWidgets("a PAYLOAD_TOO_LARGE shows the photo's size rule there", (
+      tester,
+    ) async {
+      final repo = FakeAdminRepository(
+        updateFood: (_, _) async => throw const ApiException(
+          'PAYLOAD_TOO_LARGE',
+          'The request body is larger than allowed.',
+        ),
+      );
+      await _pump(tester, repo, food: sampleFood(id: 12));
+      await _tap(tester, upload);
+
+      await _pressSave(tester);
+
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('admin.food.photo.error')),
+          matching: find.text('The photo must be at most 1.5 MB.'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('error')), findsNothing);
+    });
+
+    testWidgets("the server's refusal of the image field shows there too", (
+      tester,
+    ) async {
+      const message = 'mimeType must be image/jpeg or image/png.';
+      final repo = FakeAdminRepository(
+        updateFood: (_, _) async => throw const ApiException(
+          'INVALID_ADMIN_FIELD',
+          message,
+          details: [
+            {'field': 'mimeType'},
+          ],
+        ),
+      );
+      await _pump(tester, repo, food: sampleFood(id: 12));
+      await _tap(tester, upload);
+
+      await _pressSave(tester);
+
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('admin.food.photo.error')),
+          matching: find.text(message),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('error')), findsNothing);
+    });
+
+    testWidgets('a photo that is not a JPEG or PNG says so there', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        FakeAdminRepository(),
+        food: sampleFood(id: 12),
+        picker: _FakePhotoPicker([const UnsupportedPhoto()]),
+      );
+
+      await _tap(tester, upload);
+
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('admin.food.photo.error')),
+          matching: find.text('The photo must be a JPEG or PNG.'),
+        ),
+        findsOneWidget,
+      );
+      expect(inPreview(find.byKey(const Key('dish.leaf'))), findsOneWidget);
+    });
+
+    testWidgets('the buttons are 48 dp tall and named in full', (
+      tester,
+    ) async {
+      fakeDishPhotos();
+      final handle = tester.ensureSemantics();
+      await _pump(tester, FakeAdminRepository(), food: sampleFood(id: 12));
+      await tester.ensureVisible(upload);
+      await tester.pumpAndSettle();
+
+      expect(tester.getSize(upload).height, greaterThanOrEqualTo(48));
+      expect(find.bySemanticsLabel('Upload photo'), findsOneWidget);
+
+      await _tap(tester, upload);
+      expect(tester.getSize(replace).height, greaterThanOrEqualTo(48));
+      expect(tester.getSize(remove).height, greaterThanOrEqualTo(48));
+      expect(find.bySemanticsLabel('Replace photo'), findsOneWidget);
+      expect(find.bySemanticsLabel('Remove photo'), findsOneWidget);
+      handle.dispose();
+    });
+
+    testWidgets('the preview says nothing to a screen reader', (tester) async {
+      fakeDishPhotos();
+      final handle = tester.ensureSemantics();
+      await _pump(
+        tester,
+        FakeAdminRepository(),
+        food: sampleFood(id: 12, photoUrl: url),
+      );
+      await tester.ensureVisible(preview);
+      await decodeDishPhotos(tester);
+
+      expect(inPreview(find.byKey(const Key('dish.photo'))), findsOneWidget);
+      expect(_imageNodes(tester), isEmpty);
+
+      await _tap(tester, replace);
+      expect(picked, findsOneWidget);
+      expect(_imageNodes(tester), isEmpty);
+      handle.dispose();
+    });
+
+    testWidgets('fits a 320 dp phone at 2x text, in the dark theme', (
+      tester,
+    ) async {
+      fakeDishPhotos();
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.physicalSize = const Size(320, 640);
+      addTearDown(tester.view.reset);
+      await _pump(
+        tester,
+        FakeAdminRepository(),
+        food: sampleFood(id: 12, photoUrl: url),
+        textScale: 2.0,
+        dark: true,
+      );
+      await tester.scrollUntilVisible(
+        remove,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     });
   });

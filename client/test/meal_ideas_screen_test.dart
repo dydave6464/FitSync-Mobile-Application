@@ -12,12 +12,14 @@ import 'package:fitsync/features/nutrition/domain/meal_suggestion.dart';
 import 'package:fitsync/features/nutrition/domain/nutrition.dart';
 import 'package:fitsync/features/nutrition/presentation/meal_ideas_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/providers.dart';
+import 'package:fitsync/features/nutrition/presentation/widgets/dish_photo.dart';
 import 'package:fitsync/features/nutrition/presentation/widgets/log_plate_sheet.dart';
 import 'package:fitsync/features/nutrition/presentation/widgets/meal_idea_rows.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/settings/presentation/meal_preferences_screen.dart';
 
+import 'helpers/fake_dish_photos.dart';
 import 'helpers/meal_suggestion_fixtures.dart';
 import 'nutrition_controller_test.dart' show FakeNutritionRepository, emptyDay;
 
@@ -381,6 +383,20 @@ void main() {
       }
     });
 
+    testWidgets('a placeholder is as tall as a row with no tag, so nothing jumps', (tester) async {
+      final repo = FakeNutritionRepository()..suggestionsHold = Completer<void>();
+      // Wide, so the test font's square glyphs keep the row's text on one
+      // line each: a row as short as it gets, its photo's 56 plus padding.
+      await _pump(tester, repo: repo, answers: {'lunch': _lunch}, size: const Size(1000, 1400));
+      final placeholder = tester.getSize(find.byKey(const Key('suggest.placeholder.0'))).height;
+      repo.suggestionsHold!.complete();
+      await tester.pumpAndSettle();
+      // Row 0 (tinola) has no High protein tag.
+      expect(find.descendant(of: find.byKey(const Key('suggest.row.0')), matching: find.byType(FsTag)), findsNothing);
+      expect(placeholder, tester.getSize(find.byKey(const Key('suggest.row.0'))).height);
+      expect(placeholder, 76);
+    });
+
     testWidgets("the protein figure is in the Protein bar's green, with its number", (tester) async {
       await _pump(tester, answers: {'lunch': _lunch});
       final meta = find.byKey(const Key('suggest.meta.0'));
@@ -424,6 +440,86 @@ void main() {
         ),
       );
       semantics.dispose();
+    });
+
+    group('dish photos', () {
+      final withPhotos = suggestionsAnswer(
+        'fits',
+        [
+          plateJson(tinolaJson, photoUrl: 'http://fitsync.test/storage/foods/tinola.jpg'),
+          plateJson(sinigangJson),
+          plateJson(bangusJson, high: true, photoUrl: 'http://fitsync.test/storage/foods/bangus.jpg'),
+        ],
+        share: {'kcal': 650, 'proteinG': 40},
+      );
+      Finder photoIn(int i) =>
+          find.descendant(of: find.byKey(Key('suggest.row.$i')), matching: find.byType(DishPhoto));
+
+      testWidgets("a row starts with its dish's photo, 56 dp square, 12 dp before the title", (tester) async {
+        final asked = fakeDishPhotos();
+        await _pump(tester, answers: {'lunch': withPhotos});
+        await decodeDishPhotos(tester);
+        expect(asked, containsAll(['http://fitsync.test/storage/foods/tinola.jpg', 'http://fitsync.test/storage/foods/bangus.jpg']));
+        final photo = photoIn(0);
+        expect(tester.widget<DishPhoto>(photo).url, 'http://fitsync.test/storage/foods/tinola.jpg');
+        final image = find.descendant(of: photo, matching: find.byType(RawImage));
+        expect(tester.getSize(image), const Size(56, 56));
+        final row = tester.getRect(find.byKey(const Key('suggest.row.0')));
+        final title = tester.getRect(find.text('Tinolang manok + 1 cup rice'));
+        final rect = tester.getRect(photo);
+        expect(rect.left - row.left, closeTo(14, 0.01), reason: "at the start, inside the card's padding");
+        expect(title.left - rect.right, closeTo(12, 0.01));
+        expect(title.top, closeTo(rect.top, 0.01), reason: 'the title is level with the top of the photo');
+        expect(tester.getSize(find.byKey(const Key('suggest.row.0'))).height, greaterThanOrEqualTo(48));
+      });
+
+      testWidgets('a dish without a photo shows the leaf tile in its place', (tester) async {
+        fakeDishPhotos();
+        await _pump(tester, answers: {'lunch': withPhotos});
+        await decodeDishPhotos(tester);
+        final leaf = find.descendant(of: find.byKey(const Key('suggest.row.1')), matching: find.byKey(const Key('dish.leaf')));
+        expect(tester.getSize(leaf), const Size(56, 56));
+        expect(tester.widget<DishPhoto>(photoIn(1)).url, isNull);
+        final title = tester.getRect(find.text('Sinigang na bangus (milkfish sour soup) + 1 cup rice'));
+        expect(title.left - tester.getRect(leaf).right, closeTo(12, 0.01));
+      });
+
+      testWidgets("a row with a photo is said as before: one button, the plate's words", (tester) async {
+        final semantics = tester.ensureSemantics();
+        fakeDishPhotos();
+        await _pump(tester, answers: {'lunch': withPhotos});
+        await decodeDishPhotos(tester);
+        expect(
+          tester.getSemantics(find.byKey(const Key('suggest.row.0'))),
+          isSemantics(
+            label: 'Tinolang manok with 1 cup rice, 466 kilocalories, 29 grams protein',
+            hint: 'Log to lunch',
+            isButton: true,
+            hasTapAction: true,
+            isImage: false,
+          ),
+        );
+        expect(tester.getSemantics(find.byKey(const Key('suggest.row.0'))).childrenCount, 0);
+        semantics.dispose();
+      });
+
+      for (final dark in [false, true]) {
+        testWidgets('rows with photos fit a 320 dp phone at 2x text, the photo level with the title '
+            '(${dark ? 'dark' : 'light'})', (tester) async {
+          fakeDishPhotos();
+          await _pump(tester, answers: {'lunch': withPhotos}, size: const Size(320, 3200), textScale: 2, dark: dark);
+          await decodeDishPhotos(tester);
+          expect(tester.takeException(), isNull);
+          for (var i = 0; i < 3; i++) {
+            final photo = tester.getRect(photoIn(i));
+            expect(photo.size, const Size(56, 56), reason: 'row $i: the photo keeps its size');
+            final row = tester.getRect(find.byKey(Key('suggest.row.$i')));
+            expect(row.height, greaterThan(56 + 20), reason: 'row $i grows with its text');
+            final title = tester.getRect(find.descendant(of: find.byKey(Key('suggest.row.$i')), matching: find.byType(Text)).first);
+            expect(title.top, closeTo(photo.top, 0.01), reason: 'row $i: top-aligned with the title');
+          }
+        });
+      }
     });
 
     testWidgets('the rows cross-fade over 200 ms', (tester) async {
