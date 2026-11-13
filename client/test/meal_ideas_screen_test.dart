@@ -145,6 +145,20 @@ void main() {
     semantics.dispose();
   });
 
+  testWidgets('a meal button answers a tap 6 dp above or below the rows', (tester) async {
+    await _pump(tester, answers: {'lunch': _lunch});
+    // At 390 dp the buttons take two rows: Snack starts the second.
+    final breakfast = tester.getRect(find.byKey(const Key('ideas.meal.breakfast')));
+    final snack = tester.getRect(find.byKey(const Key('ideas.meal.snack')));
+    expect(snack.top, greaterThan(breakfast.bottom));
+    await tester.tapAt(snack.bottomCenter + const Offset(0, 6));
+    await tester.pump();
+    expect(_selected(tester, 'snack'), isTrue, reason: 'below the last row');
+    await tester.tapAt(breakfast.topCenter - const Offset(0, 6));
+    await tester.pump();
+    expect(_selected(tester, 'breakfast'), isTrue, reason: 'above the first row');
+  });
+
   testWidgets('switching meal goes back to three', (tester) async {
     await _pump(tester, answers: {
       'lunch': suggestionsAnswer('fits', _nine, share: {'kcal': 650, 'proteinG': 40}),

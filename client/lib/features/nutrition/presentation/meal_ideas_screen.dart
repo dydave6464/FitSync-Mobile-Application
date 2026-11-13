@@ -110,18 +110,25 @@ class _MealIdeasScreenState extends ConsumerState<MealIdeasScreen> {
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        // 8 of the 12 above the buttons and of the 12 below them sits in
+        // their own padding: room for a thumb that lands just off a row.
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
         children: [
-          // Wraps at large text rather than shrinking a label.
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final m in mealTypes)
-                FsChip(key: Key('ideas.meal.$m'), label: mealLabel(m), selected: m == _meal, exclusive: true, onTap: () => _pick(m)),
-            ],
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: FsTapRoom(
+              // Wraps at large text rather than shrinking a label.
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final m in mealTypes)
+                    FsChip(key: Key('ideas.meal.$m'), label: mealLabel(m), selected: m == _meal, exclusive: true, onTap: () => _pick(m)),
+                ],
+              ),
+            ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 4),
           if (MediaQuery.disableAnimationsOf(context))
             body
           else
