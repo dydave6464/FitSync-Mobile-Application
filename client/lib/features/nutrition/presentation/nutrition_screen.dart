@@ -10,12 +10,14 @@ import '../../ads/presentation/ad_slot.dart';
 import '../domain/nutrition.dart';
 import 'error_snack_bar.dart';
 import 'log_food_screen.dart';
+import 'meal_ideas_screen.dart';
 import 'meal_photo/snap_meal.dart';
 import 'providers.dart';
 import 'widgets/fatsecret_attribution.dart';
 import 'widgets/log_food_sheet.dart';
+import 'widgets/meal_ideas_card.dart';
+import 'widgets/meal_idea_rows.dart';
 import 'widgets/meal_section.dart';
-import 'widgets/meal_suggestions_section.dart';
 import 'widgets/nutrition_summary_card.dart';
 
 class NutritionScreen extends ConsumerWidget {
@@ -139,6 +141,19 @@ class NutritionScreen extends ConsumerWidget {
     ));
   }
 
+  /// Meal ideas, on the clock's meal. A plate logged there with its sheet
+  /// open comes back here, said with Undo.
+  Future<void> _openIdeas(BuildContext context, WidgetRef ref, String meal) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final screenReader = MediaQuery.accessibleNavigationOf(context);
+    final controller = ref.read(nutritionDayProvider.notifier);
+    final logged = await Navigator.of(context).push<PlateLogged>(
+      MaterialPageRoute(builder: (_) => MealIdeasScreen(initialMeal: meal)),
+    );
+    if (logged == null) return;
+    showPlateLoggedSnackBar(messenger, controller, logged.meal, logged.entries, screenReader: screenReader);
+  }
+
   /// Try again on the day: the day and today's suggestions both reload.
   void _reload(WidgetRef ref) {
     ref.invalidate(nutritionDayProvider);
@@ -209,10 +224,11 @@ class NutritionScreen extends ConsumerWidget {
         SnapMealCard(
           onTap: busy ? null : () => _snap(context, ref, day.date == today ? suggested : null, suggested, day.date),
         ),
-        // Today only: what to eat next, fitted by the server to what is left.
-        // It brings its own 16 above, and nothing at all when there is
-        // nothing to suggest.
-        if (day.date == today) MealSuggestionsSection(meal: suggested, enabled: !busy),
+        // Today only: the door to Meal ideas, fitted by the server to what
+        // is left. It brings its own 12 above, and nothing at all when there
+        // is nothing to suggest.
+        if (day.date == today)
+          MealIdeasCard(meal: suggested, onOpen: busy ? null : () => _openIdeas(context, ref, suggested)),
         const SizedBox(height: 16),
         // One way to add, by meal. The clock's guess marks the likely
         // meal's row, today only: on another day the time says nothing.
