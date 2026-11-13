@@ -17,7 +17,8 @@ import 'nutrition_controller_test.dart' show FakeNutritionRepository;
 
 /// A profile whose writes land as the real one's do: a saved patch becomes
 /// the profile on screen. [patches] records each saved write; [gate] holds
-/// every write until completed; [error] or [fail] refuse it.
+/// every write until completed; [error] or [fail] refuse it. [loadGate]
+/// holds the load itself; [loadError], while set, makes it fail.
 class _Profile extends ProfileNotifier {
   _Profile({
     this.rice = 1,
@@ -25,6 +26,8 @@ class _Profile extends ProfileNotifier {
     this.fail = false,
     this.error,
     this.gate,
+    this.loadGate,
+    this.loadError,
   });
 
   double rice;
@@ -32,6 +35,8 @@ class _Profile extends ProfileNotifier {
   final bool fail;
   final Object? error;
   final Completer<void>? gate;
+  final Completer<void>? loadGate;
+  Object? loadError;
   final patches = <Map<String, dynamic>>[];
   int patchCalls = 0;
 
@@ -49,7 +54,11 @@ class _Profile extends ProfileNotifier {
   );
 
   @override
-  Future<Profile> build() async => _now();
+  Future<Profile> build() async {
+    if (loadGate != null) await loadGate!.future;
+    if (loadError != null) throw loadError!;
+    return _now();
+  }
 
   @override
   Future<void> patch(Map<String, dynamic> fields) async {
@@ -131,6 +140,24 @@ List<String> _avoided(WidgetTester tester) => [
   for (final g in foodGroups)
     if (_chip(tester, 'prefs.avoid.$g').selected) g,
 ];
+
+/// Every rice and avoid chip, by key.
+List<String> _profileChips() => [
+  for (final c in riceChoices) 'prefs.rice.$c',
+  for (final g in foodGroups) 'prefs.avoid.$g',
+];
+
+/// How faint the chip's row is drawn.
+double _rowOpacity(WidgetTester tester, String key) => tester
+    .widget<AnimatedOpacity>(
+      find
+          .ancestor(
+            of: find.byKey(Key(key)),
+            matching: find.byType(AnimatedOpacity),
+          )
+          .first,
+    )
+    .opacity;
 
 void main() {
   testWidgets('a page titled Meal preferences with three headings', (
@@ -411,6 +438,105 @@ void main() {
       );
       expect(find.byType(SnackBar), findsNothing);
     });
+
+    testWidgets('a save that fails after the screen closed says so on the '
+        'page under it', (tester) async {
+      final gate = Completer<void>();
+      await _pump(
+        tester,
+        profile: _Profile(
+          gate: gate,
+          error: const ApiException('NETWORK_ERROR', 'SocketException'),
+        ),
+      );
+      await tester.tap(find.byKey(const Key('prefs.avoid.beef')));
+      await tester.pump();
+      // Closed while the save is still on its way.
+      Navigator.of(tester.element(find.byKey(const Key('prefs.avoid.beef'))))
+          .pop();
+      await tester.pumpAndSettle();
+      expect(find.byType(MealPreferencesScreen), findsNothing);
+      gate.complete();
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byType(SnackBar),
+          matching: find.text("Couldn't save the foods you avoid. Try again."),
+        ),
+        findsOneWidget,
+      );
+    });
+  });
+
+  group('a profile not loaded', () {
+    testWidgets('one that will not load leaves the chips faded and inert and '
+        'offers Try again, which loads it', (tester) async {
+      final profile = _Profile(
+        avoid: ['beef'],
+        loadError: const ApiException('UNKNOWN_ERROR', 'boom'),
+      );
+      await _pump(tester, profile: profile);
+      for (final key in _profileChips()) {
+        expect(_chip(tester, key).onTap, isNull, reason: key);
+        expect(_rowOpacity(tester, key), fsDisabledOpacity, reason: key);
+      }
+      await tester.tap(find.byKey(const Key('prefs.avoid.beef')));
+      await tester.tap(find.byKey(const Key('prefs.rice.2.0')));
+      await tester.pumpAndSettle();
+      expect(profile.patchCalls, 0, reason: 'nothing replaces the real set');
+      final retry = find.byKey(const Key('prefs.profileRetry'));
+      expect(retry, findsOneWidget);
+      expect(
+        find.descendant(
+          of: retry,
+          matching: find.text(
+            'Something went wrong on our side. Please try again.',
+          ),
+        ),
+        findsOneWidget,
+      );
+
+      profile.loadError = null;
+      await tester.tap(
+        find.descendant(of: retry, matching: find.text('Try again')),
+      );
+      await tester.pumpAndSettle();
+      expect(retry, findsNothing);
+      expect(_avoided(tester), ['beef']);
+      for (final key in _profileChips()) {
+        expect(_chip(tester, key).onTap, isNotNull, reason: key);
+        expect(_rowOpacity(tester, key), 1, reason: key);
+      }
+      await tester.tap(find.byKey(const Key('prefs.avoid.pork')));
+      await tester.pumpAndSettle();
+      expect(profile.patches, [
+        {
+          'avoidFoods': ['pork', 'beef'],
+        },
+      ]);
+    });
+
+    testWidgets('one still loading leaves the chips faded and inert, with no '
+        'Try again', (tester) async {
+      final gate = Completer<void>();
+      final profile = _Profile(avoid: ['beef'], loadGate: gate);
+      await _pump(tester, profile: profile);
+      for (final key in _profileChips()) {
+        expect(_chip(tester, key).onTap, isNull, reason: key);
+        expect(_rowOpacity(tester, key), fsDisabledOpacity, reason: key);
+      }
+      await tester.tap(find.byKey(const Key('prefs.avoid.beef')));
+      await tester.pumpAndSettle();
+      expect(profile.patchCalls, 0);
+      expect(find.byKey(const Key('prefs.profileRetry')), findsNothing);
+
+      gate.complete();
+      await tester.pumpAndSettle();
+      expect(_avoided(tester), ['beef']);
+      for (final key in _profileChips()) {
+        expect(_chip(tester, key).onTap, isNotNull, reason: key);
+      }
+    });
   });
 
   group('Dishes you hid', () {
@@ -507,6 +633,33 @@ void main() {
         reason: 'it can be tried again',
       );
       expect(find.byKey(const Key('prefs.hiddenError.13')), findsNothing);
+    });
+
+    testWidgets('Show again failing after the screen closed says so on the '
+        'page under it', (tester) async {
+      final repo = FakeNutritionRepository()
+        ..hidden.addAll([_tinola, _sinigang]);
+      await _pump(tester, repo: repo);
+      repo
+        ..hiddenHold = Completer<void>()
+        ..failHidden = true;
+      await tester.tap(find.byKey(const Key('prefs.show.10')));
+      await tester.pump();
+      // Closed while Show again is still on its way.
+      Navigator.of(tester.element(find.byKey(const Key('prefs.show.10'))))
+          .pop();
+      await tester.pumpAndSettle();
+      expect(find.byType(MealPreferencesScreen), findsNothing);
+      repo.hiddenHold!.complete();
+      await tester.pumpAndSettle();
+      expect(repo.showCalls, [10]);
+      expect(
+        find.descendant(
+          of: find.byType(SnackBar),
+          matching: find.text("Couldn't show Tinolang manok again. Try again."),
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('none hidden says how to hide one', (tester) async {

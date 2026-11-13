@@ -36,6 +36,7 @@ class _MealPreferencesScreenState extends ConsumerState<MealPreferencesScreen> {
         24 + MediaQuery.paddingOf(context).bottom,
       ),
       children: const [
+        _ProfileRetry(),
         _Heading('Rice with meals', bottom: 2),
         _RiceSection(),
         SizedBox(height: 20),
@@ -64,6 +65,47 @@ class _Heading extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
     padding: EdgeInsets.only(top: 8, bottom: bottom),
     child: Semantics(header: true, child: FsEyebrow(text, maxLines: 2)),
+  );
+}
+
+/// Try again for a profile that would not load. Until it loads, the rice
+/// and avoid chips are faded and inert: drawn from no profile, a tap would
+/// replace the user's real choices with defaults. Nothing while it loads.
+class _ProfileRetry extends ConsumerWidget {
+  const _ProfileRetry();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final profile = ref.watch(profileProvider);
+    if (profile.value != null || !profile.hasError || profile.isLoading) {
+      return const SizedBox.shrink();
+    }
+    return FsRetry(
+      key: const Key('prefs.profileRetry'),
+      message: userMessage(profile.error!),
+      onRetry: () => ref.invalidate(profileProvider),
+    );
+  }
+}
+
+/// A section's chips, faded while they cannot be used because the profile
+/// has not loaded. Inside FsTapRoom, whose reach a box around it would clip,
+/// as on the Log sheet's locked rice line.
+class _ChipRow extends StatelessWidget {
+  const _ChipRow({required this.enabled, required this.children});
+
+  final bool enabled;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => FsTapRoom(
+    child: AnimatedOpacity(
+      opacity: enabled ? 1 : fsDisabledOpacity,
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : const Duration(milliseconds: 150),
+      child: Wrap(spacing: 8, runSpacing: 8, children: children),
+    ),
   );
 }
 
@@ -131,7 +173,8 @@ class _RiceSectionState extends ConsumerState<_RiceSection> {
 
   @override
   Widget build(BuildContext context) {
-    final saved = ref.watch(profileProvider).value?.usualRiceCups ?? 1;
+    final profile = ref.watch(profileProvider).value;
+    final saved = profile?.usualRiceCups ?? 1;
     final shown = _pending ?? saved;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -142,21 +185,20 @@ class _RiceSectionState extends ConsumerState<_RiceSection> {
         // Wraps at large text rather than shrinking a label. FsTapRoom lets
         // each chip's 48 dp band reach past the row, as on the Log sheet's
         // rice line.
-        FsTapRoom(
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final cups in riceChoices)
-                FsChip(
-                  key: Key('prefs.rice.$cups'),
-                  label: cups == 0 ? 'None' : cupsLabel(cups),
-                  selected: shown == cups,
-                  exclusive: true,
-                  onTap: _pending == null ? () => _save(cups) : null,
-                ),
-            ],
-          ),
+        _ChipRow(
+          enabled: profile != null,
+          children: [
+            for (final cups in riceChoices)
+              FsChip(
+                key: Key('prefs.rice.$cups'),
+                label: cups == 0 ? 'None' : cupsLabel(cups),
+                selected: shown == cups,
+                exclusive: true,
+                onTap: profile != null && _pending == null
+                    ? () => _save(cups)
+                    : null,
+              ),
+          ],
         ),
         // FsTapRoom's reach below the row: room inside the column, which
         // hit-tests only its own box, not the padding around it.
@@ -205,6 +247,9 @@ class _AvoidSectionState extends ConsumerState<_AvoidSection> {
       _pending = next;
       _failed = false;
     });
+    // Captured before the await, as in the rice section.
+    final messenger = ScaffoldMessenger.of(context);
+    final route = ModalRoute.of(context);
     try {
       // Refetches the suggestions itself.
       await ref.read(profileProvider.notifier).patch({'avoidFoods': next});
@@ -212,7 +257,16 @@ class _AvoidSectionState extends ConsumerState<_AvoidSection> {
       if (error is! ApiException) {
         debugPrint('Saving foods to avoid $next failed: $error');
       }
-      if (mounted) setState(() => _failed = true);
+      // In place while open; once closing or closed, on the page under it.
+      if (mounted && (route?.isCurrent ?? false)) {
+        setState(() => _failed = true);
+      } else {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text("Couldn't save the foods you avoid. Try again."),
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _pending = null);
     }
@@ -220,7 +274,8 @@ class _AvoidSectionState extends ConsumerState<_AvoidSection> {
 
   @override
   Widget build(BuildContext context) {
-    final saved = ref.watch(profileProvider).value?.avoidFoods ?? const [];
+    final profile = ref.watch(profileProvider).value;
+    final saved = profile?.avoidFoods ?? const [];
     final shown = _pending ?? saved;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -228,20 +283,19 @@ class _AvoidSectionState extends ConsumerState<_AvoidSection> {
         // The room above the row, inside the column, as in the rice section.
         const SizedBox(height: 8),
         // Wraps at large text; each chip's 48 dp band reaches past the row.
-        FsTapRoom(
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final g in foodGroups)
-                FsChip(
-                  key: Key('prefs.avoid.$g'),
-                  label: foodGroupLabel(g),
-                  selected: shown.contains(g),
-                  onTap: _pending == null ? () => _toggle(saved, g) : null,
-                ),
-            ],
-          ),
+        _ChipRow(
+          enabled: profile != null,
+          children: [
+            for (final g in foodGroups)
+              FsChip(
+                key: Key('prefs.avoid.$g'),
+                label: foodGroupLabel(g),
+                selected: shown.contains(g),
+                onTap: profile != null && _pending == null
+                    ? () => _toggle(saved, g)
+                    : null,
+              ),
+          ],
         ),
         const SizedBox(height: 8),
         if (_failed) ...[
@@ -286,18 +340,25 @@ class _HiddenSectionState extends ConsumerState<_HiddenSection> {
     });
     // Captured before the await: the screen can be closed meanwhile.
     final container = ProviderScope.containerOf(context, listen: false);
+    final messenger = ScaffoldMessenger.of(context);
+    final route = ModalRoute.of(context);
     try {
       await ref.read(nutritionRepositoryProvider).showSuggestion(foodId);
     } catch (error) {
       if (error is! ApiException) {
         debugPrint('Showing food $foodId again failed: $error');
       }
+      final message = "Couldn't show $name again. Try again.";
+      // Under its row while open; once closing or closed, on the page
+      // under it.
+      final open = mounted && (route?.isCurrent ?? false);
       if (mounted) {
         setState(() {
           _showing.remove(foodId);
-          _errors[foodId] = "Couldn't show $name again. Try again.";
+          if (open) _errors[foodId] = message;
         });
       }
+      if (!open) messenger.showSnackBar(SnackBar(content: Text(message)));
       return;
     }
     container
