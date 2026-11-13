@@ -32,6 +32,7 @@ import 'package:fitsync/features/reminders/presentation/providers.dart';
 import 'package:fitsync/features/reminders/presentation/reminders_screen.dart';
 import 'package:fitsync/features/settings/presentation/change_password_screen.dart';
 import 'package:fitsync/features/settings/presentation/delete_account_screen.dart';
+import 'package:fitsync/features/settings/presentation/rice_with_meals_sheet.dart';
 import 'package:fitsync/features/settings/presentation/settings_screen.dart';
 import 'package:fitsync/features/streaks/domain/streaks.dart';
 import 'package:fitsync/features/streaks/presentation/providers.dart'
@@ -2235,11 +2236,77 @@ void main() {
       await _openRow(tester, const Key('settings.rice'));
       await tester.tap(find.byKey(const Key('rice.0.5')));
       await tester.pumpAndSettle();
-      expect(find.text("Couldn't save your rice. Try again."), findsOneWidget);
+      // Inside the sheet, where it can be seen and is read out: a snack bar
+      // would be drawn under the open sheet.
+      expect(
+        find
+            .descendant(
+              of: find.byType(BottomSheet),
+              matching: find.text("Couldn't save your rice. Try again."),
+            )
+            .hitTestable(),
+        findsOneWidget,
+      );
+      expect(find.byType(SnackBar), findsNothing);
       expect(
         tester.widget<FsChip>(find.byKey(const Key('rice.1.0'))).selected,
         isTrue,
       );
     });
+
+    testWidgets('a tap just below the chips still picks one', (tester) async {
+      final patches = <Map<String, dynamic>>[];
+      await _pump(tester, patches: patches);
+      await _openRow(tester, const Key('settings.rice'));
+      // The chips are drawn 32 dp tall; their 48 dp band reaches 8 dp past
+      // the row, below as well as above.
+      final chip = tester.getRect(find.byKey(const Key('rice.2.0')));
+      await tester.tapAt(chip.bottomCenter + const Offset(0, 4));
+      await tester.pumpAndSettle();
+      expect(patches, [
+        {'usualRiceCups': 2.0},
+      ]);
+    });
+
+    for (final size in const [Size(360, 640), Size(640, 360), Size(844, 390)]) {
+      testWidgets('the sheet fits a ${size.width.toInt()}x'
+          '${size.height.toInt()} phone at 2x text', (tester) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1.0;
+        tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+        addTearDown(tester.view.reset);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        _profile = FakeProfileNotifier([], failPatch: true);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [profileProvider.overrideWith(() => _profile)],
+            child: MaterialApp(
+              home: Builder(
+                builder: (context) => Scaffold(
+                  body: TextButton(
+                    onPressed: () => showRiceWithMealsSheet(context),
+                    child: const Text('open'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        // The error line makes it taller still. On a landscape phone the
+        // chips are below the fold: the sheet scrolls to them.
+        await tester.ensureVisible(find.byKey(const Key('rice.0.5')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('rice.0.5')));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(
+          find.text("Couldn't save your rice. Try again."),
+          findsOneWidget,
+        );
+      });
+    }
   });
 }

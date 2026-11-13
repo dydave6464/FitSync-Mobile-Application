@@ -29,26 +29,27 @@ class _RiceSheetState extends ConsumerState<_RiceSheet> {
   /// The amount on its way to the server, drawn in place of the saved one.
   double? _pending;
 
+  /// Set when the last save was refused; cleared by the next tap.
+  bool _failed = false;
+
   /// Saves as the Weight unit switch does: the new amount shows at once,
   /// further taps wait for the answer, and a refused save goes back and says
   /// so. `ProfileNotifier.patch` refetches the suggestions itself.
   Future<void> _save(double cups) async {
     if (_pending != null) return;
-    // Captured first: the sheet can be dragged away while this is on its way,
-    // and the app-level messenger outlives it.
-    final messenger = ScaffoldMessenger.of(context);
-    setState(() => _pending = cups);
+    setState(() {
+      _pending = cups;
+      _failed = false;
+    });
     try {
       await ref.read(profileProvider.notifier).patch({'usualRiceCups': cups});
     } catch (error) {
-      // The snack bar says only that it failed; anything the API layer did
-      // not name is logged for why.
+      // The sheet says only that it failed; anything the API layer did not
+      // name is logged for why.
       if (error is! ApiException) {
         debugPrint('Saving $cups cups of rice failed: $error');
       }
-      messenger.showSnackBar(
-        const SnackBar(content: Text("Couldn't save your rice. Try again.")),
-      );
+      if (mounted) setState(() => _failed = true);
     } finally {
       if (mounted) setState(() => _pending = null);
     }
@@ -59,13 +60,15 @@ class _RiceSheetState extends ConsumerState<_RiceSheet> {
     final t = context.fs;
     final saved = ref.watch(profileProvider).value?.usualRiceCups ?? 1;
     final shown = _pending ?? saved;
+    // Scrolls rather than overflows when large text makes it taller than
+    // the sheet may be.
     return SafeArea(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(
           FsSheetHeader.sideInset,
           10,
           FsSheetHeader.sideInset,
-          20,
+          12,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -97,6 +100,15 @@ class _RiceSheetState extends ConsumerState<_RiceSheet> {
                 ],
               ),
             ),
+            // FsTapRoom's reach below the row: room inside the column, which
+            // hit-tests only its own box, not the padding around it.
+            const SizedBox(height: 8),
+            // In the sheet, not a snack bar: one would be drawn under it.
+            // FsErrorLine is a live region, so it is read out.
+            if (_failed) ...[
+              const FsErrorLine("Couldn't save your rice. Try again."),
+              const SizedBox(height: 8),
+            ],
           ],
         ),
       ),
