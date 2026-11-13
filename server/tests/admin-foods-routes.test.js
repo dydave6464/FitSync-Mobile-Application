@@ -11,8 +11,8 @@ const { signToken } = require('../src/lib/tokens');
 const { seedFoods } = require('../src/db/seed-foods');
 
 const FOOD_KEYS = [
-  'carbsG', 'category', 'fatG', 'fiberG', 'foodType', 'hidden', 'id', 'kcal', 'name', 'proteinG', 'servingDesc',
-  'sodiumMg', 'sugarG', 'suggestMeals', 'suggestWithRice',
+  'carbsG', 'category', 'contains', 'fatG', 'fiberG', 'foodType', 'hidden', 'id', 'kcal', 'name', 'proteinG',
+  'servingDesc', 'sodiumMg', 'sugarG', 'suggestMeals', 'suggestWithRice',
 ];
 
 test('admin foods endpoints', async (t) => {
@@ -76,7 +76,7 @@ test('admin foods endpoints', async (t) => {
     assert.deepEqual(data.foods[0], {
       id: adobo, name: 'Chicken adobo', category: 'filipino', foodType: 'home', servingDesc: '1 cup',
       kcal: 300, proteinG: 20, carbsG: 10, fatG: 15, fiberG: 1.5, sugarG: 2, sodiumMg: 400, hidden: false,
-      suggestMeals: [], suggestWithRice: false,
+      suggestMeals: [], suggestWithRice: false, contains: [],
     });
   });
 
@@ -118,7 +118,7 @@ test('admin foods endpoints', async (t) => {
     assert.deepEqual({ ...food, id: 0 }, {
       id: 0, name: 'Ginataang bilo-bilo', category: 'filipino', foodType: 'snack_sweet', servingDesc: '1 bowl (250 g)',
       kcal: Math.round(4 * 4 + 4 * 50 + 9 * 12), proteinG: 4, carbsG: 50, fatG: 12, fiberG: 2, sugarG: 20, sodiumMg: 30,
-      hidden: false, suggestMeals: [], suggestWithRice: false,
+      hidden: false, suggestMeals: [], suggestWithRice: false, contains: [],
     });
     assert.equal((await foodRow(food.id)).added_by, adminId);
     // An added food has no place in the food list: it comes after the
@@ -187,7 +187,7 @@ test('admin foods endpoints', async (t) => {
     assert.deepEqual(res.body.data.food, {
       id: sinigang, name: 'Sinigang', category: 'international', foodType: 'home', servingDesc: '1 bowl',
       kcal: 300, proteinG: 20, carbsG: 10, fatG: 15, fiberG: 1.5, sugarG: 2, sodiumMg: 400, hidden: false,
-      suggestMeals: [], suggestWithRice: false,
+      suggestMeals: [], suggestWithRice: false, contains: [],
     });
     assert.equal((await foodRow(sinigang)).added_by, adminId);
   });
@@ -303,6 +303,45 @@ test('admin foods endpoints', async (t) => {
     }
     const [[row]] = await pool.query('SELECT suggest_meals, suggest_with_rice FROM foods WHERE food_id = ?', [adobo]);
     assert.deepEqual([row.suggest_meals, row.suggest_with_rice], ['lunch,dinner', 1]);
+  });
+
+  let tagged;
+
+  await t.test('a food can be tagged with what it contains as it is added, in the groups\' order', async () => {
+    const res = await post('/foods', {
+      ...NEW_FOOD, name: 'Tortang giniling', foodType: 'home', contains: ['egg', 'pork'],
+    }).expect(201);
+    tagged = res.body.data.food.id;
+    assert.deepEqual(res.body.data.food.contains, ['pork', 'egg']);
+    const [[row]] = await pool.query('SELECT contains FROM foods WHERE food_id = ?', [tagged]);
+    assert.equal(row.contains, 'pork,egg');
+  });
+
+  await t.test('the food list carries contains', async () => {
+    const data = await list('?show=shown&q=giniling');
+    assert.deepEqual(data.foods.map((f) => [f.id, f.contains]), [[tagged, ['pork', 'egg']]]);
+  });
+
+  await t.test("other edits keep a food's contains; an empty list clears it", async () => {
+    const kept = (await patch(`/foods/${tagged}`, { servingDesc: '1 slice' }).expect(200)).body.data.food;
+    assert.deepEqual(kept.contains, ['pork', 'egg']);
+    const cleared = (await patch(`/foods/${tagged}`, { contains: [] }).expect(200)).body.data.food;
+    assert.deepEqual(cleared.contains, []);
+    const [[row]] = await pool.query('SELECT contains FROM foods WHERE food_id = ?', [tagged]);
+    assert.equal(row.contains, '');
+  });
+
+  await t.test('a bad contains is a 400 INVALID_ADMIN_FIELD naming it, and changes nothing', async () => {
+    await patch(`/foods/${tagged}`, { contains: ['beef'] }).expect(200);
+    for (const contains of [['peanuts'], 'pork', [1]]) {
+      const res = await patch(`/foods/${tagged}`, { contains }).expect(400);
+      assert.equal(res.body.error.code, 'INVALID_ADMIN_FIELD', JSON.stringify(contains));
+      assert.deepEqual(res.body.error.details, [{ field: 'contains' }], JSON.stringify(contains));
+      const created = await post('/foods', { ...NEW_FOOD, name: 'Bad tags', contains }).expect(400);
+      assert.deepEqual(created.body.error.details, [{ field: 'contains' }], JSON.stringify(contains));
+    }
+    const [[row]] = await pool.query('SELECT contains FROM foods WHERE food_id = ?', [tagged]);
+    assert.equal(row.contains, 'beef');
   });
 
   await t.test('show=suggested lists shown foods suggested for any meal, and counts them', async () => {

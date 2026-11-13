@@ -250,4 +250,41 @@ void main() {
     expect(s.suggestions.single.food.name, 'Hard-boiled egg');
     expect(s.suggestions.single.rice, isNull);
   });
+
+  const hiddenAnswer = {
+    'hidden': [
+      {'foodId': 10, 'name': 'Tinolang manok', 'hiddenAt': '2026-11-13T04:00:00.000Z'},
+      {'foodId': 13, 'name': 'Hard-boiled egg', 'hiddenAt': '2026-11-12T09:30:00.000Z'},
+    ],
+  };
+
+  test('hiddenSuggestions reads the hidden dishes, newest first', () async {
+    final repo = _repo(MockClient((r) async {
+      expect(r.method, 'GET');
+      expect(r.url.path, '/api/v1/nutrition/suggestions/hidden');
+      return _ok(hiddenAnswer);
+    }));
+    final hidden = await repo.hiddenSuggestions();
+    expect(hidden.map((h) => h.foodId), [10, 13]);
+    expect(hidden.first.name, 'Tinolang manok');
+    expect(hidden.first.hiddenAt, DateTime.utc(2026, 11, 13, 4));
+  });
+
+  test('hideSuggestion PUTs the dish and reads the updated list', () async {
+    final repo = _repo(MockClient((r) async {
+      expect(r.method, 'PUT');
+      expect(r.url.path, '/api/v1/nutrition/suggestions/hidden/10');
+      return _ok(hiddenAnswer);
+    }));
+    expect((await repo.hideSuggestion(10)).map((h) => h.name), ['Tinolang manok', 'Hard-boiled egg']);
+  });
+
+  test('showSuggestion DELETEs the dish and reads the updated list', () async {
+    final repo = _repo(MockClient((r) async {
+      expect(r.method, 'DELETE');
+      expect(r.url.path, '/api/v1/nutrition/suggestions/hidden/10');
+      return _ok({'hidden': <Object>[]});
+    }));
+    expect(await repo.showSuggestion(10), isEmpty);
+  });
 }

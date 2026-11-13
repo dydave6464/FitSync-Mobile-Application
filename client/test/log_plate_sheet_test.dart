@@ -43,6 +43,8 @@ Future<(FakeNutritionRepository, _Profile, _Logged)> _open(
   double usual = 1,
   bool riceFood = true,
   _Profile? profile,
+  ValueChanged<SuggestedFood>? onHidden,
+  bool fromPushedPage = false,
 }) async {
   final repo = FakeNutritionRepository()..days[fixtureToday] = emptyDay(fixtureToday);
   final p = profile ?? _Profile();
@@ -56,25 +58,42 @@ Future<(FakeNutritionRepository, _Profile, _Logged)> _open(
     ],
     child: MaterialApp(
       theme: fsLightTheme(),
-      home: Scaffold(
-        body: Builder(
-          builder: (context) => TextButton(
-            onPressed: () => showLogPlateSheet(
-              context,
-              plate: answer.suggestions.single,
-              meal: 'lunch',
-              date: fixtureToday,
-              riceFood: answer.riceFood,
-              usualRiceCups: answer.riceCups,
-              onLogged: (entries, {required whileOpen}) => logged.calls.add((entries.length, whileOpen)),
-              onFailedAfterClose: (_) {},
+      home: Builder(
+        builder: (context) {
+          // The page the sheet opens over, as Meal ideas is.
+          Widget page() => Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => showLogPlateSheet(
+                  context,
+                  plate: answer.suggestions.single,
+                  meal: 'lunch',
+                  date: fixtureToday,
+                  riceFood: answer.riceFood,
+                  usualRiceCups: answer.riceCups,
+                  onLogged: (entries, {required whileOpen}) => logged.calls.add((entries.length, whileOpen)),
+                  onFailedAfterClose: (_) {},
+                  onHidden: onHidden,
+                ),
+                child: const Text('open'),
+              ),
             ),
-            child: const Text('open'),
-          ),
-        ),
+          );
+          if (!fromPushedPage) return page();
+          return Scaffold(
+            body: TextButton(
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page())),
+              child: const Text('page'),
+            ),
+          );
+        },
       ),
     ),
   ));
+  if (fromPushedPage) {
+    await tester.tap(find.text('page'));
+    await tester.pumpAndSettle();
+  }
   await tester.tap(find.text('open'));
   await tester.pumpAndSettle();
   return (repo, p, logged);
@@ -289,5 +308,134 @@ void main() {
       'log $fixtureToday lunch Tinolang manok x1.0',
       'log $fixtureToday lunch White rice x1.0',
     ]);
+  });
+
+  group("Don't suggest this", () {
+    final hideButton = find.byKey(const Key('logPlate.hide'));
+
+    testWidgets('not offered when the caller passes no onHidden', (tester) async {
+      await _open(tester, plate: plateJson(tinolaJson));
+      expect(hideButton, findsNothing);
+      expect(find.text("Don't suggest this"), findsNothing);
+    });
+
+    testWidgets('offered under Log plate: said with the dish, at least 48 dp tall', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await _open(tester, plate: plateJson(tinolaJson), onHidden: (_) {});
+      expect(find.descendant(of: hideButton, matching: find.text("Don't suggest this")), findsOneWidget);
+      expect(
+        tester.getSemantics(hideButton),
+        isSemantics(label: "Don't suggest Tinolang manok", isButton: true, isEnabled: true, hasTapAction: true),
+      );
+      expect(tester.getSize(hideButton).height, greaterThanOrEqualTo(48));
+      expect(
+        tester.getRect(hideButton).top,
+        greaterThanOrEqualTo(tester.getRect(find.byKey(const Key('logPlate.log'))).bottom),
+        reason: 'under Log plate',
+      );
+      semantics.dispose();
+    });
+
+    testWidgets('a tap hides the dish, tells the caller and closes the sheet', (tester) async {
+      final hidden = <SuggestedFood>[];
+      final (repo, _, logged) = await _open(tester, plate: plateJson(tinolaJson), onHidden: hidden.add);
+      await tester.tap(hideButton);
+      await tester.pumpAndSettle();
+      expect(repo.hideCalls, [10]);
+      expect(hidden.map((d) => (d.foodId, d.name)), [(10, 'Tinolang manok')]);
+      expect(find.byType(LogPlateSheet), findsNothing, reason: 'the sheet closed');
+      expect(logged.calls, isEmpty, reason: 'nothing logged');
+      expect(repo.calls.where((c) => c.startsWith('log ')), isEmpty);
+    });
+
+    testWidgets('while hiding, Log plate is disabled and the button shows busy', (tester) async {
+      final semantics = tester.ensureSemantics();
+      final hidden = <SuggestedFood>[];
+      final (repo, _, _) = await _open(tester, plate: plateJson(tinolaJson), onHidden: hidden.add);
+      final hold = repo.hiddenHold = Completer<void>();
+      await tester.tap(hideButton);
+      await tester.pump();
+      expect(tester.widget<FsButton>(find.byKey(const Key('logPlate.log'))).onPressed, isNull);
+      expect(tester.widget<TextButton>(hideButton).onPressed, isNull);
+      expect(find.descendant(of: hideButton, matching: find.byType(CircularProgressIndicator)), findsOneWidget);
+      expect(find.descendant(of: hideButton, matching: find.text("Don't suggest this")), findsNothing);
+      expect(tester.getSemantics(hideButton), isSemantics(label: "Don't suggest Tinolang manok", isButton: true, isEnabled: false));
+      expect(hidden, isEmpty);
+      // The barrier does nothing meanwhile, as while saving.
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pump();
+      expect(find.byType(LogPlateSheet), findsOneWidget);
+      hold.complete();
+      await tester.pumpAndSettle();
+      expect(hidden, hasLength(1));
+      expect(find.byType(LogPlateSheet), findsNothing);
+      semantics.dispose();
+    });
+
+    // The sheet stays mounted for its exit animation after a drag, while its
+    // route is already popping: a hide landing then must not pop the page
+    // under it.
+    testWidgets('dragged away mid-hide, a hide that goes through still tells the caller and keeps the page', (tester) async {
+      final hidden = <SuggestedFood>[];
+      final (repo, _, _) = await _open(tester, plate: plateJson(tinolaJson), onHidden: hidden.add, fromPushedPage: true);
+      final hold = repo.hiddenHold = Completer<void>();
+      await tester.tap(hideButton);
+      await tester.pump();
+      final height = tester.getSize(find.byType(LogPlateSheet)).height;
+      await tester.drag(find.byKey(const Key('sheet.handle')), Offset(0, height * 0.55));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 20));
+      expect(find.byType(LogPlateSheet), findsOneWidget, reason: 'still sliding away');
+
+      hold.complete();
+      await tester.pumpAndSettle();
+      expect(repo.hideCalls, [10]);
+      expect(hidden.map((d) => d.foodId), [10]);
+      expect(find.byType(LogPlateSheet), findsNothing);
+      expect(find.text('open'), findsOneWidget, reason: 'the page under the sheet stays');
+      expect(find.text('page'), findsNothing);
+    });
+
+    testWidgets('a failure stays in the sheet, says why and lets the user try again', (tester) async {
+      final hidden = <SuggestedFood>[];
+      final (repo, _, _) = await _open(tester, plate: plateJson(tinolaJson), onHidden: hidden.add);
+      repo.failHidden = true;
+      await tester.tap(hideButton);
+      await tester.pumpAndSettle();
+      expect(find.byType(LogPlateSheet), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('logPlate.hideError')),
+          matching: find.text("Couldn't hide it. Something went wrong on our side. Please try again."),
+        ),
+        findsOneWidget,
+      );
+      expect(tester.widget<TextButton>(hideButton).onPressed, isNotNull, reason: 'enabled again');
+      expect(find.descendant(of: hideButton, matching: find.text("Don't suggest this")), findsOneWidget);
+      expect(tester.widget<FsButton>(find.byKey(const Key('logPlate.log'))).onPressed, isNotNull);
+      expect(hidden, isEmpty);
+
+      // A second try clears the message and goes through.
+      repo.failHidden = false;
+      await tester.tap(hideButton);
+      await tester.pumpAndSettle();
+      expect(repo.hideCalls, [10, 10]);
+      expect(hidden, hasLength(1));
+      expect(find.byType(LogPlateSheet), findsNothing);
+    });
+
+    testWidgets('gone once Log plate is tapped, so the two never race', (tester) async {
+      final (repo, _, _) = await _open(tester, plate: plateJson(tinolaJson), onHidden: (_) {});
+      expect(hideButton, findsOneWidget);
+      final hold = repo.hold = Completer<void>();
+      repo.failNext = true;
+      await tester.tap(find.byKey(const Key('logPlate.log')));
+      await tester.pump();
+      expect(hideButton, findsNothing, reason: 'saving');
+      hold.complete();
+      await tester.pumpAndSettle();
+      expect(find.byType(LogPlateSheet), findsOneWidget, reason: 'a failed save keeps the sheet open');
+      expect(hideButton, findsNothing, reason: 'after a failed save, Retry only');
+    });
   });
 }

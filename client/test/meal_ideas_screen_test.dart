@@ -16,6 +16,7 @@ import 'package:fitsync/features/nutrition/presentation/widgets/log_plate_sheet.
 import 'package:fitsync/features/nutrition/presentation/widgets/meal_idea_rows.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
+import 'package:fitsync/features/settings/presentation/meal_preferences_screen.dart';
 
 import 'helpers/meal_suggestion_fixtures.dart';
 import 'nutrition_controller_test.dart' show FakeNutritionRepository, emptyDay;
@@ -252,6 +253,51 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Nothing to suggest for breakfast right now.'), findsOneWidget);
     expect(find.byKey(const Key('ideas.more')), findsNothing);
+  });
+
+  group('Meal preferences from the page', () {
+    MealSuggestions empty(int skipped) =>
+        MealSuggestions(date: fixtureToday, meal: 'lunch', state: SuggestionState.noTarget, suggestions: const [], skipped: skipped);
+
+    testWidgets('the settings icon, named and 48 dp, opens the screen', (tester) async {
+      await _pump(tester, answers: {'lunch': _lunch});
+      final icon = find.byKey(const Key('ideas.prefs'));
+      expect(tester.widget<IconButton>(icon).tooltip, 'Meal preferences');
+      final size = tester.getSize(icon);
+      expect(size.width, greaterThanOrEqualTo(48));
+      expect(size.height, greaterThanOrEqualTo(48));
+      expect(
+        tester.getTopLeft(icon).dx,
+        lessThan(tester.getTopLeft(find.descendant(of: find.byType(AppBar), matching: find.byType(FsTag))).dx),
+        reason: 'before the Local tag',
+      );
+      await tester.tap(icon);
+      await tester.pumpAndSettle();
+      expect(find.byType(MealPreferencesScreen), findsOneWidget);
+    });
+
+    testWidgets('a meal emptied by the preferences offers to change them', (tester) async {
+      await _pump(tester, answers: {'lunch': empty(2)});
+      expect(find.text('Nothing to suggest for lunch right now.'), findsOneWidget);
+      final link = find.byKey(const Key('ideas.prefsLink'));
+      expect(find.descendant(of: link, matching: find.text('Change meal preferences')), findsOneWidget);
+      expect(tester.getSize(link).height, greaterThanOrEqualTo(48));
+      expect(tester.getTopLeft(link).dy, greaterThan(tester.getTopLeft(find.byKey(const Key('ideas.empty'))).dy));
+      expect(
+        tester.getTopLeft(link).dx,
+        tester.getTopLeft(find.byKey(const Key('ideas.empty'))).dx,
+        reason: 'aligned to the start',
+      );
+      await tester.tap(link);
+      await tester.pumpAndSettle();
+      expect(find.byType(MealPreferencesScreen), findsOneWidget);
+    });
+
+    testWidgets('an empty meal with nothing skipped offers no link', (tester) async {
+      await _pump(tester, answers: {'lunch': empty(0)});
+      expect(find.text('Nothing to suggest for lunch right now.'), findsOneWidget);
+      expect(find.byKey(const Key('ideas.prefsLink')), findsNothing);
+    });
   });
 
   testWidgets('a failed meal shows the error line; the buttons still work', (tester) async {
@@ -630,6 +676,81 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text("Couldn't load suggestions."), findsNothing);
       expect(find.byKey(const Key('suggest.row.0')), findsOneWidget);
+    });
+  });
+
+  group("Don't suggest this from a row's sheet", () {
+    Future<FakeNutritionRepository> hideFirst(WidgetTester tester) async {
+      final (repo, _) = await _pump(tester, answers: {'lunch': _lunch});
+      await tester.tap(find.byKey(const Key('suggest.row.0')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('logPlate.hide')));
+      await tester.pumpAndSettle();
+      return repo;
+    }
+
+    testWidgets('says "Won\'t suggest" with Undo on the page, which stays; the suggestions are asked again',
+        (tester) async {
+      final (repo, popped) = await _pump(tester, answers: {'lunch': _lunch});
+      await tester.tap(find.byKey(const Key('suggest.row.0')));
+      await tester.pumpAndSettle();
+      final asked = repo.suggestionCalls.length;
+      await tester.tap(find.byKey(const Key('logPlate.hide')));
+      await tester.pumpAndSettle();
+      expect(repo.hideCalls, [10]);
+      expect(find.byType(LogPlateSheet), findsNothing);
+      expect(find.byType(MealIdeasScreen), findsOneWidget, reason: 'the page stays');
+      expect(popped.value, isNull);
+      final bar = find.byType(SnackBar);
+      expect(find.descendant(of: bar, matching: find.text("Won't suggest Tinolang manok")), findsOneWidget);
+      expect(find.descendant(of: bar, matching: find.text('Undo')), findsOneWidget);
+      expect(tester.widget<SnackBar>(bar).duration, const Duration(seconds: 4));
+      expect(repo.suggestionCalls.length, greaterThan(asked));
+    });
+
+    testWidgets('Undo shows the dish again and asks for the suggestions again', (tester) async {
+      final repo = await hideFirst(tester);
+      final asked = repo.suggestionCalls.length;
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      expect(repo.showCalls, [10]);
+      expect(repo.suggestionCalls.length, greaterThan(asked));
+      expect(find.text("Couldn't undo. Show it again in Meal preferences."), findsNothing);
+    });
+
+    testWidgets('Undo failing says where to show the dish again', (tester) async {
+      final repo = await hideFirst(tester);
+      repo.failHidden = true;
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      expect(repo.showCalls, [10]);
+      expect(find.text("Couldn't undo. Show it again in Meal preferences."), findsOneWidget);
+      expect(find.text("Won't suggest Tinolang manok"), findsNothing, reason: 'replaced');
+    });
+
+    testWidgets('dragged away mid-hide, a failure is said on the page', (tester) async {
+      final (repo, _) = await _pump(tester, answers: {'lunch': _lunch});
+      await tester.tap(find.byKey(const Key('suggest.row.0')));
+      await tester.pumpAndSettle();
+      repo
+        ..hiddenHold = Completer<void>()
+        ..failHidden = true;
+      await tester.tap(find.byKey(const Key('logPlate.hide')));
+      await tester.pump();
+      await tester.drag(find.byKey(const Key('sheet.handle')), const Offset(0, 600));
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.byType(LogPlateSheet), findsNothing);
+      repo.hiddenHold!.complete();
+      await tester.pumpAndSettle();
+      expect(find.byType(MealIdeasScreen), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(SnackBar),
+          matching: find.text("Couldn't hide it. Something went wrong on our side. Please try again."),
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining("Won't suggest"), findsNothing);
     });
   });
 }

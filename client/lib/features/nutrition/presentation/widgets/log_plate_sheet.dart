@@ -22,7 +22,8 @@ typedef OnPlateLogged = void Function(List<FoodEntry> logged, {required bool whi
 /// saves and the save still finishes: [onLogged] gets the entries logged --
 /// the dish, then its rice -- and [onFailedAfterClose] a message for a
 /// failure the closed sheet can no longer show. Closed without logging,
-/// neither is called.
+/// neither is called. [onHidden]: the dish was hidden from suggestions
+/// ("Don't suggest this"), and the caller says so; null, no such button.
 Future<void> showLogPlateSheet(
   BuildContext context, {
   required MealSuggestion plate,
@@ -32,6 +33,7 @@ Future<void> showLogPlateSheet(
   required double usualRiceCups,
   required OnPlateLogged onLogged,
   required ValueChanged<String> onFailedAfterClose,
+  ValueChanged<SuggestedFood>? onHidden,
 }) => showModalBottomSheet<void>(
   context: context,
   // FsSheetHeader draws the handle.
@@ -47,6 +49,7 @@ Future<void> showLogPlateSheet(
       usualRiceCups: usualRiceCups,
       onLogged: onLogged,
       onFailedAfterClose: onFailedAfterClose,
+      onHidden: onHidden,
     ),
   ),
 );
@@ -69,6 +72,7 @@ class LogPlateSheet extends ConsumerStatefulWidget {
     required this.usualRiceCups,
     required this.onLogged,
     required this.onFailedAfterClose,
+    this.onHidden,
   });
 
   final MealSuggestion plate;
@@ -87,6 +91,9 @@ class LogPlateSheet extends ConsumerStatefulWidget {
   /// The save failed after the sheet was dragged away, so it cannot show
   /// the message itself.
   final ValueChanged<String> onFailedAfterClose;
+
+  /// The dish was hidden: the caller says so. Null: no "Don't suggest this".
+  final ValueChanged<SuggestedFood>? onHidden;
 
   @override
   ConsumerState<LogPlateSheet> createState() => _LogPlateSheetState();
@@ -119,6 +126,10 @@ class _LogPlateSheetState extends ConsumerState<LogPlateSheet> {
   MealSuggestion get _plate => _offersRice ? withRiceCups(widget.plate, widget.riceFood!, _cups) : widget.plate;
   bool _busy = false;
   String? _failure;
+
+  /// "Don't suggest this" is on its way, and why it last failed.
+  bool _hiding = false;
+  String? _hideFailure;
 
   Future<void> _log() async {
     setState(() {
@@ -175,8 +186,46 @@ class _LogPlateSheetState extends ConsumerState<LogPlateSheet> {
     if (mounted && open) Navigator.of(context).pop();
   }
 
+  /// "Don't suggest this": hides the dish from suggestions, refetches them
+  /// and the hidden list, tells the caller and closes. A failure stays in
+  /// the sheet (or, dragged away first, goes to [LogPlateSheet.onFailedAfterClose]).
+  Future<void> _hide() async {
+    setState(() {
+      _hiding = true;
+      _hideFailure = null;
+    });
+    // Kept before the await: the sheet may be gone when it ends.
+    final container = ProviderScope.containerOf(context, listen: false);
+    final route = ModalRoute.of(context);
+    final onHidden = widget.onHidden!;
+    final onFailedAfterClose = widget.onFailedAfterClose;
+    final dish = widget.plate.food;
+    try {
+      await container.read(nutritionRepositoryProvider).hideSuggestion(dish.foodId);
+    } catch (error) {
+      if (error is! ApiException) debugPrint('Hiding ${dish.name} failed: $error');
+      final message = "Couldn't hide it. ${userMessage(error)}";
+      if (!(route?.isActive ?? false)) {
+        onFailedAfterClose(message);
+        return;
+      }
+      if (mounted) {
+        setState(() {
+          _hiding = false;
+          _hideFailure = message;
+        });
+      }
+      return;
+    }
+    container.invalidate(mealSuggestionsProvider);
+    container.invalidate(hiddenSuggestionsProvider);
+    onHidden(dish);
+    // As _log: only the sheet's own route, while it is still on top.
+    if (mounted && (route?.isCurrent ?? false)) Navigator.of(context).pop();
+  }
+
   /// Makes [cups] the usual rice. Not awaited, and a failure is only logged:
-  /// the plate is logged, and Settings > Rice with meals shows the amount
+  /// the plate is logged, and Settings > Meal preferences shows the amount
   /// kept (spec 2026-11-13, 1.3). The patch itself refetches the suggestions.
   static Future<void> _remember(ProviderContainer container, double cups) async {
     try {
@@ -195,7 +244,8 @@ class _LogPlateSheetState extends ConsumerState<LogPlateSheet> {
       // closes the sheet (it pops the route directly, past PopScope); the
       // save carries on and its outcome still reaches the caller, and _log
       // asks the route, not `mounted`, whether the sheet is still open.
-      canPop: !_busy,
+      // The same while hiding the dish.
+      canPop: !_busy && !_hiding,
       child: SafeArea(
         child: SingleChildScrollView(
           padding: EdgeInsets.fromLTRB(
@@ -278,8 +328,35 @@ class _LogPlateSheetState extends ConsumerState<LogPlateSheet> {
                 key: const Key('logPlate.log'),
                 label: _failure == null ? 'Log plate' : 'Retry',
                 busy: _busy,
-                onPressed: _busy ? null : _log,
+                onPressed: _busy || _hiding ? null : _log,
               ),
+              // Gone once Log plate is tapped, so the two never race.
+              if (widget.onHidden != null && !_attempted) ...[
+                if (_hideFailure != null) ...[
+                  const SizedBox(height: 8),
+                  FsErrorLine(_hideFailure!, key: const Key('logPlate.hideError')),
+                ],
+                const SizedBox(height: 4),
+                Center(
+                  // The dish named for a screen reader. excludeSemantics drops
+                  // the button's own state, so it is restated here.
+                  child: Semantics(
+                    label: "Don't suggest ${widget.plate.food.name}",
+                    button: true,
+                    enabled: !(_busy || _hiding),
+                    onTap: _busy || _hiding ? null : _hide,
+                    excludeSemantics: true,
+                    child: TextButton(
+                      key: const Key('logPlate.hide'),
+                      style: TextButton.styleFrom(minimumSize: const Size(48, 48), foregroundColor: t.text2),
+                      onPressed: _busy || _hiding ? null : _hide,
+                      child: _hiding
+                          ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Text("Don't suggest this"),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

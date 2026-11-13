@@ -23,7 +23,7 @@ function asFood(r) {
 async function readSuggestionPool(pool) {
   const [rows] = await pool.query(
     `SELECT f.food_id, f.name, f.serving_desc, f.calories, f.protein_g, f.carbs_g, f.fat_g,
-            f.suggest_meals, f.suggest_with_rice
+            f.suggest_meals, f.suggest_with_rice, f.contains
        FROM foods f
       WHERE f.hidden_at IS NULL AND f.suggest_meals <> ''
       ORDER BY f.food_id`,
@@ -32,6 +32,8 @@ async function readSuggestionPool(pool) {
     ...asFood(r),
     meals: String(r.suggest_meals).split(','),
     withRice: Boolean(r.suggest_with_rice),
+    // A SET column reads as 'pork,egg' in the groups' own order, '' for none.
+    contains: r.contains ? String(r.contains).split(',') : [],
   }));
 }
 
@@ -50,11 +52,14 @@ async function readRice(pool) {
   return row ? asFood(row) : null;
 }
 
-/// The cups of white rice this user's plates carry (users.usual_rice_cups,
-/// 049): 0 to 2 in halves, 1 unless they chose. DECIMAL arrives as a string.
-async function readUsualRiceCups(pool, userId) {
-  const [[row]] = await pool.query('SELECT usual_rice_cups FROM users WHERE user_id = ?', [userId]);
-  return row ? Number(row.usual_rice_cups) : 1;
+/// The user's meal preferences: the cups of rice their plates carry (049,
+/// 1 unless chosen) and the food groups they avoid (051).
+async function readMealPrefs(pool, userId) {
+  const [[row]] = await pool.query('SELECT usual_rice_cups, avoid_foods FROM users WHERE user_id = ?', [userId]);
+  return {
+    riceCups: row ? Number(row.usual_rice_cups) : 1,
+    avoid: row && row.avoid_foods ? String(row.avoid_foods).split(',') : [],
+  };
 }
 
-module.exports = { readSuggestionPool, readRice, readUsualRiceCups };
+module.exports = { readSuggestionPool, readRice, readMealPrefs };

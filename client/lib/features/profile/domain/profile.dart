@@ -115,6 +115,7 @@ class Profile {
     this.weightUnit = WeightUnit.kg,
     // Defaulted as the column is: 1 cup.
     this.usualRiceCups = 1,
+    this.avoidFoods = const [],
   });
 
   final int userId;
@@ -130,6 +131,9 @@ class Profile {
 
   /// The cups of white rice suggested plates carry: 0–2 in halves.
   final double usualRiceCups;
+
+  /// The food groups suggestions skip (round 2).
+  final List<String> avoidFoods;
   final List<EquipmentOption> equipment;
   final List<SelectedInjury> injuries;
 
@@ -201,6 +205,9 @@ class Profile {
     notificationsEnabled: json['notificationsEnabled'] as bool? ?? true,
     weightUnit: WeightUnit.fromApi(json['weightUnit'] as String?),
     usualRiceCups: _toDouble(json['usualRiceCups']) ?? 1,
+    avoidFoods: [
+      for (final g in json['avoidFoods'] as List? ?? const []) g as String,
+    ],
     equipment: ((json['equipment'] as List<dynamic>?) ?? const [])
         .map((e) => EquipmentOption.fromJson(e as Map<String, dynamic>))
         .toList(growable: false),

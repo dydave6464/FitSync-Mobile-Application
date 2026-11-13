@@ -315,6 +315,7 @@ class AdminFood {
     required this.hidden,
     this.suggestMeals = const [],
     this.suggestWithRice = false,
+    this.contains = const [],
   });
 
   final int id;
@@ -347,6 +348,10 @@ class AdminFood {
   /// Offered as ulam with 1 cup of white rice (beside a main meal only).
   final bool suggestWithRice;
 
+  /// The food groups it is often made with (`foodGroups`, in that order):
+  /// trainees who avoid one are not suggested it. Empty when untagged.
+  final List<String> contains;
+
   bool get suggested => suggestMeals.isNotEmpty;
 
   factory AdminFood.fromJson(Map<String, dynamic> json) => AdminFood(
@@ -368,6 +373,10 @@ class AdminFood {
         meal as String,
     ],
     suggestWithRice: json['suggestWithRice'] as bool? ?? false,
+    contains: [
+      for (final group in json['contains'] as List? ?? const [])
+        group as String,
+    ],
   );
 }
 
@@ -435,6 +444,7 @@ class FoodInput {
     this.sodiumMg,
     this.suggestMeals = const [],
     this.suggestWithRice = false,
+    this.contains = const [],
   });
 
   final String name;
@@ -459,6 +469,9 @@ class FoodInput {
   /// With 1 cup of rice; only ever true beside a main meal.
   final bool suggestWithRice;
 
+  /// The food groups it is often made with; empty for none.
+  final List<String> contains;
+
   Map<String, dynamic> toJson() => {
     'name': name,
     'category': category,
@@ -473,6 +486,7 @@ class FoodInput {
     'sodiumMg': sodiumMg,
     'suggestMeals': suggestMeals,
     'suggestWithRice': suggestWithRice,
+    'contains': contains,
   };
 }
 
