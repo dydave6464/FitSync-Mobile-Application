@@ -62,6 +62,10 @@ class ProfileNotifier extends AsyncNotifier<Profile> {
       ref.invalidate(bodyWeightProvider);
     }
     if (fields.keys.any(_targetFields.contains)) _refreshDailyTarget();
+    // Suggested plates carry the usual rice; the day's target does not move.
+    if (fields.containsKey('usualRiceCups')) {
+      ref.invalidate(mealSuggestionsProvider);
+    }
   }
 
   /// Refetches the day on screen and every meal's suggestions (the whole

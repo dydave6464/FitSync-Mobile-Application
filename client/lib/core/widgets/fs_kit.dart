@@ -240,6 +240,7 @@ class FsCard extends StatelessWidget {
     this.onTap,
     this.padding,
     this.selected,
+    this.focusNode,
   });
 
   final Widget child;
@@ -247,6 +248,10 @@ class FsCard extends StatelessWidget {
   final bool small;
   final VoidCallback? onTap;
   final EdgeInsetsGeometry? padding;
+
+  /// The tappable card's keyboard focus, for an owner that moves focus to it
+  /// or reports it in semantics of its own.
+  final FocusNode? focusNode;
 
   /// Whether this card is a chosen option, for screen readers. Null for a
   /// card that is not one of a set of choices. Kept apart from [accent],
@@ -278,6 +283,7 @@ class FsCard extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
+          focusNode: focusNode,
           borderRadius: radius,
           child: Padding(
             padding: padding ?? EdgeInsets.all(small ? 13 : 16),
