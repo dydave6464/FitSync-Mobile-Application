@@ -119,7 +119,7 @@ class MealSuggestion {
   /// Lunch offers a rice choice -- also when this plate came without it.
   final bool servedWithRice;
 
-  /// What Log plate saves, in order: the dish, then its rice.
+  /// What Log to Lunch lists, in order: the dish, then its rice.
   List<SuggestedFood> get items => [food, ?rice];
 }
 

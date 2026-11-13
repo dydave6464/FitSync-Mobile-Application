@@ -215,25 +215,31 @@ class _LogPlateSheetState extends ConsumerState<LogPlateSheet> {
                 const SizedBox(height: 8),
                 // Wraps at large text rather than shrinking a label.
                 // FsTapRoom lets each chip's 48 dp band reach past the row.
+                // Once locked, faded as the rows and the card fade: inside
+                // FsTapRoom, whose reach a box around it would clip.
                 FsTapRoom(
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final cups in riceChoices)
-                        FsChip(
-                          key: Key('logPlate.rice.$cups'),
-                          label: cups == 0 ? 'None' : cupsLabel(cups),
-                          selected: _cups == cups,
-                          exclusive: true,
-                          onTap: _attempted
-                              ? null
-                              : () => setState(() {
-                                  _cups = cups;
-                                  _changed = true;
-                                }),
-                        ),
-                    ],
+                  child: AnimatedOpacity(
+                    opacity: _attempted ? fsDisabledOpacity : 1,
+                    duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 150),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final cups in riceChoices)
+                          FsChip(
+                            key: Key('logPlate.rice.$cups'),
+                            label: cups == 0 ? 'None' : cupsLabel(cups),
+                            selected: _cups == cups,
+                            exclusive: true,
+                            onTap: _attempted
+                                ? null
+                                : () => setState(() {
+                                    _cups = cups;
+                                    _changed = true;
+                                  }),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
                 if (_newUsual) ...[

@@ -114,7 +114,7 @@ class SnapMealCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fs;
     // Faded like a disabled FsButton while the tab is busy, as the
-    // suggestion rows below it are.
+    // Suggested card below it is.
     return AnimatedOpacity(
       opacity: onTap == null ? fsDisabledOpacity : 1,
       duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 150),

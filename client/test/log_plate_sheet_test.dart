@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
+import 'package:fitsync/features/nutrition/domain/meal_suggestion.dart';
 import 'package:fitsync/features/nutrition/presentation/providers.dart';
 import 'package:fitsync/features/nutrition/presentation/widgets/log_plate_sheet.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
@@ -221,5 +224,70 @@ void main() {
       expect(tester.widget<FsChip>(find.byKey(Key('logPlate.rice.$cups'))).onTap, isNull, reason: '$cups');
     }
     await tester.pumpAndSettle();
+  });
+
+  double chipsOpacity(WidgetTester tester) => tester
+      .widget<AnimatedOpacity>(find.ancestor(of: find.byKey(const Key('logPlate.rice.1.0')), matching: find.byType(AnimatedOpacity)).first)
+      .opacity;
+
+  testWidgets('the locked rice chips fade like a disabled control while saving and after a failed save', (tester) async {
+    final (repo, _, _) = await _open(tester, plate: plateJson(tinolaJson));
+    expect(chipsOpacity(tester), 1);
+    final hold = repo.hold = Completer<void>();
+    repo.failNext = true;
+    await tester.tap(find.byKey(const Key('logPlate.log')));
+    await tester.pump();
+    expect(chipsOpacity(tester), fsDisabledOpacity, reason: 'held');
+    hold.complete();
+    await tester.pumpAndSettle();
+    expect(find.byType(LogPlateSheet), findsOneWidget, reason: 'a failed save keeps the sheet open');
+    expect(chipsOpacity(tester), fsDisabledOpacity, reason: 'failed');
+  });
+
+  testWidgets('an older server\'s answer (no riceCups, riceFood or servedWithRice) logs the dish and one cup', (tester) async {
+    final repo = FakeNutritionRepository()..days[fixtureToday] = emptyDay(fixtureToday);
+    final old = MealSuggestions.fromJson({
+      'date': fixtureToday, 'meal': 'lunch', 'state': 'fits', 'share': {'kcal': 650, 'proteinG': 40},
+      'suggestions': [
+        {'food': tinolaJson, 'rice': riceJson, 'total': {'kcal': 466, 'proteinG': 29, 'carbsG': 53, 'fatG': 14}, 'highProtein': false},
+      ],
+    });
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        nutritionRepositoryProvider.overrideWithValue(repo),
+        nutritionClockProvider.overrideWithValue(() => DateTime.utc(2026, 10, 14, 4)),
+        profileProvider.overrideWith(_Profile.new),
+      ],
+      child: MaterialApp(
+        theme: fsLightTheme(),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showLogPlateSheet(
+                context,
+                plate: old.suggestions.single,
+                meal: 'lunch',
+                date: fixtureToday,
+                riceFood: old.riceFood,
+                usualRiceCups: old.riceCups,
+                onLogged: (_, {required whileOpen}) {},
+                onFailedAfterClose: (_) {},
+              ),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    expect(find.text('Rice'), findsNothing, reason: 'no choice without riceFood');
+    expect(_total(tester), contains('466 kcal'));
+    await tester.tap(find.byKey(const Key('logPlate.log')));
+    await tester.pumpAndSettle();
+    expect(repo.calls.where((c) => c.startsWith('log ')), [
+      'log $fixtureToday lunch Tinolang manok x1.0',
+      'log $fixtureToday lunch White rice x1.0',
+    ]);
   });
 }

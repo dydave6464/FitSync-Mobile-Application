@@ -42,6 +42,8 @@ Future<FakeNutritionRepository> _pump(
   FakeNutritionRepository? repo,
   MealSuggestions? lunch,
   Size size = const Size(390, 1400),
+  double textScale = 1,
+  bool dark = false,
 }) async {
   final r = repo ?? FakeNutritionRepository();
   r.days[fixtureToday] = emptyDay(fixtureToday);
@@ -57,7 +59,14 @@ Future<FakeNutritionRepository> _pump(
       profileProvider.overrideWith(_FreeProfile.new),
       adSourceProvider.overrideWithValue(FakeAdSource()),
     ],
-    child: MaterialApp(theme: fsLightTheme(), home: const NutritionScreen()),
+    child: MaterialApp(
+      theme: dark ? fsDarkTheme() : fsLightTheme(),
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
+        child: child!,
+      ),
+      home: const NutritionScreen(),
+    ),
   ));
   await tester.pumpAndSettle();
   return r;
@@ -108,6 +117,18 @@ void main() {
     await _pump(tester, lunch: suggestionsAnswer('fits', [plateJson(tinolaJson)], share: {'kcal': 650, 'proteinG': 40}));
     expect(tester.getSize(find.byKey(const Key('ideas.card'))).height, greaterThanOrEqualTo(48));
   });
+
+  for (final dark in [false, true]) {
+    testWidgets('fits a 320 dp phone at 2x text, both lines shown (${dark ? 'dark' : 'light'})', (tester) async {
+      final lunch = suggestionsAnswer('fits', [plateJson(sinigangJson, cups: 1.5), plateJson(tinolaJson, cups: 1.5)],
+          share: {'kcal': 650, 'proteinG': 40}, riceCups: 1.5);
+      await _pump(tester, lunch: lunch, size: const Size(320, 3000), textScale: 2, dark: dark);
+      expect(tester.takeException(), isNull);
+      expect(tester.getSize(find.byKey(const Key('ideas.card'))).height, greaterThanOrEqualTo(48));
+      expect(find.byKey(const Key('ideas.card.line1')), findsOneWidget);
+      expect(find.byKey(const Key('ideas.card.line2')), findsOneWidget);
+    });
+  }
 
   testWidgets('sits 12 under Snap a meal and above the meals', (tester) async {
     await _pump(tester, lunch: _fits);

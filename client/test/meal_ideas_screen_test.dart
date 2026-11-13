@@ -221,6 +221,31 @@ void main() {
     expect(find.byKey(const Key('suggest.row.3')), findsNothing);
   });
 
+  testWidgets('tapping the meal already picked keeps the plates shown', (tester) async {
+    await _pump(tester, answers: {'lunch': suggestionsAnswer('fits', _nine, share: {'kcal': 650, 'proteinG': 40})});
+    await tester.tap(find.byKey(const Key('ideas.more')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('ideas.meal.lunch')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('suggest.row.3')), findsOneWidget);
+  });
+
+  testWidgets('scrolled to the end, the footnote clears the bottom safe area', (tester) async {
+    tester.view.padding = const FakeViewPadding(bottom: 34);
+    await _pump(tester, size: const Size(390, 700),
+        answers: {'lunch': suggestionsAnswer('fits', _nine, share: {'kcal': 650, 'proteinG': 40})});
+    for (var i = 0; i < 2; i++) {
+      await tester.ensureVisible(find.byKey(const Key('ideas.more')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('ideas.more')));
+      await tester.pumpAndSettle();
+    }
+    await tester.drag(find.byType(ListView), const Offset(0, -3000));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('suggest.row.8')), findsOneWidget);
+    expect(tester.getRect(find.byKey(const Key('ideas.footnote'))).bottom, lessThanOrEqualTo(700 - 34));
+  });
+
   testWidgets('a meal with nothing to suggest says so', (tester) async {
     await _pump(tester, answers: {'lunch': _lunch});
     await tester.tap(find.byKey(const Key('ideas.meal.breakfast')));

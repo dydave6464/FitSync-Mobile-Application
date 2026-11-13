@@ -47,10 +47,14 @@ class _MealIdeasScreenState extends ConsumerState<MealIdeasScreen> {
     super.dispose();
   }
 
-  void _pick(String meal) => setState(() {
-    _meal = meal;
-    _shown = _step;
-  });
+  void _pick(String meal) {
+    // The meal already picked: keep the plates Show 3 more brought in.
+    if (meal == _meal) return;
+    setState(() {
+      _meal = meal;
+      _shown = _step;
+    });
+  }
 
   void _more() {
     setState(() => _shown += _step);
@@ -112,7 +116,8 @@ class _MealIdeasScreenState extends ConsumerState<MealIdeasScreen> {
       body: ListView(
         // 8 of the 12 above the buttons and of the 12 below them sits in
         // their own padding: room for a thumb that lands just off a row.
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+        // The bottom clears the home indicator once scrolled to the end.
+        padding: EdgeInsets.fromLTRB(20, 4, 20, 24 + MediaQuery.paddingOf(context).bottom),
         children: [
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
