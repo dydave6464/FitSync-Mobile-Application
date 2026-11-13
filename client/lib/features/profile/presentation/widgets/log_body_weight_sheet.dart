@@ -142,9 +142,17 @@ class _LogBodyWeightSheetState extends ConsumerState<_LogBodyWeightSheet> {
       _error = null;
       _flagged = null;
     });
+    // Captured before the await, as the weigh-ins sheet does for a delete.
+    // The sheet can be closed while the save runs (the close button, the
+    // scrim, a drag, system back), and its context and `ref` go with it;
+    // the weigh-in still lands on the server.
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    final route = ModalRoute.of(context);
+    final container = ProviderScope.containerOf(context, listen: false);
 
     try {
-      await ref
+      await container
           .read(profileRepositoryProvider)
           .logBodyWeight(kg, loggedOn: _loggedOn);
     } catch (error) {
@@ -152,30 +160,44 @@ class _LogBodyWeightSheetState extends ConsumerState<_LogBodyWeightSheet> {
       // sheet spinning with Save locked. Anything the API layer did not name
       // is logged, as the line on screen cannot say why.
       if (error is! ApiException) debugPrint('Weigh-in save failed: $error');
+      final message = userMessage(error);
+      // Whether the sheet is still open is its route's to say, not
+      // `mounted`: however it is closed, it stays mounted for its exit
+      // animation while its route is already popping. Once it is closing or
+      // closed, the failure is said on the screen instead, or the user would
+      // take the weigh-in for saved.
+      final open = mounted && (route?.isCurrent ?? false);
+      if (!open) {
+        messenger.showSnackBar(
+          SnackBar(content: Text("Your weight wasn't saved. $message")),
+        );
+      }
       if (!mounted) return;
       setState(() {
-        _error = userMessage(error);
+        _error = open ? message : null;
         _busy = false;
       });
       return;
     }
 
-    if (!mounted) return;
+    // Through the container, which outlives a sheet closed mid-save.
     // Every period holds the new point -- a week's weigh-in is in the month
     // and the year too -- and the family is kept alive, so refreshing only
     // the one on screen left the others showing the old weight and change.
-    ref.invalidate(bodyWeightProvider);
+    container.invalidate(bodyWeightProvider);
     // The server's writeEntry also overwrites users.weight_kg when this is
     // the newest entry, so Profile and Settings -- both backed by
     // profileProvider, an AsyncNotifier that never refetches on its own --
     // would otherwise keep showing the pre-save weight for the rest of the
     // session, disagreeing with the log this sheet just wrote to.
-    ref.invalidate(profileProvider);
+    container.invalidate(profileProvider);
     // Today's calorie target is worked out from that same weight, and the
     // meal suggestions are fitted to it.
-    ref.invalidate(nutritionDayProvider);
-    ref.invalidate(mealSuggestionsProvider);
-    Navigator.of(context).pop();
+    container.invalidate(nutritionDayProvider);
+    container.invalidate(mealSuggestionsProvider);
+    // Only while the sheet is still the top route: once it is closing or
+    // gone, a pop would take the screen under it instead.
+    if (mounted && (route?.isCurrent ?? false)) navigator.pop();
   }
 
   /// The day, drawn as the About step draws date of birth: one button,
