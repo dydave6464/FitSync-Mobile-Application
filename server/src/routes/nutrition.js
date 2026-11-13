@@ -10,6 +10,7 @@ const {
 const { resolveFood } = require('../lib/resolve-food');
 const { pickSuggestions, asRiceFood } = require('../lib/meal-suggestions');
 const { readSuggestionPool, readRice, readUsualRiceCups } = require('../db/meal-suggestions');
+const { listHidden, hideFood, showFood } = require('../db/hidden-suggestions');
 const {
   MEALS, insertEntry, insertEntryOnce, findEntryIdByClientId, getEntry, getStoredEntry, updateEntry, deleteEntry,
   listDayEntries, targetProfile,
@@ -68,6 +69,28 @@ module.exports = function buildNutritionRouter(deps) {
         meal, date, target, totals: totalsOf(entries), entries, pool: dishes, rice, riceCups, yesterday,
       });
       res.json({ data: { date, meal, riceCups, riceFood: asRiceFood(rice), ...picked } });
+    } catch (err) { next(err); }
+  });
+
+  // "Don't suggest this" (spec 2026-11-13 round 2): each answers the
+  // updated list, so the app needs no second request.
+  const hiddenList = async (res, userId) => res.json({ data: { hidden: await listHidden(pool, userId) } });
+
+  router.get('/suggestions/hidden', auth, async (req, res, next) => {
+    try { await hiddenList(res, req.user.userId); } catch (err) { next(err); }
+  });
+
+  router.put('/suggestions/hidden/:foodId', auth, async (req, res, next) => {
+    try {
+      await hideFood(pool, req.user.userId, req.params.foodId);
+      await hiddenList(res, req.user.userId);
+    } catch (err) { next(err); }
+  });
+
+  router.delete('/suggestions/hidden/:foodId', auth, async (req, res, next) => {
+    try {
+      await showFood(pool, req.user.userId, req.params.foodId);
+      await hiddenList(res, req.user.userId);
     } catch (err) { next(err); }
   });
 

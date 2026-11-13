@@ -10,6 +10,7 @@ const { savePlan, getActivePlan } = require('../db/plans');
 const bodyWeight = require('../db/body-weight');
 const { manilaDay } = require('../lib/manila-day');
 const { readRankerHistory } = require('../db/ranker-history');
+const { FOOD_GROUPS } = require('../lib/food-groups');
 
 const ENUMS = {
   sex: ['male', 'female', 'prefer_not_to_say'],
@@ -26,10 +27,10 @@ const RICE_CUPS = [0, 0.5, 1, 1.5, 2];
 const NUMERIC = Object.keys(bodyWeight.BODY_RANGES);
 const SIDES = ['left', 'right', 'both'];
 
-// users.full_name, users.notifications_enabled, users.weight_unit and
-// users.usual_rice_cups are NOT NULL. Every other
+// users.full_name, users.notifications_enabled, users.weight_unit,
+// users.usual_rice_cups and users.avoid_foods are NOT NULL. Every other
 // WRITABLE column allows NULL, and clearing an optional field is legitimate.
-const REQUIRED_NOT_NULL = ['fullName', 'notificationsEnabled', 'weightUnit', 'usualRiceCups'];
+const REQUIRED_NOT_NULL = ['fullName', 'notificationsEnabled', 'weightUnit', 'usualRiceCups', 'avoidFoods'];
 
 // Both columns are VARCHAR(255). An over-length string must be rejected here,
 // not discovered as ER_DATA_TOO_LONG from the database.
@@ -108,6 +109,14 @@ function validatePatch(body) {
         throw invalid(key, `usualRiceCups must be one of: ${RICE_CUPS.join(', ')}.`);
       }
       fields[key] = value;
+      continue;
+    }
+    if (key === 'avoidFoods') {
+      // A list of distinct groups only; stored as the SET's own text.
+      if (!Array.isArray(value) || !value.every((g) => FOOD_GROUPS.includes(g)) || new Set(value).size !== value.length) {
+        throw invalid(key, `avoidFoods must be a list of distinct values from: ${FOOD_GROUPS.join(', ')}.`);
+      }
+      fields[key] = FOOD_GROUPS.filter((g) => value.includes(g)).join(',');
       continue;
     }
     if (key === 'dateOfBirth') {
