@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
+import '../../nutrition/domain/meal_suggestion.dart'
+    show foodGroupLabel, foodGroups;
 import '../../nutrition/domain/nutrition.dart'
     show manualKcal, mealLabel, mealTypes;
 import '../../nutrition/presentation/widgets/number_box.dart';
@@ -86,6 +88,16 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
       if (_suggest.contains(meal)) meal,
   ];
 
+  /// The food groups it is often made with, so a trainee who avoids one
+  /// is not suggested it.
+  late final Set<String> _contains = {...?widget.food?.contains};
+
+  /// The tagged groups in group order, as the server keeps them.
+  List<String> get _containsList => [
+    for (final g in foodGroups)
+      if (_contains.contains(g)) g,
+  ];
+
   bool get _editing => widget.food != null;
 
   @override
@@ -127,6 +139,7 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
     for (final (key, _) in _numbers) _boxes[key]!.text.trim(),
     _suggestMeals.join(','),
     '${_withRice && _mainMealChosen}',
+    _containsList.join(','),
   ].join('\u0000');
 
   /// Blank is null; anything unreadable is NaN, which fails every check.
@@ -190,8 +203,7 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
     sodiumMg: _number('sodium'),
     suggestMeals: _suggestMeals,
     suggestWithRice: _withRice && _mainMealChosen,
-    // Every field is sent, so an edit carries the food's tags through.
-    contains: widget.food?.contains ?? const [],
+    contains: _containsList,
   );
 
   Future<void> _save() async {
@@ -265,6 +277,7 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
     'sodiumMg',
     'suggestMeals',
     'suggestWithRice',
+    'contains',
   };
 
   Future<void> _hide(AdminFood food) async {
@@ -535,6 +548,35 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
               }),
             ),
           ?fieldError('suggestWithRice'),
+          const SizedBox(height: 18),
+          Semantics(header: true, child: const FsEyebrow('Contains')),
+          const SizedBox(height: 6),
+          FsTapRoom(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final g in foodGroups)
+                  FsChip(
+                    key: Key('admin.food.contains.$g'),
+                    label: foodGroupLabel(g),
+                    showCheck: true,
+                    selected: _contains.contains(g),
+                    onTap: () => setState(() {
+                      if (!_contains.remove(g)) _contains.add(g);
+                      _fieldErrors.remove('contains');
+                      _error = null;
+                    }),
+                  ),
+              ],
+            ),
+          ),
+          ?fieldError('contains'),
+          const SizedBox(height: 6),
+          Text(
+            'Used to skip dishes for trainees who avoid these foods.',
+            style: TextStyle(fontSize: 12, height: 1.4, color: t.text3),
+          ),
           if (food != null && _hidden) ...[
             const SizedBox(height: 6),
             Text(

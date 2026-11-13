@@ -817,4 +817,159 @@ void main() {
       expect(find.text(note), findsNothing);
     });
   });
+
+  group('Contains', () {
+    const helper = 'Used to skip dishes for trainees who avoid these foods.';
+    const labels = {
+      'pork': 'Pork',
+      'beef': 'Beef',
+      'chicken': 'Chicken',
+      'fish': 'Fish',
+      'shellfish': 'Shrimp & shellfish',
+      'egg': 'Egg',
+    };
+
+    FsChip chip(WidgetTester tester, String group) =>
+        tester.widget<FsChip>(find.byKey(Key('admin.food.contains.$group')));
+
+    testWidgets('a new food shows the heading, six chips and the helper', (
+      tester,
+    ) async {
+      await _pump(tester, FakeAdminRepository());
+      await tester.ensureVisible(find.text('CONTAINS'));
+      expect(find.text('CONTAINS'), findsOneWidget);
+      for (final MapEntry(key: group, value: label) in labels.entries) {
+        final finder = find.byKey(Key('admin.food.contains.$group'));
+        expect(finder, findsOneWidget, reason: group);
+        expect(chip(tester, group).label, label);
+        expect(chip(tester, group).selected, isFalse, reason: group);
+      }
+      expect(find.text(helper), findsOneWidget);
+      // Below the local-meal choices.
+      expect(
+        tester.getTopLeft(find.text('CONTAINS')).dy,
+        greaterThan(
+          tester
+              .getTopLeft(find.byKey(const Key('admin.food.suggest.lunch')))
+              .dy,
+        ),
+      );
+    });
+
+    testWidgets('Save sends the tapped groups in group order', (tester) async {
+      final repo = FakeAdminRepository();
+      await _pump(tester, repo);
+      await _fillRequired(tester);
+      await _tap(tester, find.byKey(const Key('admin.food.contains.egg')));
+      await _tap(tester, find.byKey(const Key('admin.food.contains.pork')));
+      expect(chip(tester, 'egg').selected, isTrue);
+      await _pressSave(tester);
+      expect(repo.createFoodCalls.single.contains, ['pork', 'egg']);
+    });
+
+    testWidgets("an edit opens on the food's tags and sends them back", (
+      tester,
+    ) async {
+      final repo = FakeAdminRepository();
+      await _pump(
+        tester,
+        repo,
+        food: sampleFood(id: 12, contains: const ['fish']),
+      );
+      await tester.ensureVisible(
+        find.byKey(const Key('admin.food.contains.fish')),
+      );
+      expect(chip(tester, 'fish').selected, isTrue);
+      expect(chip(tester, 'pork').selected, isFalse);
+      await _type(tester, 'fat', '20');
+      await _pressSave(tester);
+      expect(repo.updateFoodCalls.single.input.contains, ['fish']);
+    });
+
+    testWidgets('a changed tag is an unsaved change', (tester) async {
+      await _pump(
+        tester,
+        FakeAdminRepository(),
+        food: sampleFood(id: 12, contains: const ['fish']),
+      );
+      await _tap(tester, find.byKey(const Key('admin.food.contains.beef')));
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Discard your changes?'), findsOneWidget);
+    });
+
+    testWidgets('a tag tapped twice is no change', (tester) async {
+      await _pump(
+        tester,
+        FakeAdminRepository(),
+        food: sampleFood(id: 12, contains: const ['fish']),
+      );
+      await _tap(tester, find.byKey(const Key('admin.food.contains.fish')));
+      await _tap(tester, find.byKey(const Key('admin.food.contains.fish')));
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Discard your changes?'), findsNothing);
+      expect(find.byType(FoodFormScreen), findsNothing);
+    });
+
+    testWidgets("the server's refusal of contains shows under the chips", (
+      tester,
+    ) async {
+      const message = 'contains must list pork, beef, chicken, fish, '
+          'shellfish or egg.';
+      final repo = FakeAdminRepository(
+        createFood: (_) async => throw const ApiException(
+          'INVALID_ADMIN_FIELD',
+          message,
+          details: [
+            {'field': 'contains'},
+          ],
+        ),
+      );
+      await _pump(tester, repo);
+      await _fillRequired(tester);
+      await _tap(tester, find.byKey(const Key('admin.food.contains.pork')));
+
+      await _pressSave(tester);
+
+      expect(find.byType(FoodFormScreen), findsOneWidget);
+      expect(find.byKey(const Key('error')), findsNothing);
+      await tester.ensureVisible(find.text(message));
+      await tester.pumpAndSettle();
+      final y = tester.getTopLeft(find.text(message)).dy;
+      expect(
+        y,
+        greaterThan(
+          tester
+              .getTopLeft(find.byKey(const Key('admin.food.contains.egg')))
+              .dy,
+        ),
+      );
+      expect(y, lessThan(tester.getTopLeft(find.text(helper)).dy));
+
+      // Changing a tag clears what the server said.
+      await _tap(tester, find.byKey(const Key('admin.food.contains.beef')));
+      expect(find.text(message), findsNothing);
+    });
+
+    testWidgets('the chips fit a 320 dp phone at 2x text', (tester) async {
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.physicalSize = const Size(320, 640);
+      addTearDown(tester.view.reset);
+      await _pump(
+        tester,
+        FakeAdminRepository(),
+        food: sampleFood(contains: const ['pork', 'shellfish', 'egg']),
+        textScale: 2.0,
+      );
+      await tester.scrollUntilVisible(
+        find.text(helper),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  });
 }
