@@ -174,8 +174,11 @@ final _daysPattern = RegExp(
 int snapSessionLength(int minutes) =>
     (minutes - 45).abs() <= (minutes - 60).abs() ? 45 : 60;
 
-final _minutesNumber = RegExp(r'\b(\d{1,3})\s*(?:min|mins|minutes)\b');
-final _hoursNumber = RegExp(r'\b(\d+(?:\.\d+)?|an|one|a)\s*hours?\b');
+// Singular and hyphenated units too: "45 minute sessions", "45-minute
+// workouts", "1-hour sessions" are ordinary phrasings, and this reader is
+// the only one whenever the AI reader is busy, capped or off.
+final _minutesNumber = RegExp(r'\b(\d{1,3})[\s-]*(?:min(?:ute)?s?)\b');
+final _hoursNumber = RegExp(r'\b(\d+(?:\.\d+)?|an|one|a)[\s-]*hours?\b');
 final _halfHour = RegExp(r'\bhalf\s+an?\s+hour\b');
 
 /// The longest session a sentence may ask for and still count. Anything

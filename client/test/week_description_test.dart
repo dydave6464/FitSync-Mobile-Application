@@ -409,8 +409,19 @@ void main() {
       expect(len('half an hour'), 45);
       expect(asked('half an hour'), 30);
     });
+    test('singular and hyphenated units read as plural ones', () {
+      expect(asked('45 minute sessions'), 45);
+      expect(asked('45-minute workouts'), 45);
+      expect(asked('50 - minute sessions'), 50);
+      expect(asked('60min'), 60);
+      expect(asked('1-hour sessions'), 60);
+      expect(asked('one-hour workouts'), 60);
+      expect(asked('1.5-hour sessions'), 90);
+      expect(len('45 minute sessions, 3 days a week'), 45);
+    });
     test('no length, or out of range', () {
       expect(len('3 days a week'), isNull);
+      expect(len('3 minutemen'), isNull);
       expect(len('500 min'), isNull);
     });
   });
