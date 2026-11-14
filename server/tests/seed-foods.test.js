@@ -76,8 +76,10 @@ test('what the starting dishes are often made with', () => {
     assert.ok(Array.isArray(f.contains) && f.contains.length > 0, `${f.name} contains`);
     assert.deepEqual(f.contains, FOOD_GROUPS.filter((g) => f.contains.includes(g)), `${f.name}: the six, in order`);
   }
-  const byTags = Object.fromEntries(tagged.map((f) => [f.name, f.contains.join(',')]));
-  assert.deepEqual(byTags, {
+  // The Meal ideas dishes' tags are pinned exactly: "Foods I avoid" filters
+  // suggestions by them. Foods added later (the 2026-11-14 round) may carry
+  // tags too, but none of them is a suggestion.
+  const STARTING = {
     Tapsilog: 'beef,egg',
     Bangsilog: 'fish,egg',
     'Sarciadong isda (fish with tomato-egg sauce)': 'fish,egg',
@@ -94,7 +96,15 @@ test('what the starting dishes are often made with', () => {
     'Sinigang na bangus (milkfish sour soup)': 'fish', 'Tilapia, grilled or steamed': 'fish',
     'Sutukil sinugba (grilled fish)': 'fish', 'Ginataang tulingan (frigate tuna in coconut milk)': 'fish',
     'Tinapang galunggong (smoked round scad)': 'fish', 'Inihaw na tuna (grilled tuna steak)': 'fish',
-  });
+  };
+  for (const [name, tags] of Object.entries(STARTING)) {
+    const f = FOODS.find((x) => x.name === name);
+    assert.ok(f, `${name} is still in the list`);
+    assert.equal((f.contains || []).join(','), tags, name);
+  }
+  for (const f of tagged) {
+    if (!(f.name in STARTING)) assert.ok(!f.suggestMeals, `${f.name}: a later tagged food is not a suggestion`);
+  }
 });
 
 test('food seed', async (t) => {
@@ -180,8 +190,8 @@ test('food seed', async (t) => {
   await t.test('searching "coffee" finds every coffee pack', async () => {
     const names = (await searchOwnFoods(pool, 'coffee')).map((f) => f.name);
     assert.deepEqual(names.sort(), [
-      '3-in-1 coffee', 'Black coffee', 'Great Taste White coffee', 'Kopiko Blanca coffee', 'Kopiko Brown coffee',
-      'Nescafé Creamy White coffee', 'Nescafé Original 3-in-1 coffee', 'Nescafé Sugarfree Original coffee',
+      '3-in-1 coffee', 'Black coffee', 'Great Taste White coffee', 'Kapeng barako (brewed Batangas coffee, black)',
+      'Kopiko 78°C coffee latte (bottle)', 'Kopiko Blanca coffee', 'Kopiko Brown coffee', 'Nescafé Creamy White coffee', 'Nescafé Original 3-in-1 coffee', 'Nescafé Sugarfree Original coffee',
       'San Mig Sugar Free Original coffee', 'UCC 3-in-1 Regular coffee',
     ]);
   });
@@ -189,7 +199,8 @@ test('food seed', async (t) => {
   await t.test('searching "bread" finds the loaf slices and named breads', async () => {
     const names = (await searchOwnFoods(pool, 'bread')).map((f) => f.name);
     assert.deepEqual(names.sort(), [
-      'Cheese bread', 'Gardenia Classic White bread', 'Gardenia High Fiber Whole Wheat bread', 'Pinoy Tasty bread',
+      'Cheese bread', 'Gardenia Classic White bread', 'Gardenia High Fiber Whole Wheat bread',
+      'Pan de regla (kalihim, red-filled bread)', 'Piaya (muscovado flatbread)', 'Pinoy Tasty bread',
       'Spanish bread', 'Whole wheat bread',
     ]);
   });
@@ -355,7 +366,8 @@ test('Fishball\'s sodium is FNRI\'s measured value plus the sauce', () => {
 // The dish classifier's palabok had only a brand to point to (spec
 // 2026-11-05-food-classifier, section 1).
 test('a plain Pancit palabok follows the Snap a meal foods, with its serving grams', () => {
-  assert.equal(FOODS.length, 317);
+  // The 2026-11-14 food round appends after it, so it is no longer the last.
+  assert.equal(FOODS.findIndex((x) => x.name === 'Pancit palabok'), 316);
   const palabok = FOODS[316];
   assert.equal(palabok.name, 'Pancit palabok');
   assert.equal(palabok.category, 'filipino');
