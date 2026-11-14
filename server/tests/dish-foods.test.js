@@ -1,9 +1,9 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { DISH_FOODS, missingDishFoods } = require('../src/services/vision/dish-foods');
+const { DISH_FOODS, SIDE_FOODS, SILOG_PLATES, missingDishFoods, isSide } = require('../src/services/vision/dish-foods');
 
-const all = Object.values(DISH_FOODS).flat();
+const all = [...Object.values(DISH_FOODS).flat(), ...SIDE_FOODS, ...SILOG_PLATES];
 const menuOf = (names) => names.map((name, i) => ({ foodId: i + 1, name }));
 
 test('a menu holding every classifier food misses none, whatever the case', () => {
@@ -16,7 +16,21 @@ test('a renamed or hidden classifier food is named, in DISH_FOODS order', () => 
   assert.deepEqual(missingDishFoods(menu), ['Tinolang manok', 'Beef tapa']);
 });
 
-test('an empty menu misses all 24', () => {
+test('an empty menu misses all 24 dish foods, every side food and all 8 silog plates, in that order', () => {
   assert.deepEqual(missingDishFoods([]), all);
-  assert.equal(all.length, 24);
+  assert.equal(Object.values(DISH_FOODS).flat().length, 24);
+  assert.equal(SILOG_PLATES.length, 8);
+});
+
+test('a side is a listed rice or egg, or a drink, condiment, bread or fresh side by its group', () => {
+  assert.ok(isSide({ name: 'WHITE RICE', group: 'home' }));
+  assert.ok(isSide({ name: 'Cola', group: 'drink' }));
+  assert.ok(isSide({ name: 'Monay', group: 'bread_kakanin' }));
+  assert.ok(!isSide({ name: 'Bistek tagalog', group: 'home' }));
+  assert.ok(!isSide({ name: 'Ginisang ampalaya with egg', group: 'home' }), 'a dish with egg is no side');
+});
+
+test('a food of unknown type (a FatSecret copy) is never the AI\'s dish, so it counts as a side', () => {
+  assert.ok(isSide({ name: 'Some FatSecret food', group: null }));
+  assert.ok(isSide({ name: 'Some FatSecret food' }));
 });

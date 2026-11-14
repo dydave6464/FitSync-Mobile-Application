@@ -1,6 +1,6 @@
 {
- "createdAt": "2026-11-05T13:20:46+00:00",
- "version": "dish-lr-1-dinov2-small",
+ "createdAt": "2026-11-12T17:14:37+00:00",
+ "version": "dish-lr-2-dinov2-small",
  "classes": [
   "bihon",
   "bulalo",
@@ -8,6 +8,7 @@
   "hotdog",
   "longganisa",
   "nilaga",
+  "other",
   "palabok",
   "sinigang",
   "spaghetti",
@@ -16,149 +17,220 @@
   "tocino"
  ],
  "photos": {
-  "train": 532,
-  "test": 120,
+  "train": 1228,
+  "test": 148,
   "droppedNearDuplicates": 0,
   "excludeCompared": 42,
   "perDish": {
    "bihon": {
-    "train": 46,
-    "test": 10,
-    "plates": 47
+    "train": 57,
+    "test": 11,
+    "plates": 59
    },
    "bulalo": {
-    "train": 43,
-    "test": 10,
-    "plates": 50
+    "train": 80,
+    "test": 7,
+    "plates": 84
    },
    "canton": {
-    "train": 48,
-    "test": 10,
-    "plates": 27
+    "train": 61,
+    "test": 11,
+    "plates": 41
    },
    "hotdog": {
-    "train": 50,
-    "test": 10,
-    "plates": 60
+    "train": 91,
+    "test": 4,
+    "plates": 80
    },
    "longganisa": {
-    "train": 48,
-    "test": 10,
-    "plates": 49
+    "train": 61,
+    "test": 11,
+    "plates": 63
    },
    "nilaga": {
-    "train": 38,
+    "train": 84,
     "test": 10,
-    "plates": 30
+    "plates": 76
+   },
+   "other": {
+    "train": 372,
+    "test": 40,
+    "plates": 412
    },
    "palabok": {
-    "train": 50,
-    "test": 10,
-    "plates": 47
+    "train": 68,
+    "test": 11,
+    "plates": 61
    },
    "sinigang": {
-    "train": 50,
-    "test": 10,
-    "plates": 38
+    "train": 115,
+    "test": 8,
+    "plates": 83
    },
    "spaghetti": {
-    "train": 45,
-    "test": 10,
-    "plates": 44
+    "train": 56,
+    "test": 9,
+    "plates": 53
    },
    "tapa": {
-    "train": 36,
-    "test": 10,
-    "plates": 42
+    "train": 48,
+    "test": 8,
+    "plates": 52
    },
    "tinola": {
-    "train": 39,
-    "test": 10,
-    "plates": 38
+    "train": 86,
+    "test": 11,
+    "plates": 86
    },
    "tocino": {
-    "train": 39,
-    "test": 10,
-    "plates": 48
+    "train": 49,
+    "test": 7,
+    "plates": 55
    }
   }
  },
  "embedders": {
   "clip-b32": {
-   "cvAccuracy": 0.8703,
+   "cvAccuracy": 0.8436,
    "C": 10.0,
+   "classWeight": null,
    "sizeMb": 89.1
   },
   "dinov2-small": {
-   "cvAccuracy": 0.8835,
+   "cvAccuracy": 0.8656,
    "C": 10.0,
+   "classWeight": "balanced",
    "sizeMb": 88.5
   },
   "mobilenetv4-small": {
-   "cvAccuracy": 0.3891,
+   "cvAccuracy": 0.5195,
    "C": 10.0,
+   "classWeight": "balanced",
    "sizeMb": 15.1
   }
  },
  "chosen": "dinov2-small",
- "thresholds": {
-  "swapAt": 0.3876,
-  "swapPrecision": 0.9004,
-  "swapShare": 0.9436,
-  "choiceAt": 0.2476,
-  "choicePrecision": 0.8835,
-  "choiceShare": 1.0
- },
- "test": {
-  "accuracy": 0.9083,
-  "perDish": {
+ "cv": {
+  "perClass": {
    "bihon": {
-    "n": 10,
-    "recall": 0.9
+    "n": 57,
+    "recall": 0.9474
    },
    "bulalo": {
-    "n": 10,
-    "recall": 0.8
+    "n": 80,
+    "recall": 0.8375
    },
    "canton": {
-    "n": 10,
-    "recall": 0.9
+    "n": 61,
+    "recall": 0.8525
    },
    "hotdog": {
-    "n": 10,
+    "n": 91,
+    "recall": 0.9121
+   },
+   "longganisa": {
+    "n": 61,
+    "recall": 0.8689
+   },
+   "nilaga": {
+    "n": 84,
+    "recall": 0.7738
+   },
+   "other": {
+    "n": 372,
+    "recall": 0.8737
+   },
+   "palabok": {
+    "n": 68,
+    "recall": 0.9706
+   },
+   "sinigang": {
+    "n": 115,
+    "recall": 0.8174
+   },
+   "spaghetti": {
+    "n": 56,
+    "recall": 0.8929
+   },
+   "tapa": {
+    "n": 48,
+    "recall": 0.9167
+   },
+   "tinola": {
+    "n": 86,
+    "recall": 0.814
+   },
+   "tocino": {
+    "n": 49,
+    "recall": 0.8163
+   }
+  }
+ },
+ "thresholds": {
+  "swapAt": 0.52,
+  "swapPrecision": 0.9,
+  "swapShare": 0.8193,
+  "choiceAt": 0.2416,
+  "choicePrecision": 0.8283,
+  "choiceShare": 1.0,
+  "outsideSwapAt": 0.7971,
+  "outsidePrecision": 0.9717,
+  "outsideShare": 0.5152
+ },
+ "test": {
+  "accuracy": 0.8649,
+  "perDish": {
+   "bihon": {
+    "n": 11,
+    "recall": 0.9091
+   },
+   "bulalo": {
+    "n": 7,
+    "recall": 0.7143
+   },
+   "canton": {
+    "n": 11,
+    "recall": 0.9091
+   },
+   "hotdog": {
+    "n": 4,
     "recall": 1.0
    },
    "longganisa": {
-    "n": 10,
-    "recall": 0.8
+    "n": 11,
+    "recall": 0.8182
    },
    "nilaga": {
     "n": 10,
-    "recall": 0.8
+    "recall": 0.7
+   },
+   "other": {
+    "n": 40,
+    "recall": 0.925
    },
    "palabok": {
-    "n": 10,
-    "recall": 1.0
+    "n": 11,
+    "recall": 0.8182
    },
    "sinigang": {
-    "n": 10,
-    "recall": 0.9
+    "n": 8,
+    "recall": 0.875
    },
    "spaghetti": {
-    "n": 10,
+    "n": 9,
     "recall": 1.0
    },
    "tapa": {
-    "n": 10,
-    "recall": 1.0
+    "n": 8,
+    "recall": 0.875
    },
    "tinola": {
-    "n": 10,
-    "recall": 0.8
+    "n": 11,
+    "recall": 0.8182
    },
    "tocino": {
-    "n": 10,
-    "recall": 1.0
+    "n": 7,
+    "recall": 0.7143
    }
   },
   "confusion": {
@@ -169,6 +241,7 @@
     "hotdog",
     "longganisa",
     "nilaga",
+    "other",
     "palabok",
     "sinigang",
     "spaghetti",
@@ -178,6 +251,70 @@
    ],
    "matrix": [
     [
+     10,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     5,
+     0,
+     0,
+     0,
+     2,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     10,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     4,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     1,
      9,
      0,
      1,
@@ -186,18 +323,16 @@
      0,
      0,
      0,
-     0,
-     0,
-     0,
      0
     ],
     [
      0,
-     8,
+     2,
      0,
      0,
      0,
-     1,
+     7,
+     0,
      0,
      0,
      0,
@@ -206,76 +341,53 @@
      0
     ],
     [
+     0,
+     0,
+     0,
+     0,
      1,
      0,
+     37,
+     0,
+     0,
+     0,
+     1,
+     1,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
      9,
      0,
-     0,
-     0,
-     0,
-     0,
-     0,
-     0,
-     0,
-     0
-    ],
-    [
-     0,
-     0,
-     0,
-     10,
-     0,
-     0,
-     0,
-     0,
-     0,
-     0,
-     0,
-     0
-    ],
-    [
-     0,
-     0,
-     0,
-     0,
-     8,
-     0,
-     0,
-     0,
-     0,
-     0,
-     0,
-     2
-    ],
-    [
-     0,
      1,
      0,
      0,
+     0
+    ],
+    [
      0,
-     8,
      0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     7,
      0,
      0,
      1,
-     0,
      0
     ],
     [
      0,
      0,
-     0,
-     0,
-     0,
-     0,
-     10,
-     0,
-     0,
-     0,
-     0,
-     0
-    ],
-    [
      0,
      0,
      0,
@@ -286,21 +398,6 @@
      9,
      0,
      0,
-     1,
-     0
-    ],
-    [
-     0,
-     0,
-     0,
-     0,
-     0,
-     0,
-     0,
-     0,
-     10,
-     0,
-     0,
      0
     ],
     [
@@ -313,11 +410,13 @@
      0,
      0,
      0,
-     10,
      0,
-     0
+     7,
+     0,
+     1
     ],
     [
+     0,
      0,
      0,
      0,
@@ -325,10 +424,10 @@
      1,
      0,
      0,
+     0,
+     0,
      1,
-     0,
-     0,
-     8,
+     9,
      0
     ],
     [
@@ -342,8 +441,9 @@
      0,
      0,
      0,
+     2,
      0,
-     10
+     5
     ]
    ]
   }

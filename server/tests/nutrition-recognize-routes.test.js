@@ -47,6 +47,9 @@ test('POST /nutrition/recognize', async (t) => {
   await food('Garlic fried rice (sinangag)', '1 cup (160 g)', 299);
   await food('Tinolang manok', '1 bowl (350 g)', 220);
   const SINIGANG = await food('Sinigang na baboy', '1 bowl (350 g)', 230);
+  // A home dish, not a FatSecret copy of unknown type: round 2's outside rule may correct it.
+  const BISTEK = await food('Bistek tagalog', '1 serving (150 g)', 300);
+  await pool.query("UPDATE foods SET food_type = 'home' WHERE food_id = ?", [BISTEK]);
   // A FatSecret copy someone has logged: on the menu, flagged fromFatsecret.
   const [mango] = await pool.query("INSERT INTO foods (name, category, serving_desc, calories) VALUES ('Mango Shake', 'international', '1 glass', 250)");
   await pool.query("INSERT INTO food_sources (food_id, provider, external_id) VALUES (?, 'fatsecret', 'fs-1')", [mango.insertId]);
@@ -333,6 +336,34 @@ test('POST /nutrition/recognize', async (t) => {
       const line = lastRecognised();
       assert.ok(line.includes('"dish":"swapped"'), line);
       assert.ok(!/inigang|inola/.test(line), 'no food or dish names in the log');
+    } finally {
+      opinion = async () => null;
+    }
+  });
+
+  await t.test('round 2: a very sure classifier corrects a dish the AI named outside the 12', async () => {
+    const u = await freshUser({ pro: true });
+    answer = async () => ({ items: [
+      { menu: 'White rice', name: 'White rice', quantity: 1, unit: 'cup', grams: 160, confidence: 0.9, alternatives: [] },
+      { menu: 'Bistek tagalog', name: 'Bistek tagalog', quantity: 1, unit: 'serving', grams: null, confidence: 0.7, alternatives: [] },
+    ] });
+    opinion = async () => ({
+      model: 'dish-lr-2-test', dishes: [{ dish: 'sinigang', probability: 0.99 }],
+      swapAt: 0.8, choiceAt: 0.5, outsideSwapAt: 0.95, classes: ['other', 'sinigang', 'tinola'],
+    });
+    try {
+      const d = (await u.recognize(PHOTO).expect(200)).body.data;
+      assert.deepEqual(d.items.map((i) => [i.food.name, i.alternatives.map((a) => a.name)]), [
+        ['White rice', []], ['Sinigang na baboy', ['Bistek tagalog']],
+      ]);
+      const [rows] = await pool.query(
+        'SELECT suggested_food_id FROM photo_recognition_items WHERE recognition_id = ? ORDER BY item_order',
+        [d.recognitionId],
+      );
+      assert.equal(rows[1].suggested_food_id, SINIGANG);
+      const line = lastRecognised();
+      assert.ok(line.includes('"dish":"swapped outside"'), line);
+      assert.ok(!/istek|inigang/.test(line), 'no food or dish names in the log');
     } finally {
       opinion = async () => null;
     }

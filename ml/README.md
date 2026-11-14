@@ -244,10 +244,15 @@ A second opinion on a meal photo's main dish for 12 Filipino dishes the vision
 AI confuses (sinigang, tinola, nilaga, bulalo, palabok, bihon, canton,
 Filipino spaghetti, longganisa, hotdog, tocino, tapa). A pre-trained image
 model (ONNX, run by onnxruntime) turns the photo into a vector; a scikit-learn
-logistic regression trained on public, licensed photos names the dish. Node
-asks `POST /classify-dish` beside the vision AI and only lets it change the
-main dish when the AI already picked one of the 12 (spec
-`2026-11-05-food-classifier`).
+logistic regression names the dish, or `other` for any dish that is not one
+of the 12 (round 2). It is trained on public, licensed photos and, for
+research use only, web photos with their source recorded. Node asks
+`POST /classify-dish` beside the vision AI. When the AI picked one of the 12,
+a sure classifier may swap it or add a one-tap choice (`swapAt`, `choiceAt`);
+when the AI named a dish outside the 12, only a very sure one (`outsideSwapAt`)
+swaps it, and a fairly sure one adds a choice. Sides, silog plates and foods
+of unknown type are never replaced (specs `2026-11-05-food-classifier` and
+`2026-11-12-dish-classifier-other-class`).
 
 **Set up (after `pip install -r requirements.txt`):**
 
@@ -256,7 +261,7 @@ main dish when the AI already picked one of the 12 (spec
 downloads the image model `models/dish_classifier.json` names (15-90 MB,
 checked by SHA-256; `models/*.onnx` is git-ignored). Restart the service --
 it has no auto-reload -- and `/health` reports
-`"dishModel": {"status": "loaded", "version": "dish-lr-1-…"}`; without the
+`"dishModel": {"status": "loaded", "version": "dish-lr-2-…"}`; without the
 download it reports `"absent"` and Snap a meal keeps the AI's answer.
 
 **Retrain** (the photos are private and not in the repository):
@@ -266,8 +271,10 @@ download it reports `"absent"` and Snap a meal keeps the AI's answer.
         --photos <dish-photos folder>/photos --exclude <42-photo test set>
 
 writes `models/dish_classifier.json` (committed: numbers only) and
-`reports/dish_classifier_cv.json` (cross-validated accuracy per image model,
-the thresholds, held-out test accuracy per dish, the confusion matrix, how
-many `--exclude` photos were compared, and the plates per dish when the
-manifest gives each photo a `"group"`). `--manifest` defaults to
+`reports/dish_classifier_cv.json` (cross-validated accuracy and the chosen
+class weight per image model, cross-validated recall per class including
+`other`, the three thresholds with their precision and share, held-out test
+accuracy per dish, the confusion matrix, how many `--exclude` photos were
+compared, and the plates per dish when the manifest gives each photo a
+`"group"`). Cross-validation keeps each plate's photos in one fold. `--manifest` defaults to
 `<photos>/manifest.json`.
