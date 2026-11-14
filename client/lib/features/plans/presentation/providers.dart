@@ -2,8 +2,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../exercises/presentation/providers.dart'
     show apiClientProvider, apiRetryPolicy;
+import '../../profile/presentation/providers.dart' show profileProvider;
 import '../data/plan_repository.dart';
 import '../domain/exercise_alternative.dart';
+import '../domain/plan_defaults.dart';
 import '../domain/workout_plan.dart';
 
 final planRepositoryProvider = Provider<PlanRepository>(
@@ -33,3 +35,10 @@ final alternativesProvider = FutureProvider.autoDispose
           ),
       retry: apiRetryPolicy,
     );
+
+/// Auto's length and exercise count for the generator screen. Refetched when
+/// the profile changes (goal, level and health check decide it).
+final planDefaultsProvider = FutureProvider.autoDispose<PlanDefaults>((ref) {
+  ref.watch(profileProvider);
+  return ref.watch(planRepositoryProvider).defaults();
+});

@@ -126,6 +126,19 @@ class PlanDay {
   );
 }
 
+/// The plan a generated plan replaced, which Undo can bring back.
+class PreviousPlan {
+  const PreviousPlan({required this.planId, required this.name});
+
+  final int planId;
+  final String name;
+
+  factory PreviousPlan.fromJson(Map<String, dynamic> json) => PreviousPlan(
+    planId: json['planId'] as int,
+    name: json['name'] as String? ?? '',
+  );
+}
+
 class WorkoutPlan {
   const WorkoutPlan({
     required this.planId,
@@ -137,6 +150,7 @@ class WorkoutPlan {
     required this.exercises,
     this.days = const [],
     this.source = 'generated',
+    this.previousPlan,
   });
 
   final int planId;
@@ -163,6 +177,11 @@ class WorkoutPlan {
   /// generator's warning and the label on the plan card.
   bool get isCustom => source == 'custom';
 
+  /// The plan this one replaced, while it can still come back: the server
+  /// sends null once a workout is logged on this plan, after Undo, and for a
+  /// first plan.
+  final PreviousPlan? previousPlan;
+
   factory WorkoutPlan.fromJson(Map<String, dynamic> json) => WorkoutPlan(
     planId: json['planId'] as int,
     name: json['name'] as String,
@@ -177,6 +196,9 @@ class WorkoutPlan {
         .map((d) => PlanDay.fromJson(d as Map<String, dynamic>))
         .toList(growable: false),
     source: json['source'] as String? ?? 'generated',
+    previousPlan: json['previousPlan'] is Map<String, dynamic>
+        ? PreviousPlan.fromJson(json['previousPlan'] as Map<String, dynamic>)
+        : null,
   );
 
   /// Which rotation day today falls on, from how many sessions are already

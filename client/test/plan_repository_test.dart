@@ -5,8 +5,10 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'package:fitsync/core/api_client.dart';
+import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/features/plans/data/plan_repository.dart';
+import 'package:fitsync/features/plans/domain/week_description.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 
 /// The exact shape `server/src/db/plans.js` returns.
@@ -451,5 +453,85 @@ void main() {
     );
 
     expect(sent.containsKey('replaceCustomPlan'), isFalse);
+  });
+  test('a plan names the plan Undo would bring back', () {
+    final plan = WorkoutPlan.fromJson({
+      ..._planJson,
+      'previousPlan': {'planId': 3, 'name': 'Plan 1'},
+    });
+    expect(plan.previousPlan!.planId, 3);
+    expect(plan.previousPlan!.name, 'Plan 1');
+    expect(WorkoutPlan.fromJson(_planJson).previousPlan, isNull);
+  });
+
+  test("defaults reads Auto's length", () async {
+    final repo = _repoReturning({
+      'data': {
+        'sessionLengthMin': 45,
+        'exercisesPerDay': 6,
+        'lengthReason': 'level',
+      },
+    });
+    final d = await repo.defaults();
+    expect(d.sessionLengthMin, 45);
+    expect(d.exercisesPerDay, 6);
+    expect(d.lengthReason, 'level');
+  });
+
+  test('restorePrevious posts and returns the restored plan', () async {
+    final seen = <http.Request>[];
+    final repo = _repoCapturing({
+      'data': {
+        'plan': {..._planJson, 'previousPlan': null},
+      },
+    }, seen);
+    final plan = await repo.restorePrevious();
+    expect(seen.single.method, 'POST');
+    expect(seen.single.url.path, '/api/v1/plans/restore-previous');
+    expect(plan.planId, 42);
+    expect(plan.previousPlan, isNull);
+  });
+
+  test('readWeek sends the text and reads the AI reading', () async {
+    final seen = <http.Request>[];
+    final repo = _repoCapturing({
+      'data': {
+        'splitStyle': 'push_pull_legs',
+        'sessionLengthMin': 45,
+        'requestedMinutes': 50,
+        'weekdays': [1, 3, 5],
+        'daysPerWeek': null,
+        'injuries': [
+          {'injuryId': 2, 'side': 'left'},
+        ],
+        'mentionsGoal': true,
+        'source': 'ai',
+      },
+    }, seen);
+    final reading = await repo.readWeek('ppl, 50 min');
+    expect(seen.single.url.path, '/api/v1/plans/read-week');
+    expect(jsonDecode(seen.single.body), {'text': 'ppl, 50 min'});
+    expect(reading.splitStyle, 'push_pull_legs');
+    expect(reading.sessionLengthMin, 45);
+    expect(reading.requestedMinutes, 50);
+    expect(reading.weekdays, [1, 3, 5]);
+    expect(reading.injuries.single.injuryId, 2);
+    expect(reading.injuries.single.side, 'left');
+    expect(reading.mentionsGoal, isTrue);
+    expect(reading.elsewhere, [WeekTopic.goal]);
+    expect(reading.source, WeekSource.ai);
+  });
+
+  test('a refused reading surfaces as an ApiException with its code', () async {
+    final repo = _repoReturning({
+      'error': {
+        'code': 'READ_LIMIT',
+        'message': 'AI reading is used up for today.',
+      },
+    }, status: 429);
+    await expectLater(
+      repo.readWeek('ppl please'),
+      throwsA(isA<ApiException>().having((e) => e.code, 'code', 'READ_LIMIT')),
+    );
   });
 }

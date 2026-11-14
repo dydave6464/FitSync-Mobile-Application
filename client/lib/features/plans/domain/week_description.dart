@@ -49,6 +49,9 @@ enum WeekTopic {
   dayCount,
 }
 
+/// Who read the sentence: the phone's own parser, or the server's AI.
+enum WeekSource { phone, ai }
+
 /// What a sentence about the coming week resolved to.
 ///
 /// Every field is nullable or empty rather than defaulted: "understood
@@ -60,7 +63,39 @@ class WeekDescription {
     this.daysPerWeek,
     this.injuries = const [],
     this.elsewhere = const [],
+    this.sessionLengthMin,
+    this.requestedMinutes,
+    this.weekdays = const [],
+    this.mentionsGoal = false,
+    this.source = WeekSource.phone,
   });
+
+  /// The server's Reading (`POST /plans/read-week`). The server has already
+  /// checked it against the catalogue; the goal is reported, not applied.
+  factory WeekDescription.fromJson(Map<String, dynamic> json) {
+    final mentionsGoal = json['mentionsGoal'] as bool? ?? false;
+    return WeekDescription(
+      splitStyle: json['splitStyle'] as String?,
+      daysPerWeek: json['daysPerWeek'] as int?,
+      sessionLengthMin: json['sessionLengthMin'] as int?,
+      requestedMinutes: json['requestedMinutes'] as int?,
+      weekdays: ((json['weekdays'] as List<dynamic>?) ?? const [])
+          .cast<int>()
+          .toList(growable: false),
+      injuries: ((json['injuries'] as List<dynamic>?) ?? const [])
+          .cast<Map<String, dynamic>>()
+          .map(
+            (i) => SelectedInjury(
+              injuryId: i['injuryId'] as int,
+              side: i['side'] as String?,
+            ),
+          )
+          .toList(growable: false),
+      mentionsGoal: mentionsGoal,
+      elsewhere: [if (mentionsGoal) WeekTopic.goal],
+      source: WeekSource.ai,
+    );
+  }
 
   final String? splitStyle;
   final int? daysPerWeek;
@@ -75,10 +110,30 @@ class WeekDescription {
   /// they can be named back rather than silently dropped.
   final List<WeekTopic> elsewhere;
 
+  /// The length the sentence asked for, snapped to 45 or 60.
+  final int? sessionLengthMin;
+
+  /// The minutes as written ("50 min"), before snapping, so the screen can
+  /// say what it rounded.
+  final int? requestedMinutes;
+
+  /// Weekdays the sentence named, 1 = Monday … 7 = Sunday.
+  final List<int> weekdays;
+
+  /// Whether the sentence talked about a goal, which this screen cannot set.
+  final bool mentionsGoal;
+
+  /// Who read the sentence; [WeekSource.ai] shows the "Read by AI" tag.
+  final WeekSource source;
+
   /// Whether there is anything here to apply. [elsewhere] deliberately does
   /// not count -- it is something to say, not something to change.
   bool get isEmpty =>
-      splitStyle == null && daysPerWeek == null && injuries.isEmpty;
+      splitStyle == null &&
+      daysPerWeek == null &&
+      sessionLengthMin == null &&
+      weekdays.isEmpty &&
+      injuries.isEmpty;
 }
 
 const _minDays = 1;
