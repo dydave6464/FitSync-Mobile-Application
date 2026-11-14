@@ -6,12 +6,19 @@ const groqClient = require('./groq-client');
 /// test may make a network call. The stub's fixed phrases are not a reading
 /// of anyone's week, so a running server never uses it: server.js swaps in
 /// offWeekReader instead (see below).
-function createWeekReaderService(config = {}) {
+///
+/// [logger] (the server's) is where the Groq client says why a reading
+/// failed; left out, it says nothing.
+function createWeekReaderService(config = {}, logger = undefined) {
   const mode = config.mode || 'stub';
   if (mode === 'stub') return stub;
   if (mode === 'groq') {
     if (!config.apiKey) throw new Error('GROQ_API_KEY is required when WEEK_READER_MODE=groq');
-    return groqClient.create({ apiKey: config.apiKey, model: config.model || groqClient.DEFAULT_MODEL });
+    return groqClient.create({
+      apiKey: config.apiKey,
+      model: config.model || groqClient.DEFAULT_MODEL,
+      logger,
+    });
   }
   throw new Error(`Unsupported WEEK_READER_MODE: ${mode}`);
 }

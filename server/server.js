@@ -27,7 +27,7 @@ const cues = createCueService(config.cues);
 // AI", which would replace the phone's own correct reading. Off instead, in
 // every running mode: the route answers 503 AI_BUSY and the app keeps its
 // quick reading.
-const weekReaderService = createWeekReaderService(config.weekReader);
+const weekReaderService = createWeekReaderService(config.weekReader, logger);
 const weekReaderStubOutsideTests = config.env !== 'test' && config.weekReader.mode === 'stub';
 if (weekReaderStubOutsideTests) {
   logger.warn('WEEK_READER_MODE is stub: AI reading of the week is off; set WEEK_READER_MODE=groq');

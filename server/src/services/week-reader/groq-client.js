@@ -23,6 +23,8 @@ function systemPrompt(injuryNames) {
     '"mentionsGoal": true | false}.',
     'Split labels: full_body = Full body; push_pull_legs = Push / Pull / Legs;',
     'upper_lower = Upper / Lower; cardio_core = Cardio + core.',
+    'Short forms, in any case: "ppl" or "push pull legs" = push_pull_legs;',
+    '"upper/lower" or "upper lower" = upper_lower; "whole body" or "full-body" = full_body.',
     `Injury names (use exactly these): ${injuryNames.join(', ')}.`,
     'Only list an injury the person says they have now, not one they say is gone.',
     'Use null or [] for anything the sentence does not say. Never guess.',
@@ -30,7 +32,16 @@ function systemPrompt(injuryNames) {
   ].join(' ');
 }
 
-function create({ apiKey, model = DEFAULT_MODEL, fetchImpl = fetch }) {
+// Tests and the stub run without a logger.
+const SILENT = { warn() {} };
+
+/// [logger] hears why a reading failed, since the app only sees AI_BUSY and
+/// quietly keeps its own reading: the HTTP status (a bad key, a parameter
+/// the model refuses, a retired model, the free tier's 429) or the error's
+/// name (a timeout is AbortError), with the model. Never the API key, and
+/// never the user's sentence -- not even through an error message, which
+/// for a reply that is not JSON quotes the reply.
+function create({ apiKey, model = DEFAULT_MODEL, fetchImpl = fetch, logger = SILENT }) {
   async function read({ text, injuryNames }) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -52,12 +63,19 @@ function create({ apiKey, model = DEFAULT_MODEL, fetchImpl = fetch }) {
         }),
       });
       // A 429 is the free tier working as documented; every failure is null.
-      if (!res.ok) return null;
+      if (!res.ok) {
+        logger.warn({ model, status: res.status }, `Week reader: Groq answered ${res.status}`);
+        return null;
+      }
       const body = await res.json();
       const choice = body?.choices?.[0];
-      if (choice?.finish_reason === 'length') return null;
+      if (choice?.finish_reason === 'length') {
+        logger.warn({ model }, 'Week reader: Groq reply cut off at the token limit');
+        return null;
+      }
       return JSON.parse(choice?.message?.content ?? '');
-    } catch {
+    } catch (err) {
+      logger.warn({ model, error: err?.name }, `Week reader: Groq call failed (${err?.name})`);
       return null;
     } finally {
       clearTimeout(timer);

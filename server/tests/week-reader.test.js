@@ -89,7 +89,94 @@ test('the Groq client asks once with JSON mode, low effort and the small model',
   assert.equal(sent.body.reasoning_effort, 'low');
   assert.equal(sent.body.messages[1].content, 'upper lower, an hour');
   assert.match(sent.body.messages[0].content, /Knee/);
+  assert.match(sent.body.messages[0].content, /"ppl"/);
   assert.equal(sent.auth, 'Bearer k');
+});
+
+test('the prompt names the short forms people type for each split', () => {
+  // Live check: "I used to have shoulder pain but it's fine now, ppl" came
+  // back with splitStyle null, so the common short forms are spelt out.
+  const prompt = groqClient.systemPrompt(['Knee']);
+  assert.match(prompt, /"ppl"/);
+  assert.match(prompt, /"push pull legs"/);
+  assert.match(prompt, /"upper\/lower"/);
+  assert.match(prompt, /"whole body"/);
+  assert.match(prompt, /"full-body"/);
+});
+
+/// Records every warn as its arguments, so a test can read what was logged.
+function fakeLogger() {
+  const warned = [];
+  return { warned, warn: (...args) => warned.push(args) };
+}
+const KEY = 'gsk_never_logged';
+const SENTENCE = 'my private sentence about my knee';
+const loggedNothingPrivate = (logger) => {
+  const all = JSON.stringify(logger.warned);
+  assert.ok(!all.includes(KEY), 'the API key is never logged');
+  assert.ok(!all.includes('private sentence'), "the user's sentence is never logged");
+};
+
+test('a Groq HTTP failure is logged with its status and the model', async () => {
+  for (const status of [400, 401, 404, 429, 500]) {
+    const logger = fakeLogger();
+    const client = groqClient.create({
+      apiKey: KEY, logger, fetchImpl: async () => ({ ok: false, status }),
+    });
+    assert.equal(await client.read({ text: SENTENCE, injuryNames: [] }), null);
+    assert.equal(logger.warned.length, 1, `status ${status}`);
+    const [fields, message] = logger.warned[0];
+    assert.equal(fields.status, status);
+    assert.equal(fields.model, 'openai/gpt-oss-20b');
+    assert.match(message, new RegExp(String(status)));
+    loggedNothingPrivate(logger);
+  }
+});
+
+test('a Groq timeout, network error or unreadable reply is logged by name', async () => {
+  const abort = Object.assign(new Error('This operation was aborted'), { name: 'AbortError' });
+  const cases = [
+    [async () => { throw abort; }, 'AbortError'],
+    [async () => { throw new TypeError('fetch failed'); }, 'TypeError'],
+    // A reply that is not JSON, echoing the sentence: the parse error's
+    // message would carry it, so only the error's name is logged.
+    [async () => ({ ok: true, json: async () => ({ choices: [{ finish_reason: 'stop',
+      message: { content: `not json ${SENTENCE}` } }] }) }), 'SyntaxError'],
+  ];
+  for (const [fetchImpl, name] of cases) {
+    const logger = fakeLogger();
+    const client = groqClient.create({ apiKey: KEY, logger, fetchImpl, model: 'm-x' });
+    assert.equal(await client.read({ text: SENTENCE, injuryNames: [] }), null);
+    assert.equal(logger.warned.length, 1, name);
+    const [fields] = logger.warned[0];
+    assert.equal(fields.error, name);
+    assert.equal(fields.model, 'm-x');
+    loggedNothingPrivate(logger);
+  }
+});
+
+test('a Groq reply cut off at the token limit is logged', async () => {
+  const logger = fakeLogger();
+  const client = groqClient.create({ apiKey: KEY, logger,
+    fetchImpl: async () => ({ ok: true, json: async () => ({ choices: [{ finish_reason: 'length',
+      message: { content: `{"x": "${SENTENCE}` } }] }) }) });
+  assert.equal(await client.read({ text: SENTENCE, injuryNames: [] }), null);
+  assert.equal(logger.warned.length, 1);
+  assert.equal(logger.warned[0][0].model, 'openai/gpt-oss-20b');
+  loggedNothingPrivate(logger);
+});
+
+test('the week reader service hands its logger to the Groq client', async (t) => {
+  const { createWeekReaderService } = require('../src/services/week-reader');
+  const realFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = realFetch; });
+  globalThis.fetch = async () => ({ ok: false, status: 401 });
+  const logger = fakeLogger();
+  const service = createWeekReaderService({ mode: 'groq', apiKey: KEY }, logger);
+  assert.equal(await service.read({ text: SENTENCE, injuryNames: [] }), null);
+  assert.equal(logger.warned.length, 1);
+  assert.equal(logger.warned[0][0].status, 401);
+  loggedNothingPrivate(logger);
 });
 
 test('the Groq client answers null for every failure', async () => {
