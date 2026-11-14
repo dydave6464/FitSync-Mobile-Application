@@ -102,6 +102,13 @@ function load(env = process.env) {
       apiKey: env.GROQ_API_KEY || null,
       model: env.CUES_MODEL || null,
     },
+    weekReader: {
+      // The generator's "Describe your week" read by Groq (spec 2026-11-14,
+      // Part 2b). stub (the default) for tests; groq for real readings.
+      mode: env.WEEK_READER_MODE || 'stub',
+      apiKey: env.GROQ_API_KEY || null,
+      model: env.WEEK_READER_MODEL || null,
+    },
     vision: {
       // Snap a meal's photo recogniser. stub (the default): fixed answers, no
       // network -- what every test runs. server.js turns a stub off in

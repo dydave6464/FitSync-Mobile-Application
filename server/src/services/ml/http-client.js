@@ -70,6 +70,9 @@ function create(baseUrl) {
   // onboarding, regenerate, check-in -- sends only what the service reads.
   return {
     generatePlan: (profile) => post('/generate-plan', toPlanPayload(profile)),
+    // The generator screen's Auto length (spec 2026-11-14): the same profile
+    // payload as generate-plan, so ML reads the fields it would build from.
+    planParameters: (profile) => post('/plan-parameters', toPlanPayload(profile)),
     estimateInjuryRisk: (payload) => post('/injury-risk', toRiskPayload(payload)),
     // The dish classifier's second opinion on a meal photo (spec
     // 2026-11-05-food-classifier). [signal] is the photo request's own:

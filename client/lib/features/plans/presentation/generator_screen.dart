@@ -11,10 +11,15 @@ import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
 import '../../sessions/presentation/providers.dart' show activeSessionProvider;
 import '../../sessions/presentation/session_logger_screen.dart';
+import '../../settings/presentation/settings_screen.dart' show InjuriesEditor;
+import '../domain/plan_defaults.dart';
 import '../domain/split_style.dart';
 import '../domain/week_description.dart';
 import '../domain/workout_plan.dart';
 import 'providers.dart';
+import 'undo_plan.dart';
+import 'widgets/describe_week_card.dart';
+import 'widgets/session_length_row.dart';
 import 'widgets/training_days_row.dart';
 
 const _defaultSplit = 'full_body';
@@ -35,6 +40,11 @@ class GeneratorScreen extends ConsumerStatefulWidget {
 class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   String? _splitStyle;
   int? _daysPerWeek;
+
+  /// The length picked by hand; null is Auto, which sends nothing and lets
+  /// the generator derive it from level, goal and health check.
+  int? _sessionLengthMin;
+
   bool _busy = false;
   int? _savingWeekday;
 
@@ -106,6 +116,8 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
     // already be disposed. ref.invalidate would throw in that case -- the
     // container outlives the widget, so the refresh does too.
     final container = ProviderScope.containerOf(context, listen: false);
+    // Read now, beside the messenger, for the snackbar after the await.
+    final screenReader = MediaQuery.accessibleNavigationOf(context);
     // The building screen's first frame is the one this setState schedules,
     // so the hold below is measured from here.
     final since = DateTime.now();
@@ -115,11 +127,12 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
       _leadLabel = _describeChoice(split, trainingDays, days);
     });
     try {
-      await ref
+      final plan = await ref
           .read(planRepositoryProvider)
           .regenerate(
             splitStyle: split,
             daysPerWeek: days,
+            sessionLengthMin: _sessionLengthMin,
             replaceCustomPlan: replaceCustomPlan,
           );
       // The plan changed underneath every screen that reads it, so the whole
@@ -142,8 +155,27 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
       // Nutrition, where the new plan is invisible and the only irreversible
       // action in this slice would otherwise finish with no evidence it
       // happened at all.
+      // Undo only when the server says there is a plan to bring back: a
+      // first plan replaced nothing.
+      messenger.hideCurrentSnackBar();
       messenger.showSnackBar(
-        const SnackBar(content: Text('New plan generated')),
+        SnackBar(
+          duration: const Duration(seconds: 10),
+          // As the swap Undo: with a screen reader the bar waits, since
+          // reaching its action by swiping takes longer than ten seconds.
+          persist: screenReader,
+          content: const Text('New plan generated'),
+          action: plan.previousPlan == null
+              ? null
+              : SnackBarAction(
+                  label: 'Undo',
+                  onPressed: () => bringBackPreviousPlan(
+                    messenger: messenger,
+                    container: container,
+                    persist: screenReader,
+                  ),
+                ),
+        ),
       );
       if (mounted) navigator.pop();
     } on ApiException catch (error) {
@@ -242,10 +274,9 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
     days: trainingDays.isNotEmpty
         ? trainingDays.length
         : (_daysPerWeek ?? plan?.daysPerWeek ?? _defaultDays),
-    // The session length is not sent: the generator derives it from today's
-    // level, goal and health check, so moving up from New to training, or
-    // adding a condition, changes it. (The `|| 45` default lives only in the
-    // server's test stub.)
+    // The session length is not resolved here: Auto (null) sends nothing,
+    // and the generator derives it from today's level, goal and health
+    // check. See `_sessionLengthMin`.
   );
 
   /// The lead row's sentence: what is actually being applied.
@@ -287,6 +318,39 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
     ref.read(activePlanProvider).value,
     ref.read(profileProvider).value?.trainingDays ?? const [],
   ).days;
+  int? get debugSessionLengthMin => _sessionLengthMin;
+
+  /// Picks a length by hand, or Auto with null. Also what an applied week
+  /// sentence calls.
+  void applyLength(int? minutes) => setState(() => _sessionLengthMin = minutes);
+
+  /// The bar's one-line account of what Generate will send: split, days,
+  /// length and exercise count. Length and count are left out while Auto's
+  /// number is unknown.
+  String _summary(
+    String split,
+    int days,
+    List<int> trainingDays,
+    PlanDefaults? defaults,
+  ) {
+    const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final minutes = _sessionLengthMin ?? defaults?.sessionLengthMin;
+    final count = _sessionLengthMin == null
+        ? defaults?.exercisesPerDay
+        : switch (minutes) {
+            60 => 8,
+            45 => 6,
+            _ => null,
+          };
+    return [
+      splitLabel(split),
+      trainingDays.isEmpty
+          ? daysAWeek(days)
+          : (trainingDays.toList()..sort()).map((d) => names[d - 1]).join(' '),
+      if (minutes != null) '$minutes min',
+      if (count != null) '$count exercises a day',
+    ].join(' · ');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -306,10 +370,10 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
       // Loading and error both used to collapse into "no plan" -- plan?.x on
       // a null value reads the same whether the fetch is still in flight or
       // failed outright. That made a transient fetch failure show the
-      // full_body/3 defaults under "Generating replaces your current
-      // plan", so generating really would discard whatever plan the user
-      // has. Both states are handled explicitly here, before the fallback
-      // chain -- and therefore the controls -- ever runs.
+      // full_body/3 defaults under "Replaces your current plan", so generating
+      // really would discard whatever plan the user has. Both states are
+      // handled explicitly here, before the fallback chain -- and therefore
+      // the controls -- ever runs.
       //
       // A rebuild takes the body over rather than spinning inside the button:
       // it is the same wait onboarding already explains, and a button that
@@ -382,10 +446,17 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
     // stands behind it.
     final inProgress = ref.watch(activeSessionProvider).value != null;
 
-    return ListView(
+    // Auto's number and exercise count. Null while loading or failed: Auto
+    // then shows bare and still works, as it sends nothing either way.
+    final defaults = ref.watch(planDefaultsProvider).value;
+
+    final list = ListView(
+      // The bar, Generate with it, is hidden while the keyboard is up, and
+      // iOS has no back key to close it: a drag down the list puts it away.
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
       children: [
-        _DescribeCard(
+        DescribeWeekCard(
           key: const Key('gen.describe'),
           // Rebuilt from scratch whenever the plan or profile it describes
           // changes, so a sentence the user has not touched never describes a
@@ -397,20 +468,15 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
           ),
           options: options,
           catalogueFailed: asyncOptions.hasError,
-          // So the card can say when a day count it read has been overruled
-          // by the picker below it. Still assigned to `_daysPerWeek` either
-          // way -- it is what the fallback chain takes the moment the last
-          // weekday is unticked -- but a value that changes nothing the user
-          // can currently see has to be named rather than swallowed.
+          // So the card can say whether named days are already the user's,
+          // and when a day count it read has been overruled by the picker
+          // below it.
           trainingDays: trainingDays,
-          onApply: (parsed) => setState(() {
-            // Only what the sentence actually resolved. Assigning a null
-            // through would reset a control the user set by hand to the
-            // fallback chain's default, which is the one thing a vague
-            // sentence must not do.
-            _splitStyle = parsed.splitStyle ?? _splitStyle;
-            _daysPerWeek = parsed.daysPerWeek ?? _daysPerWeek;
-          }),
+          onSplit: (split) => setState(() => _splitStyle = split),
+          onLength: applyLength,
+          // Still kept while weekdays are ticked: it is what the fallback
+          // chain takes the moment the last one is unticked.
+          onDayCount: (count) => setState(() => _daysPerWeek = count),
         ),
         const SizedBox(height: 22),
         const FsEyebrow('Split style'),
@@ -486,11 +552,13 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
               style: TextStyle(fontSize: 12, color: t.text3, height: 1.35),
             ),
         ],
-        // Session length is deliberately not shown. The service derives it
-        // from goal, fitness level and health check, so it is neither chosen
-        // here nor changeable here, and a number on screen that the user
-        // cannot move is one more thing to rule out. Nor is it sent -- see
-        // `_resolve`.
+        const SizedBox(height: 22),
+        SessionLengthRow(
+          chosen: _sessionLengthMin,
+          autoMinutes: defaults?.sessionLengthMin,
+          lengthReason: defaults?.lengthReason,
+          onChanged: applyLength,
+        ),
         if (avoiding.isNotEmpty) ...[
           const SizedBox(height: 22),
           FsCard(
@@ -509,334 +577,103 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(width: 8),
+                TextButton(
+                  key: const Key('gen.avoiding.edit'),
+                  style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const InjuriesEditor(),
+                    ),
+                  ),
+                  child: const Text('Edit'),
+                ),
               ],
-            ),
-          ),
-        ],
-        const SizedBox(height: 22),
-        Text(
-          inProgress
-              ? _inProgressNote
-              : 'Generating replaces your current plan.',
-          style: TextStyle(
-            fontSize: 12,
-            color: inProgress ? t.text2 : t.text3,
-            height: 1.4,
-          ),
-        ),
-        const SizedBox(height: 18),
-        // While a workout runs, the dimmed button says why as its hint, so a
-        // screen reader hears the reason on the button and not only in the
-        // note a swipe before it. Merged so the hint lands on the button's
-        // own node rather than splitting off one of its own.
-        MergeSemantics(
-          child: Semantics(
-            hint: inProgress ? _inProgressNote : null,
-            child: FsButton(
-              key: const Key('gen.generate'),
-              label: 'Generate plan',
-              // No in-button spinner: `_busy` takes the whole body over with
-              // the building screen, so this button is not on screen to spin.
-              onPressed: inProgress
-                  ? null
-                  : () => _generate(split, days, trainingDays),
-            ),
-          ),
-        ),
-        if (inProgress) ...[
-          const SizedBox(height: 10),
-          FsButton(
-            key: const Key('gen.resume'),
-            label: 'Resume workout',
-            kind: FsButtonKind.secondary,
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const SessionLoggerScreen(resume: true),
-              ),
             ),
           ),
         ],
       ],
     );
-  }
-}
 
-/// The prototype's "Describe your week" card.
-///
-/// Everything it understands lands in the controls below it, where the user
-/// can see and correct it before generating. Nothing here reaches the
-/// generator directly: the payload carries the controls, not this sentence.
-class _DescribeCard extends ConsumerStatefulWidget {
-  const _DescribeCard({
-    super.key,
-    required this.composed,
-    required this.options,
-    required this.catalogueFailed,
-    required this.trainingDays,
-    required this.onApply,
-  });
-
-  /// The sentence "From profile" writes, composed from the live profile and
-  /// plan.
-  final String composed;
-
-  final List<InjuryOption> options;
-
-  /// Whether the injury catalogue failed to load. Distinct from an empty
-  /// catalogue: one means "nothing matched", the other means "nothing could
-  /// be checked", and only one of those is safe to say.
-  final bool catalogueFailed;
-
-  /// The weekdays currently ticked below. Read only to decide whether a day
-  /// count in the sentence has anywhere to land.
-  final List<int> trainingDays;
-
-  final ValueChanged<WeekDescription> onApply;
-
-  @override
-  ConsumerState<_DescribeCard> createState() => _DescribeCardState();
-}
-
-class _DescribeCardState extends ConsumerState<_DescribeCard> {
-  late final TextEditingController _controller = TextEditingController(
-    text: widget.composed,
-  );
-
-  /// The last applied parse, or null before the first Apply. Held so the
-  /// offers and notes below the field survive rebuilds without re-parsing
-  /// text the user may have edited since.
-  WeekDescription? _applied;
-
-  /// Regions the user has dismissed by adding them, kept so the offer goes
-  /// away the moment the write succeeds rather than waiting for the profile
-  /// to come back round.
-  final Set<int> _added = {};
-
-  int? _adding;
-
-  @override
-  void didUpdateWidget(_DescribeCard old) {
-    super.didUpdateWidget(old);
-    // The profile is fetched separately from the plan, so the first build of
-    // this card routinely happens before there is a goal to write about. The
-    // box has to follow what it describes until the user takes it over --
-    // comparing against the PREVIOUS sentence is what tells those apart:
-    // still untouched means still ours to fill, edited means hands off.
-    if (widget.composed != old.composed && _controller.text == old.composed) {
-      _controller.text = widget.composed;
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _apply() {
-    final parsed = parseWeekDescription(_controller.text, widget.options);
-    setState(() => _applied = parsed);
-    widget.onApply(parsed);
-  }
-
-  Future<void> _add(SelectedInjury injury) async {
-    final messenger = ScaffoldMessenger.of(context);
-    final current =
-        ref.read(profileProvider).value?.injuries ?? const <SelectedInjury>[];
-    setState(() => _adding = injury.injuryId);
-    try {
-      // PUT /profile/injuries replaces the whole set, so the existing
-      // injuries go back with it. Sending only the new region would delete
-      // every other injury the user has.
-      await ref.read(profileProvider.notifier).setInjuries([
-        ...current,
-        injury,
-      ]);
-      if (!mounted) return;
-      setState(() {
-        _added.add(injury.injuryId);
-        _adding = null;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      // The offer stays: nothing was saved, so nothing should look saved.
-      setState(() => _adding = null);
-      messenger.showSnackBar(SnackBar(content: Text(describeError(error))));
-    }
-  }
-
-  /// Regions the sentence named that the profile does not already carry.
-  List<({InjuryOption option, SelectedInjury injury})> get _offers {
-    final parsed = _applied;
-    if (parsed == null) return const [];
-    final held = {
-      for (final i
-          in ref.watch(profileProvider).value?.injuries ??
-              const <SelectedInjury>[])
-        i.injuryId,
-    };
-
-    return [
-      for (final injury in parsed.injuries)
-        if (!held.contains(injury.injuryId) &&
-            !_added.contains(injury.injuryId))
-          for (final option in widget.options)
-            if (option.injuryId == injury.injuryId)
-              (option: option, injury: injury),
-    ];
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.fs;
-    final parsed = _applied;
-
-    return FsCard(
-      // While the chips end the card, the card's padding below them, outside
-      // the Column, is their room. Once a parsed result ends the card, a tap
-      // there lands on the result's last line, and under an offer's centred
-      // Add button it answers nothing.
-      child: FsTapRoom(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const FsEyebrow('Describe your week'),
-            const SizedBox(height: 8),
-            FsField(
-              key: const Key('gen.describe.field'),
-              controller: _controller,
-              hint: 'e.g. full body, 4 days a week, protecting my lower back',
-              maxLines: 3,
-              textCapitalization: TextCapitalization.sentences,
-            ),
-            const SizedBox(height: 10),
-            FsTapRoom(
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  // Actions, not choices: as the prototype's sm chips, off,
-                  // and announced with no selected state. Apply used to be
-                  // drawn and read as permanently "selected".
-                  FsChip(
-                    key: const Key('gen.describe.apply'),
-                    label: 'Apply',
-                    selected: false,
-                    toggle: false,
-                    onTap: _apply,
-                  ),
-                  FsChip(
-                    key: const Key('gen.describe.fromProfile'),
-                    label: 'From profile',
-                    selected: false,
-                    toggle: false,
-                    onTap: () => setState(() {
-                      _controller.text = widget.composed;
-                      _applied = null;
-                      _added.clear();
-                    }),
-                  ),
-                ],
+    // Pinned under the list, so Generate stays in view however long the
+    // controls above it grow.
+    final bar = Material(
+      key: const Key('gen.bar'),
+      color: t.bg,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                _summary(split, days, trainingDays, defaults),
+                key: const Key('gen.summary'),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12, color: t.text2, height: 1.35),
               ),
-            ),
-            if (parsed != null) ...[
-              const SizedBox(height: 12),
-              _result(t, parsed),
+              const SizedBox(height: 6),
+              Text(
+                inProgress
+                    ? _inProgressNote
+                    : 'Replaces your current plan. You can undo it.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: inProgress ? t.text2 : t.text3,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 10),
+              // While a workout runs, the dimmed button says why as its hint, so a
+              // screen reader hears the reason on the button and not only in the
+              // note a swipe before it. Merged so the hint lands on the button's
+              // own node rather than splitting off one of its own.
+              MergeSemantics(
+                child: Semantics(
+                  hint: inProgress ? _inProgressNote : null,
+                  child: FsButton(
+                    key: const Key('gen.generate'),
+                    label: 'Generate plan',
+                    // No in-button spinner: `_busy` takes the whole body over with
+                    // the building screen, so this button is not on screen to spin.
+                    onPressed: inProgress
+                        ? null
+                        : () => _generate(split, days, trainingDays),
+                  ),
+                ),
+              ),
+              if (inProgress) ...[
+                const SizedBox(height: 10),
+                FsButton(
+                  key: const Key('gen.resume'),
+                  label: 'Resume workout',
+                  kind: FsButtonKind.secondary,
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const SessionLoggerScreen(resume: true),
+                    ),
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
-  }
 
-  Widget _result(FsTokens t, WeekDescription parsed) {
-    final note = TextStyle(fontSize: 12, color: t.text3, height: 1.35);
-
-    // The parser's topics plus the one only this screen can see. Recomputed
-    // on every build rather than captured at Apply, because ticking a
-    // weekday afterwards changes whether the count landed -- and a note that
-    // went stale would be the same silent contradiction it exists to stop.
-    final notes = [
-      ...parsed.elsewhere,
-      if (parsed.daysPerWeek != null && widget.trainingDays.isNotEmpty)
-        WeekTopic.dayCount,
-    ];
-
+    // While the keyboard is up (typing in "Describe your week"), the bar
+    // steps aside: on a short or landscape screen at large text it would
+    // otherwise fill what the keyboard leaves and overflow, hiding the very
+    // field being typed into. It returns as soon as the keyboard closes.
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     return Column(
-      key: const Key('gen.describe.result'),
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (parsed.isEmpty && !widget.catalogueFailed)
-          Text(
-            "Nothing in that changed your plan -- the controls below are "
-            "unchanged.",
-            style: note,
-          ),
-
-        // Said whatever else was parsed: the catalogue is what injury
-        // matching depends on, so without it "no regions matched" is a claim
-        // this card cannot support.
-        if (widget.catalogueFailed)
-          Padding(
-            key: const Key('gen.describe.catalogueError'),
-            padding: const EdgeInsets.only(bottom: 6),
-            child: const FsErrorLine(
-              "Couldn't check that against your injuries. Anything you wrote "
-              'about them has been left alone.',
-            ),
-          ),
-
-        for (final offer in _offers)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Row(
-              children: [
-                Icon(Icons.shield_outlined, size: 16, color: t.red),
-                const SizedBox(width: 9),
-                Expanded(
-                  child: Text(
-                    // Names the consequence, not the database state. Whether a
-                    // row exists in the profile is not what the user is
-                    // deciding; whether their plan works around the region
-                    // is, and only the profile drives that -- /regenerate
-                    // reads injuries server-side and never from this screen.
-                    '${injuryLabel(offer.option, offer.injury)} '
-                    'is not in your injuries. Add it and every plan from now '
-                    'on will work around it.',
-                    style: note,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                FsButton(
-                  key: Key('gen.describe.add.${offer.option.injuryId}'),
-                  label: 'Add',
-                  small: true,
-                  kind: FsButtonKind.secondary,
-                  busy: _adding == offer.option.injuryId,
-                  onPressed: () => _add(offer.injury),
-                ),
-              ],
-            ),
-          ),
-
-        if (notes.isNotEmpty)
-          Padding(
-            key: const Key('gen.describe.elsewhere'),
-            padding: const EdgeInsets.only(top: 6),
-            child: Text(notes.map(_topicNote).join(' '), style: note),
-          ),
+        Expanded(child: list),
+        if (!keyboardOpen) bar,
       ],
     );
   }
-
-  /// The domain reports a topic; the wording lives here.
-  static String _topicNote(WeekTopic topic) => switch (topic) {
-    WeekTopic.sessionLength =>
-      'Session length follows your goal, fitness level and health check, '
-          'so it is not set here.',
-    WeekTopic.goal => 'Your goals are set in your profile.',
-    WeekTopic.dayCount =>
-      'How many days you train follows the weekdays you have chosen '
-          'below, so that count was not applied.',
-  };
 }

@@ -12,6 +12,8 @@ import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
 import 'package:fitsync/features/plans/data/plan_repository.dart';
 import 'package:fitsync/features/plans/domain/exercise_alternative.dart';
+import 'package:fitsync/features/plans/domain/plan_defaults.dart';
+import 'package:fitsync/features/plans/domain/week_description.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/exercise_swap_sheet.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
@@ -37,6 +39,15 @@ const _plan = WorkoutPlan(
 /// path can be exercised without a mock framework — the interface is small
 /// enough to implement directly.
 class _FailingRepo implements PlanRepository {
+  @override
+  Future<PlanDefaults> defaults() => throw UnimplementedError();
+
+  @override
+  Future<WorkoutPlan> restorePrevious() => throw UnimplementedError();
+
+  @override
+  Future<WeekDescription> readWeek(String text) => throw UnimplementedError();
+
   @override
   String get baseUrl => 'http://test.local';
 
@@ -94,6 +105,15 @@ const _detail = ExerciseDetail(
 /// Records every swap it is asked for, so a test can prove one did *not*
 /// happen — the point of putting a preview in front of it.
 class _RecordingRepo implements PlanRepository {
+  @override
+  Future<PlanDefaults> defaults() => throw UnimplementedError();
+
+  @override
+  Future<WorkoutPlan> restorePrevious() => throw UnimplementedError();
+
+  @override
+  Future<WeekDescription> readWeek(String text) => throw UnimplementedError();
+
   final swaps = <({int planExerciseId, int exerciseId})>[];
 
   @override
@@ -170,6 +190,15 @@ Future<_RecordingRepo> _pumpWithPreview(WidgetTester tester) async {
 /// A [PlanRepository] whose swap always succeeds immediately.
 class _SucceedingRepo implements PlanRepository {
   @override
+  Future<PlanDefaults> defaults() => throw UnimplementedError();
+
+  @override
+  Future<WorkoutPlan> restorePrevious() => throw UnimplementedError();
+
+  @override
+  Future<WeekDescription> readWeek(String text) => throw UnimplementedError();
+
+  @override
   String get baseUrl => 'http://test.local';
 
   @override
@@ -212,6 +241,15 @@ class _SucceedingRepo implements PlanRepository {
 /// A [PlanRepository] whose swap does not resolve until [completer] does —
 /// lets a test dismiss the sheet while the request is still in flight.
 class _SlowRepo implements PlanRepository {
+  @override
+  Future<PlanDefaults> defaults() => throw UnimplementedError();
+
+  @override
+  Future<WorkoutPlan> restorePrevious() => throw UnimplementedError();
+
+  @override
+  Future<WeekDescription> readWeek(String text) => throw UnimplementedError();
+
   _SlowRepo(this.completer);
 
   final Completer<WorkoutPlan> completer;

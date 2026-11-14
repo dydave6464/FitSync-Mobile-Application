@@ -11,9 +11,12 @@ import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/onboarding/presentation/generating_view.dart';
 import 'package:fitsync/features/plans/data/plan_repository.dart';
+import 'package:fitsync/features/plans/domain/plan_defaults.dart';
+import 'package:fitsync/features/plans/domain/week_description.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/generator_screen.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
+import 'package:fitsync/features/plans/presentation/widgets/describe_week_card.dart';
 import 'package:fitsync/features/plans/presentation/widgets/training_days_row.dart';
 import 'package:fitsync/features/profile/data/profile_repository.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
@@ -21,6 +24,8 @@ import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/session_logger_screen.dart';
+import 'package:fitsync/features/settings/presentation/settings_screen.dart'
+    show InjuriesEditor;
 
 import 'helpers/a11y.dart';
 import 'helpers/dialog_buttons.dart';
@@ -40,6 +45,24 @@ const _pplPlan = WorkoutPlan(
   exercises: [],
 );
 
+/// As [_pplPlan], but generated over an earlier plan the server can still
+/// bring back: the one answer that earns the snackbar its Undo.
+const _pplPlanReplacing = WorkoutPlan(
+  planId: 8,
+  name: 'Week 1 — Push/Pull/Legs',
+  splitStyle: 'push_pull_legs',
+  daysPerWeek: 3,
+  sessionLengthMin: 45,
+  weekNo: 1,
+  days: [
+    PlanDay(dayNo: 1, name: 'Push'),
+    PlanDay(dayNo: 2, name: 'Pull'),
+    PlanDay(dayNo: 3, name: 'Legs'),
+  ],
+  exercises: [],
+  previousPlan: PreviousPlan(planId: 3, name: 'Plan 1'),
+);
+
 /// The server's refusal message, shared by [FakePlanRepository] and the tests
 /// that check the dialog states it verbatim -- so the two never drift apart.
 const _customPlanMessage =
@@ -47,7 +70,28 @@ const _customPlanMessage =
     'Legs" and the 2 days you built in it.';
 
 class FakePlanRepository implements PlanRepository {
-  FakePlanRepository({this.error, this.pending, this.refuseCustomPlan = false});
+  FakePlanRepository({
+    this.error,
+    this.pending,
+    this.refuseCustomPlan = false,
+    this.result = _pplPlan,
+    this.restoreError,
+  });
+
+  /// What a successful `regenerate` answers.
+  final WorkoutPlan result;
+
+  /// Thrown by `restorePrevious` when set; otherwise it brings a plan back.
+  final Object? restoreError;
+
+  int restoreCalls = 0;
+
+  @override
+  Future<WorkoutPlan> restorePrevious() async {
+    restoreCalls += 1;
+    if (restoreError != null) throw restoreError!;
+    return _pplPlan;
+  }
 
   final Object? error;
 
@@ -75,6 +119,31 @@ class FakePlanRepository implements PlanRepository {
   /// from [sent], whose exact-map assertions predate this flag.
   bool? lastReplaceCustomPlan;
 
+  /// What GET /plans/defaults answers: a beginner held at 45 by level, unless
+  /// a test sets its own. [defaultsError] makes the fetch fail instead.
+  PlanDefaults defaultsValue = const PlanDefaults(
+    sessionLengthMin: 45,
+    exercisesPerDay: 6,
+    lengthReason: 'level',
+  );
+  bool defaultsError = false;
+
+  @override
+  Future<PlanDefaults> defaults() async {
+    if (defaultsError) throw Exception('defaults down');
+    return defaultsValue;
+  }
+
+  /// Every sentence the describe card sent to the AI. The AI is busy here:
+  /// the card tests pin its readings, and these keep the phone's.
+  final List<String> readWeekCalls = [];
+
+  @override
+  Future<WeekDescription> readWeek(String text) async {
+    readWeekCalls.add(text);
+    throw const ApiException('AI_BUSY', 'AI reading is busy.');
+  }
+
   @override
   String get baseUrl => 'http://test.local';
 
@@ -97,7 +166,7 @@ class FakePlanRepository implements PlanRepository {
     }
     if (pending != null) return pending!;
     if (error != null) throw error!;
-    return _pplPlan;
+    return result;
   }
 
   @override
@@ -250,7 +319,18 @@ Future<void> _pump(
   _ProfileLoad profileLoad = _ProfileLoad.loaded,
   ActiveSession? session,
   bool dark = false,
+  PlanDefaults? defaults,
+  bool defaultsError = false,
+  bool tall = true,
 }) async {
+  // The controls scroll above a pinned Generate bar, and a lazy list builds
+  // only what is near the viewport. A tall view keeps every control built so
+  // a finder sees it; a test that sizes the view itself passes `tall: false`.
+  if (tall) {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+  }
   _sessionLoads = 0;
   _sessionOnReload = null;
   _profile = _FakeProfileNotifier(
@@ -264,6 +344,8 @@ Future<void> _pump(
   // weekday and hitting Generate with no repo passed in must still have
   // somewhere real to land rather than reaching the network.
   _plans = repo is FakePlanRepository ? repo : FakePlanRepository();
+  if (defaults != null) _plans.defaultsValue = defaults;
+  _plans.defaultsError = defaultsError;
 
   await tester.pumpWidget(
     ProviderScope(
@@ -322,7 +404,10 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(find.text('Generating replaces your current plan.'), findsNothing);
+      expect(
+        find.text('Replaces your current plan. You can undo it.'),
+        findsNothing,
+      );
       final generate = find.byKey(const Key('gen.generate'));
       await tester.ensureVisible(generate);
       expect(tester.widget<FsButton>(generate).onPressed, isNull);
@@ -469,7 +554,13 @@ void main() {
           tester.platformDispatcher.textScaleFactorTestValue = 2.0;
           addTearDown(tester.view.reset);
           addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-          await _pump(tester, plan: _pplPlan, session: _inProgress, dark: dark);
+          await _pump(
+            tester,
+            plan: _pplPlan,
+            session: _inProgress,
+            dark: dark,
+            tall: false,
+          );
 
           const note =
               'You have a workout in progress. Finish or discard it first.';
@@ -506,7 +597,7 @@ void main() {
       await _pump(tester, plan: _pplPlan);
 
       expect(
-        find.text('Generating replaces your current plan.'),
+        find.text('Replaces your current plan. You can undo it.'),
         findsOneWidget,
       );
       expect(find.byKey(const Key('gen.resume')), findsNothing);
@@ -942,7 +1033,10 @@ void main() {
     // the one destructive thing here and should not be discovered afterwards.
     await _pump(tester, plan: _pplPlan);
 
-    expect(find.textContaining('replace'), findsOneWidget);
+    expect(
+      find.text('Replaces your current plan. You can undo it.'),
+      findsOneWidget,
+    );
   });
 
   testWidgets(
@@ -970,7 +1064,10 @@ void main() {
 
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
       expect(find.byType(FsChip), findsNothing);
-      expect(find.text('Generating replaces your current plan.'), findsNothing);
+      expect(
+        find.text('Replaces your current plan. You can undo it.'),
+        findsNothing,
+      );
     },
   );
 
@@ -1004,7 +1101,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(FsChip), findsNothing);
-    expect(find.text('Generating replaces your current plan.'), findsNothing);
+    expect(
+      find.text('Replaces your current plan. You can undo it.'),
+      findsNothing,
+    );
     // The kit's retry, in the app's words (L-46).
     expect(
       find.widgetWithText(
@@ -1111,7 +1211,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // The exact sentence the server sent, not a generic phrasing composed
-    // here -- the static "Generating replaces your current plan." disclaimer
+    // here -- the static "Replaces your current plan. You can undo it." note
     // elsewhere on this screen also contains the word "replaces", so only the
     // full sentence tells the two apart.
     expect(find.text(_customPlanMessage), findsOneWidget);
@@ -1387,8 +1487,11 @@ void main() {
       await tester.pump();
     }
 
-    Future<void> apply(WidgetTester tester) async {
-      await tester.tap(find.byKey(const Key('gen.describe.apply')));
+    /// Types [text] and waits out the pause the card reads after. The card
+    /// tests own the timing; these only need the reading to have landed.
+    Future<void> typeAndPause(WidgetTester tester, String text) async {
+      await tester.enterText(field(), text);
+      await tester.pump(kPhoneReadDelay);
       await tester.pumpAndSettle();
     }
 
@@ -1401,6 +1504,15 @@ void main() {
       expect(text, contains('build muscle'));
       expect(text, contains('4 days'));
       expect(text, contains('push / pull / legs'));
+    });
+
+    testWidgets('there is no Apply: the sentence is read as it is typed', (
+      tester,
+    ) async {
+      await _pump(tester, plan: _pplPlan);
+
+      expect(find.byKey(const Key('gen.describe.apply')), findsNothing);
+      expect(find.text('Apply'), findsNothing);
     });
 
     testWidgets(
@@ -1417,19 +1529,59 @@ void main() {
       },
     );
 
-    testWidgets('applying the sentence moves the split and the day count', (
+    testWidgets('the sentence it opens with applies nothing', (tester) async {
+      // A hand-tapped chip must not be undone by the box re-reading the
+      // sentence it wrote itself.
+      await _pump(tester, plan: _pplPlan);
+      await tester.tap(find.text('Full body'));
+      await tester.pump(kAiReadDelay);
+      await tester.pumpAndSettle();
+
+      final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
+      expect(screen.debugSplitStyle, 'full_body');
+      expect(_plans.readWeekCalls, isEmpty);
+    });
+
+    testWidgets('typing moves the split and the day count after a pause', (
       tester,
     ) async {
       await _pump(tester, plan: _pplPlan); // opens on push/pull/legs, 4 days
 
-      await write(tester, 'full body, 2 days a week');
-      await apply(tester);
+      await typeAndPause(tester, 'full body, 2 days a week');
 
       final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
       expect(screen.debugSplitStyle, 'full_body');
       expect(screen.debugDaysPerWeek, 2);
       expect(_chipOn(tester, 'Full body'), isTrue);
     });
+
+    testWidgets('a typed length picks its chip, snapped to 45 or 60', (
+      tester,
+    ) async {
+      await _pump(tester, plan: _pplPlan);
+
+      await typeAndPause(tester, 'full body, 50 min');
+
+      final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
+      expect(screen.debugSessionLengthMin, 45);
+      expect(find.text('Length: 45 min (nearest to 50)'), findsOneWidget);
+    });
+
+    testWidgets(
+      'a hand-tapped chip survives typing that keeps the same split',
+      (tester) async {
+        await _pump(tester, plan: _pplPlan);
+        await typeAndPause(tester, 'ppl');
+        await tester.tap(find.text('Upper / Lower'));
+        await tester.pump();
+
+        await typeAndPause(tester, 'ppl, 45 min');
+
+        final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
+        expect(screen.debugSplitStyle, 'upper_lower');
+        expect(screen.debugSessionLengthMin, 45);
+      },
+    );
 
     testWidgets('a sentence it cannot read leaves the controls alone', (
       tester,
@@ -1438,12 +1590,17 @@ void main() {
       // the flattening this screen already refuses for its loading state.
       await _pump(tester, plan: _pplPlan);
 
-      await write(tester, 'asdf qwer zxcv');
-      await apply(tester);
+      await typeAndPause(tester, 'asdf qwer zxcv');
 
       final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
       expect(screen.debugSplitStyle, 'push_pull_legs');
       expect(screen.debugDaysPerWeek, 4);
+      expect(
+        find.text(
+          "Nothing to change yet. Try: 'ppl, 45 min, protect my knee'.",
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('from profile rewrites the sentence after an edit', (
@@ -1470,60 +1627,55 @@ void main() {
       expect(fieldText(tester), contains('push / pull / legs'));
     });
 
+    testWidgets('Use these days saves the named days to the picker', (
+      tester,
+    ) async {
+      await _pump(tester, plan: _pplPlan, trainingDays: const [1, 3, 5]);
+
+      await typeAndPause(tester, 'tue and thu');
+      await tester.tap(find.byKey(const Key('gen.describe.useDays')));
+      await tester.pumpAndSettle();
+
+      expect(_profile.lastTrainingDays, [2, 4]);
+      expect(_ticked(tester), 2);
+      expect(find.text('Days: Tue · Thu (already your days)'), findsOneWidget);
+    });
+
+    testWidgets('a failed Use these days keeps the button', (tester) async {
+      await _pump(
+        tester,
+        plan: _pplPlan,
+        trainingDays: const [1, 3, 5],
+        failTrainingDays: true,
+      );
+
+      await typeAndPause(tester, 'tue and thu');
+      await tester.tap(find.byKey(const Key('gen.describe.useDays')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('Could not save your training days.'),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('gen.describe.useDays')), findsOneWidget);
+      expect(_ticked(tester), 3);
+    });
+
     testWidgets('a region the profile lacks is offered, not applied', (
       tester,
     ) async {
       // The generator reads injuries from the profile server-side. Treating a
       // typed region as already honoured would promise protection the plan
-      // does not have.
+      // does not have. The offer itself is pinned in describe_week_card_test.
       await _pump(tester, plan: _pplPlan, injuryOptions: const [knee, back]);
 
-      await write(tester, 'protect my right knee');
-      await apply(tester);
+      await typeAndPause(tester, 'protect my right knee');
 
       expect(find.byKey(const Key('gen.describe.add.3')), findsOneWidget);
       expect(
         find.byKey(const Key('gen.avoiding')),
         findsNothing,
         reason: 'nothing is being avoided until the profile says so',
-      );
-    });
-
-    testWidgets('the offer says what adding the region will do', (
-      tester,
-    ) async {
-      // "Not in your injuries yet" states a fact about a database. What the
-      // user is deciding is whether their plan works around the region, and
-      // the offer should say so in the words the screen uses once it does
-      // ("Working around"): an injury leaves some exercises out and coaches
-      // the rest, and none of that happens until this is tapped.
-      await _pump(tester, plan: _pplPlan, injuryOptions: const [knee, back]);
-
-      await write(tester, 'protect my right knee');
-      await apply(tester);
-
-      expect(
-        find.textContaining('every plan from now on will work around it.'),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('a typed session length is told what decides it', (
-      tester,
-    ) async {
-      // The generator derives the length from goal, fitness level and the
-      // health check; naming only the first two left the third unexplained.
-      await _pump(tester, plan: _pplPlan, injuryOptions: const [knee, back]);
-
-      await write(tester, 'about 50 min a session');
-      await apply(tester);
-
-      expect(
-        find.textContaining(
-          'Session length follows your goal, fitness level and health '
-          'check, so it is not set here.',
-        ),
-        findsOneWidget,
       );
     });
 
@@ -1538,8 +1690,7 @@ void main() {
         injuryOptions: const [knee, back],
       );
 
-      await write(tester, 'protect my right knee');
-      await apply(tester);
+      await typeAndPause(tester, 'protect my right knee');
       await tester.tap(find.byKey(const Key('gen.describe.add.3')));
       await tester.pumpAndSettle();
 
@@ -1547,93 +1698,6 @@ void main() {
       expect(profileRepo.sent!.single.injuryId, 3);
       expect(profileRepo.sent!.single.side, 'right');
     });
-
-    testWidgets('adding keeps the injuries the profile already had', (
-      tester,
-    ) async {
-      // PUT /profile/injuries replaces the whole set, so an add that sends
-      // only the new region silently deletes every other injury the user has.
-      final profileRepo = FakeProfileRepository();
-      await _pump(
-        tester,
-        plan: _pplPlan,
-        profileRepo: profileRepo,
-        injuries: const [SelectedInjury(injuryId: 9)],
-        injuryOptions: const [knee, back],
-      );
-
-      await write(tester, 'protect my right knee');
-      await apply(tester);
-      await tester.tap(find.byKey(const Key('gen.describe.add.3')));
-      await tester.pumpAndSettle();
-
-      expect(
-        profileRepo.sent!.map((i) => i.injuryId),
-        containsAll(<int>[9, 3]),
-      );
-    });
-
-    testWidgets('a region already in the profile is not offered again', (
-      tester,
-    ) async {
-      await _pump(
-        tester,
-        plan: _pplPlan,
-        injuries: const [SelectedInjury(injuryId: 3, side: 'right')],
-        injuryOptions: const [knee, back],
-      );
-
-      await write(tester, 'protect my right knee');
-      await apply(tester);
-
-      expect(find.byKey(const Key('gen.describe.add.3')), findsNothing);
-    });
-
-    testWidgets('a failed add says so and keeps the offer', (tester) async {
-      final profileRepo = FakeProfileRepository(
-        error: const ApiException('VALIDATION_ERROR', 'Could not save that.'),
-      );
-      await _pump(
-        tester,
-        plan: _pplPlan,
-        profileRepo: profileRepo,
-        injuryOptions: const [knee, back],
-      );
-
-      await write(tester, 'protect my right knee');
-      await apply(tester);
-      await tester.tap(find.byKey(const Key('gen.describe.add.3')));
-      await tester.pumpAndSettle();
-
-      expect(find.textContaining('Could not save that'), findsOneWidget);
-      expect(
-        find.byKey(const Key('gen.describe.add.3')),
-        findsOneWidget,
-        reason: 'nothing was saved, so the offer must still stand',
-      );
-    });
-
-    testWidgets(
-      'a catalogue that failed to load does not claim nothing matched',
-      (tester) async {
-        // value ?? const [] reads the same for "still loading", "failed" and
-        // "no regions exist". With a card that reports what it recognised, that
-        // silence becomes a false statement about the user's injuries.
-        await _pump(tester, plan: _pplPlan, injuryOptionsFail: true);
-
-        await write(tester, 'protect my right knee');
-        await apply(tester);
-
-        expect(
-          find.descendant(
-            of: find.byKey(const Key('gen.describe.catalogueError')),
-            matching: find.byType(FsErrorLine),
-          ),
-          findsOneWidget,
-        );
-        expect(find.byKey(const Key('gen.describe.add.3')), findsNothing);
-      },
-    );
 
     testWidgets('the sentence counts the days the picker shows', (
       tester,
@@ -1656,16 +1720,14 @@ void main() {
     testWidgets('a day count the picker overrules is reported, not swallowed', (
       tester,
     ) async {
-      // _resolve takes the count from the chosen days, so the applied number
-      // has nowhere to land. It cannot simply be dropped: parsed.isEmpty is
-      // false -- the split did land -- so "Nothing in that changed your plan"
-      // never prints either, and Apply looks like it did nothing at all.
+      // _resolve takes the count from the chosen days, so the typed number
+      // has nowhere to land. It cannot simply be dropped: the split did land,
+      // so the example line never prints either, and the count would look
+      // understood and ignored.
       await _pump(tester, plan: _pplPlan, trainingDays: const [1, 3, 5]);
 
-      await write(tester, 'full body, 5 days a week');
-      await apply(tester);
+      await typeAndPause(tester, 'full body, 5 days a week');
 
-      expect(find.byKey(const Key('gen.describe.elsewhere')), findsOneWidget);
       expect(find.textContaining('weekdays you have chosen'), findsOneWidget);
 
       final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
@@ -1676,17 +1738,17 @@ void main() {
       );
     });
 
-    testWidgets('with no days chosen the count lands and nothing is reported', (
+    testWidgets('with no days chosen the count lands and asks for the days', (
       tester,
     ) async {
       // The other half of the pair: with nothing ticked the sentence's count
       // IS what the controls take, so saying it went nowhere would be false.
       await _pump(tester, plan: _pplPlan, trainingDays: const []);
 
-      await write(tester, 'full body, 5 days a week');
-      await apply(tester);
+      await typeAndPause(tester, 'full body, 5 days a week');
 
-      expect(find.byKey(const Key('gen.describe.elsewhere')), findsNothing);
+      expect(find.textContaining('weekdays you have chosen'), findsNothing);
+      expect(find.text('5 days a week: tick which days below'), findsOneWidget);
       final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
       expect(screen.debugDaysPerWeek, 5);
     });
@@ -1696,23 +1758,10 @@ void main() {
     ) async {
       await _pump(tester, plan: _pplPlan);
 
-      await write(tester, 'about 50 min a session');
-      await apply(tester);
+      await typeAndPause(tester, 'I want to gain muscle');
 
-      expect(find.byKey(const Key('gen.describe.elsewhere')), findsOneWidget);
-      expect(find.textContaining('Session length'), findsOneWidget);
+      expect(find.text('Goals are set in your profile.'), findsOneWidget);
     });
-  });
-
-  testWidgets('the screen does not state a session length', (tester) async {
-    // The service derives length from goal, fitness level and health check;
-    // this screen cannot change it and showing it only invited the question.
-    // Nor is it sent: the generator works it out afresh for each new plan.
-    await _pump(tester, plan: _pplPlan);
-
-    expect(find.byKey(const Key('gen.length.value')), findsNothing);
-    expect(find.textContaining('Session length'), findsNothing);
-    expect(find.text('60 min'), findsNothing);
   });
 
   testWidgets('the avoiding card names the profile injuries', (tester) async {
@@ -1923,18 +1972,429 @@ void main() {
     handle.dispose();
   });
 
-  testWidgets('Apply is an action, not a chip stuck selected (PT-19)', (
+  testWidgets('From profile is an action, not a chip stuck selected (PT-19)', (
     tester,
   ) async {
     final handle = tester.ensureSemantics();
     await _pump(tester, plan: _pplPlan);
 
-    final apply = find.byKey(const Key('gen.describe.apply'));
-    final chip = tester.widget<FsChip>(apply);
+    final chipFinder = find.byKey(const Key('gen.describe.fromProfile'));
+    final chip = tester.widget<FsChip>(chipFinder);
     expect(chip.selected, isFalse);
-    final data = tester.getSemantics(apply).getSemanticsData();
+    final data = tester.getSemantics(chipFinder).getSemanticsData();
     expect(data.flagsCollection.isButton, isTrue);
     expect(data.flagsCollection.isSelected, Tristate.none);
     handle.dispose();
   });
+
+  group('session length, the pinned bar and Edit (C3)', () {
+    Future<void> tapGenerate(WidgetTester tester) async {
+      await tester.tap(find.byKey(const Key('gen.generate')));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('the length row offers Auto with its number, 45 and 60', (
+      tester,
+    ) async {
+      await _pump(tester, plan: _pplPlan);
+      // FsEyebrow upper-cases.
+      expect(find.text('Session length'.toUpperCase()), findsOneWidget);
+      expect(find.text('Auto · 45 min'), findsOneWidget);
+      expect(find.text('45 min'), findsOneWidget);
+      expect(find.text('60 min'), findsOneWidget);
+      expect(
+        find.text('Auto follows your goal, level and health check.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('Auto sends no length; 60 sends 60', (tester) async {
+      final repo = FakePlanRepository();
+      await _pump(tester, plan: _pplPlan, repo: repo);
+      await tapGenerate(tester);
+      expect(repo.sent!.containsKey('sessionLengthMin'), isFalse);
+
+      // Reopen, pick 60, generate again. The first Generate popped the only
+      // route, so the old app is unmounted before a fresh one is pumped.
+      await tester.pumpWidget(const SizedBox());
+      await _pump(tester, plan: _pplPlan, repo: repo);
+      await tester.tap(find.byKey(const Key('gen.length.60')));
+      await tester.pump();
+      await tapGenerate(tester);
+      expect(repo.sent!['sessionLengthMin'], 60);
+    });
+
+    testWidgets('picking 60 over a beginner cap explains, without blocking', (
+      tester,
+    ) async {
+      await _pump(tester, plan: _pplPlan); // defaults: 45, reason level
+      await tester.tap(find.byKey(const Key('gen.length.60')));
+      await tester.pump();
+      expect(
+        find.text('Auto keeps beginners at 45 min. You can still choose 60.'),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<FsButton>(find.byKey(const Key('gen.generate')))
+            .onPressed,
+        isNotNull,
+      );
+    });
+
+    testWidgets('a health reason has its own note', (tester) async {
+      await _pump(
+        tester,
+        plan: _pplPlan,
+        defaults: const PlanDefaults(
+          sessionLengthMin: 45,
+          exercisesPerDay: 6,
+          lengthReason: 'health',
+        ),
+      );
+      await tester.tap(find.byKey(const Key('gen.length.60')));
+      await tester.pump();
+      expect(
+        find.text(
+          'Your health check suggests 45 min. You can still choose 60.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a failed defaults fetch leaves a bare Auto that still works', (
+      tester,
+    ) async {
+      final repo = FakePlanRepository();
+      await _pump(tester, plan: _pplPlan, repo: repo, defaultsError: true);
+      expect(find.text('Auto'), findsOneWidget);
+      expect(find.textContaining('Auto ·'), findsNothing);
+      await tapGenerate(tester);
+      expect(repo.sent!.containsKey('sessionLengthMin'), isFalse);
+    });
+
+    testWidgets('the bar is pinned with a summary and the undo promise', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await _pump(
+        tester,
+        plan: _pplPlan,
+        trainingDays: const [1, 3, 5],
+        tall: false,
+      );
+      expect(
+        find.byKey(const Key('gen.generate')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('gen.bar')),
+          matching: find.byKey(const Key('gen.summary')),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          'Push / Pull / Legs · Mon Wed Fri · 45 min · 6 exercises a day',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Replaces your current plan. You can undo it.'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('an open keyboard hides the bar instead of overflowing', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1;
+      tester.view.viewInsets = const FakeViewPadding(bottom: 260);
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await _pump(
+        tester,
+        plan: _pplPlan,
+        trainingDays: const [1, 3, 5],
+        tall: false,
+      );
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const Key('gen.bar')), findsNothing);
+
+      // Keyboard closed: the bar, and Generate with it, come back.
+      tester.view.resetViewInsets();
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(
+        find.byKey(const Key('gen.generate')).hitTestable(),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a landscape keyboard does not overflow the body', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(568, 320);
+      tester.view.devicePixelRatio = 1;
+      tester.view.viewInsets = const FakeViewPadding(bottom: 200);
+      addTearDown(tester.view.reset);
+      await _pump(
+        tester,
+        plan: _pplPlan,
+        trainingDays: const [1, 3, 5],
+        tall: false,
+      );
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const Key('gen.bar')), findsNothing);
+    });
+
+    // iOS has no back key to close the keyboard, and the bar (Generate with
+    // it) stays hidden while the keyboard is up, so the screen itself must
+    // offer a way to put the keyboard away.
+    group('closing the keyboard on iOS', () {
+      Future<void> typeWithKeyboard(WidgetTester tester) async {
+        tester.view.physicalSize = const Size(390, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await _pump(
+          tester,
+          plan: _pplPlan,
+          trainingDays: const [1, 3, 5],
+          tall: false,
+        );
+        await tester.tap(find.byKey(const Key('gen.describe.field')));
+        tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+        await tester.pumpAndSettle();
+        expect(_describeFocused(tester), isTrue);
+        expect(find.byKey(const Key('gen.bar')), findsNothing);
+      }
+
+      testWidgets('a tap outside the field closes the keyboard', (
+        tester,
+      ) async {
+        await typeWithKeyboard(tester);
+        // The card's own heading: outside the field, inside the screen.
+        await tester.tap(
+          find.descendant(
+            of: find.byKey(const Key('gen.describe')),
+            matching: find.byType(FsEyebrow),
+          ),
+        );
+        await tester.pump();
+        expect(_describeFocused(tester), isFalse);
+
+        // The system then drops the keyboard, and Generate is back.
+        tester.view.resetViewInsets();
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('gen.generate')).hitTestable(),
+          findsOneWidget,
+        );
+      }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+
+      testWidgets('dragging the list closes the keyboard', (tester) async {
+        await typeWithKeyboard(tester);
+        // On the field itself the field's own scrolling takes the drag, so
+        // the drag starts lower down the list, as a thumb would.
+        final list = find.byType(ListView);
+        expect(
+          tester.widget<ListView>(list).keyboardDismissBehavior,
+          ScrollViewKeyboardDismissBehavior.onDrag,
+        );
+        final scrollable = tester.state<ScrollableState>(
+          find.descendant(of: list, matching: find.byType(Scrollable)).first,
+        );
+        await tester.dragFrom(const Offset(195, 500), const Offset(0, -120));
+        await tester.pump();
+        expect(scrollable.position.pixels, greaterThan(0));
+        expect(_describeFocused(tester), isFalse);
+      }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+
+      testWidgets('the return key is Done and closes the keyboard', (
+        tester,
+      ) async {
+        await typeWithKeyboard(tester);
+        final field = tester.widget<TextField>(
+          find.descendant(
+            of: find.byKey(const Key('gen.describe.field')),
+            matching: find.byType(TextField),
+          ),
+        );
+        expect(field.textInputAction, TextInputAction.done);
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await tester.pump();
+        expect(_describeFocused(tester), isFalse);
+      }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+    });
+
+    testWidgets('the summary follows a chosen length', (tester) async {
+      await _pump(tester, plan: _pplPlan, trainingDays: const [1, 3, 5]);
+      await tester.tap(find.byKey(const Key('gen.length.60')));
+      await tester.pump();
+      expect(
+        find.text(
+          'Push / Pull / Legs · Mon Wed Fri · 60 min · 8 exercises a day',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('Edit on Working around opens the Injuries editor', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        plan: _pplPlan,
+        injuries: const [SelectedInjury(injuryId: 1)],
+        injuryOptions: const [
+          InjuryOption(
+            injuryId: 1,
+            name: 'Knee',
+            isLateral: false,
+            regionGroup: 'lower',
+          ),
+        ],
+      );
+      await tester.tap(find.byKey(const Key('gen.avoiding.edit')));
+      await tester.pumpAndSettle();
+      expect(find.byType(InjuriesEditor), findsOneWidget);
+    });
+  });
+
+  group('Undo a new plan (spec 2026-11-14)', () {
+    testWidgets('a new plan offers Undo when it replaced one', (tester) async {
+      final repo = FakePlanRepository(result: _pplPlanReplacing);
+      await _pumpBehind(tester, repo);
+      await _tapGenerate(tester);
+      await tester.pumpAndSettle();
+      expect(find.text(_generatedMessage), findsOneWidget);
+      await tester.tap(find.text('Undo'));
+      await tester.pump();
+      expect(repo.restoreCalls, 1);
+      // Tapping Undo dismisses the bar it sits on; the answer shows once
+      // that bar has finished leaving.
+      await tester.pumpAndSettle();
+      expect(find.text('Your previous plan is back.'), findsOneWidget);
+    });
+
+    testWidgets('a first plan has no Undo', (tester) async {
+      final repo = FakePlanRepository(result: _pplPlan); // previousPlan null
+      await _pumpBehind(tester, repo);
+      await _tapGenerate(tester);
+      await tester.pumpAndSettle();
+      expect(find.text(_generatedMessage), findsOneWidget);
+      expect(find.text('Undo'), findsNothing);
+    });
+
+    testWidgets('a refused Undo says why', (tester) async {
+      final repo = FakePlanRepository(
+        result: _pplPlanReplacing,
+        restoreError: const ApiException(
+          'PLAN_ALREADY_USED',
+          "You've started a workout on the new plan, so the old one can't "
+              'come back.',
+        ),
+      );
+      await _pumpBehind(tester, repo);
+      await _tapGenerate(tester);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      expect(repo.restoreCalls, 1);
+      expect(
+        find.textContaining("Couldn't bring back your previous plan."),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining("You've started a workout on the new plan"),
+        findsOneWidget,
+      );
+      // Asking again would only be refused again.
+      expect(find.text('Try again'), findsNothing);
+    });
+
+    testWidgets('a failed Undo that a retry can fix offers Try again', (
+      tester,
+    ) async {
+      final repo = FakePlanRepository(
+        result: _pplPlanReplacing,
+        restoreError: const ApiException('NETWORK_ERROR', 'unreachable'),
+      );
+      await _pumpBehind(tester, repo);
+      await _tapGenerate(tester);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      expect(repo.restoreCalls, 1);
+      expect(
+        find.textContaining("Couldn't bring back your previous plan."),
+        findsOneWidget,
+      );
+      expect(find.textContaining("Couldn't reach FitSync."), findsOneWidget);
+      expect(find.text('Try again'), findsOneWidget);
+      await tester.tap(find.text('Try again'));
+      await tester.pumpAndSettle();
+      expect(repo.restoreCalls, 2);
+    });
+  });
 }
+
+/// The generator pushed over a page of its own, as the "+" opens it, so the
+/// pop after a new plan leaves a Scaffold behind for the snackbar to show on.
+Future<void> _pumpBehind(WidgetTester tester, FakePlanRepository repo) async {
+  tester.view.physicalSize = const Size(800, 1600);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        activeSessionProvider.overrideWith(() => _SessionController(null)),
+        activePlanProvider.overrideWith((ref) async => _pplPlan),
+        planRepositoryProvider.overrideWithValue(repo),
+        profileProvider.overrideWith(() => _FakeProfileNotifier(const [])),
+      ],
+      child: MaterialApp(
+        theme: fsLightTheme(),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: ElevatedButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const GeneratorScreen(),
+                  ),
+                ),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('open'));
+  await tester.pumpAndSettle();
+}
+
+Future<void> _tapGenerate(WidgetTester tester) =>
+    tester.tap(find.byKey(const Key('gen.generate')));
+
+/// Whether the "Describe your week" field holds the focus (keyboard up).
+bool _describeFocused(WidgetTester tester) => tester
+    .widget<EditableText>(
+      find.descendant(
+        of: find.byKey(const Key('gen.describe.field')),
+        matching: find.byType(EditableText),
+      ),
+    )
+    .focusNode
+    .hasFocus;

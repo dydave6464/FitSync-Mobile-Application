@@ -2,16 +2,23 @@
 const express = require('express');
 const requireAuth = require('../middleware/require-auth');
 const AppError = require('../lib/app-error');
-const { getActivePlan, savePlan, createPlanFromSession } = require('../db/plans');
-const { getProfile } = require('../db/profile');
+const {
+  getActivePlan, savePlan, restorePreviousPlan, createPlanFromSession,
+} = require('../db/plans');
+const { getProfile, listInjuries } = require('../db/profile');
 const { readRankerHistory } = require('../db/ranker-history');
 const { getActiveSession } = require('../db/sessions');
 const {
   loadSwapContext, listAlternatives, swapPlanExercise, revertPlanSwap,
 } = require('../db/plan-swap');
+const { createWeekReaderService } = require('../services/week-reader');
+const { cleanReading } = require('../services/week-reader/clean');
+const { createReadCache, createDailyLimit } = require('../services/week-reader/memory');
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
+const MAX_WEEK_TEXT = 300;
+const READINGS_PER_DAY = 30;
 
 function parseLimit(raw) {
   if (raw === undefined) return DEFAULT_LIMIT;
@@ -89,6 +96,24 @@ module.exports = function buildPlansRouter(deps) {
     exercises: plan.exercises.map((e) => ({ ...e, thumbnailUrl: toUrl(e.thumbnailUrl) })),
   });
 
+  // Per router, so each app (and each test app) starts with its own.
+  const weekReader = deps.weekReader || createWeekReaderService({});
+  const readCache = createReadCache();
+  const readLimit = createDailyLimit({ perDay: READINGS_PER_DAY });
+  // The injury catalogue the reader maps names onto (spec Part 2b step 3:
+  // read from the DB, cached). Only seed-injuries.js changes it, before the
+  // server starts, so once per router is enough. An empty list is not kept:
+  // a catalogue seeded after startup is still picked up.
+  let injuryCatalogue = null;
+  const readInjuryCatalogue = async () => {
+    if (injuryCatalogue === null) {
+      const rows = await listInjuries(deps.pool);
+      if (rows.length > 0) injuryCatalogue = rows;
+      return rows;
+    }
+    return injuryCatalogue;
+  };
+
   router.get('/active', requireAuth(deps), async (req, res, next) => {
     try {
       // Null rather than 404: "you have no plan yet" is a normal state during
@@ -96,6 +121,46 @@ module.exports = function buildPlansRouter(deps) {
       res.json({
         data: { plan: withUrls(await getActivePlan(deps.pool, req.user.userId)) },
       });
+    } catch (err) { next(err); }
+  });
+
+  // What "Auto" means for this user right now (spec 2026-11-14, Part 2):
+  // ML's own derive(), so the number shown is the number Generate builds.
+  router.get('/defaults', requireAuth(deps), async (req, res, next) => {
+    try {
+      const profile = await getProfile(deps.pool, req.user.userId);
+      const { sessionLengthMin, exercisesPerDay, lengthReason } = await deps.ml.planParameters({ ...profile });
+      res.json({ data: { sessionLengthMin, exercisesPerDay, lengthReason } });
+    } catch (err) { next(err); }
+  });
+
+  // "Describe your week" read by Groq (spec 2026-11-14, Part 2b). Never
+  // writes the profile or the plan: days and injuries still need the user's
+  // own tap in the app.
+  router.post('/read-week', requireAuth(deps), async (req, res, next) => {
+    try {
+      const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+      if (text.length < 1 || text.length > MAX_WEEK_TEXT) {
+        throw AppError.badRequest('INVALID_WEEK_TEXT',
+          `text must be 1 to ${MAX_WEEK_TEXT} characters.`, [{ field: 'text' }]);
+      }
+      const key = text.toLowerCase().replace(/\s+/g, ' ');
+      const cached = readCache.get(key);
+      if (cached) return res.json({ data: cached });
+
+      const userId = req.user.userId;
+      if (!readLimit.hasRoom(userId)) {
+        throw new AppError(429, 'READ_LIMIT', 'AI reading is used up for today.');
+      }
+      const injuries = await readInjuryCatalogue();
+      const raw = await weekReader.read({ text, injuryNames: injuries.map((i) => i.name) });
+      const reading = cleanReading(raw, { injuries });
+      if (reading === null) {
+        throw new AppError(503, 'AI_BUSY', 'AI reading is busy. Try again in a moment.');
+      }
+      readLimit.count(userId);
+      readCache.set(key, reading);
+      res.json({ data: reading });
     } catch (err) { next(err); }
   });
 
@@ -131,6 +196,18 @@ module.exports = function buildPlansRouter(deps) {
       const generated = await deps.ml.generatePlan({ ...profile, overrides, history });
       await savePlan(deps.pool, userId, generated);
 
+      res.json({ data: { plan: withUrls(await getActivePlan(deps.pool, userId)) } });
+    } catch (err) { next(err); }
+  });
+
+  router.post('/restore-previous', requireAuth(deps), async (req, res, next) => {
+    try {
+      const userId = req.user.userId;
+      // As regenerate: swapping the plan under a running workout would strand
+      // the logger on exercises no longer in the active plan.
+      const open = await getActiveSession(deps.pool, userId);
+      if (open) throw sessionInProgress(open);
+      await restorePreviousPlan(deps.pool, userId);
       res.json({ data: { plan: withUrls(await getActivePlan(deps.pool, userId)) } });
     } catch (err) { next(err); }
   });

@@ -145,6 +145,14 @@ class PlanResponse(BaseModel):
     exercises: List[PlanExercise]
 
 
+class PlanParametersResponse(BaseModel):
+    """What /plan-parameters answers: derive()'s length and exercise count,
+    and why that length (rules.parameters.length_reason)."""
+    sessionLengthMin: int
+    exercisesPerDay: int
+    lengthReason: str
+
+
 class InjuryRiskRequest(BaseModel):
     checkins: List[Dict[str, Any]] = Field(default_factory=list)
     # allow_inf_nan=False so NaN and Infinity are a 422 rather than reaching the

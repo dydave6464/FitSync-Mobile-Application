@@ -179,13 +179,6 @@ void main() {
   });
 
   group('topics this screen does not own', () {
-    test('notices a session length', () {
-      expect(
-        _parse('about 50 min a session').elsewhere,
-        contains(WeekTopic.sessionLength),
-      );
-    });
-
     test('notices a goal', () {
       expect(
         _parse('I want to gain muscle').elsewhere,
@@ -394,5 +387,82 @@ void main() {
       expect(parsed.splitStyle, 'push_pull_legs');
       expect(parsed.daysPerWeek, 4);
     });
+  });
+
+  group('lengths', () {
+    int? len(String s) => parseWeekDescription(s, const []).sessionLengthMin;
+    int? asked(String s) => parseWeekDescription(s, const []).requestedMinutes;
+    test('minutes snap to 45 or 60, ties to 45', () {
+      expect(len('50 min'), 45);
+      expect(asked('50 min'), 50);
+      expect(len('45 minutes'), 45);
+      expect(len('30 mins'), 45);
+      expect(len('52 min'), 45);
+      expect(len('53 min'), 60);
+      expect(len('90 min'), 60);
+    });
+    test('hours count', () {
+      expect(len('an hour'), 60);
+      expect(len('1 hour'), 60);
+      expect(len('one hour'), 60);
+      expect(asked('1.5 hours'), 90);
+      expect(len('half an hour'), 45);
+      expect(asked('half an hour'), 30);
+    });
+    test('singular and hyphenated units read as plural ones', () {
+      expect(asked('45 minute sessions'), 45);
+      expect(asked('45-minute workouts'), 45);
+      expect(asked('50 - minute sessions'), 50);
+      expect(asked('60min'), 60);
+      expect(asked('1-hour sessions'), 60);
+      expect(asked('one-hour workouts'), 60);
+      expect(asked('1.5-hour sessions'), 90);
+      expect(len('45 minute sessions, 3 days a week'), 45);
+    });
+    test('no length, or out of range', () {
+      expect(len('3 days a week'), isNull);
+      expect(len('3 minutemen'), isNull);
+      expect(len('500 min'), isNull);
+    });
+  });
+
+  group('weekdays', () {
+    List<int> days(String s) => parseWeekDescription(s, const []).weekdays;
+    test('names and short names', () {
+      expect(days('Mon, Wed, Fri'), [1, 3, 5]);
+      expect(days('monday and thursday'), [1, 4]);
+      expect(days('tue/thu'), [2, 4]);
+      expect(days('tues and thurs'), [2, 4]);
+      expect(days('weekdays'), [1, 2, 3, 4, 5]);
+      expect(days('weekends'), [6, 7]);
+    });
+    test('whole words only', () {
+      expect(days('this month I want to train'), isEmpty);
+      expect(days('sunday'), [7]);
+      expect(days('saturdays'), [6]);
+    });
+  });
+
+  group('splits', () {
+    String? split(String s) => parseWeekDescription(s, const []).splitStyle;
+    test('more ways to say them', () {
+      expect(split('whole body'), 'full_body');
+      expect(split('push/pull/legs'), 'push_pull_legs');
+      expect(split('upper/lower'), 'upper_lower');
+      expect(split('cardio and core'), 'cardio_core');
+    });
+  });
+
+  test('a goal is noted as mentionsGoal and WeekTopic.goal', () {
+    final d = parseWeekDescription('I want to build muscle', const []);
+    expect(d.mentionsGoal, isTrue);
+    expect(d.elsewhere, contains(WeekTopic.goal));
+  });
+
+  test('minutes are no longer something "elsewhere"', () {
+    expect(
+      WeekTopic.values.map((t) => t.name),
+      isNot(contains('sessionLength')),
+    );
   });
 }

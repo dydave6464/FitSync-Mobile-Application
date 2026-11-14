@@ -21,6 +21,7 @@ import '../domain/workout_plan.dart';
 import 'exercise_swap_sheet.dart';
 import 'providers.dart';
 import 'start_workout_sheet.dart' show lookUpPendingOutcome;
+import 'widgets/previous_plan_card.dart';
 import 'widgets/regenerate_plan_button.dart';
 import 'widgets/session_card.dart';
 import 'widgets/week_strip.dart';
@@ -129,6 +130,7 @@ class _PlanViewState extends ConsumerState<_PlanView> {
     if (_starting) return;
     final controller = ref.read(activeSessionProvider.notifier);
     final messenger = ScaffoldMessenger.of(context);
+    final container = ProviderScope.containerOf(context, listen: false);
     setState(() => _starting = true);
     try {
       if (ref.read(activeSessionProvider).value == null) {
@@ -149,6 +151,14 @@ class _PlanViewState extends ConsumerState<_PlanView> {
           }
         }
         await controller.start();
+        // A workout on this plan ends its Undo (spec 2026-11-14): the
+        // server now answers previousPlan null, so the plan is asked for
+        // again and the "Bring it back" card goes. Done here, where both
+        // providers are in reach, rather than in the session controller,
+        // which would have to import the plans feature (and through it
+        // profile, which imports sessions) to do it. This is the only start
+        // of a plan session; a hand-picked one has no plan to end Undo on.
+        container.invalidate(activePlanProvider);
       }
       if (!mounted) return;
       await Navigator.of(context).push(
@@ -202,6 +212,13 @@ class _PlanViewState extends ConsumerState<_PlanView> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
       children: [
+        if (plan.previousPlan != null) ...[
+          PreviousPlanCard(
+            key: const Key('plan.previous'),
+            previous: plan.previousPlan!,
+          ),
+          const SizedBox(height: 14),
+        ],
         WeekStrip(
           daysPerWeek: plan.daysPerWeek,
           completedDates: completedDays,
