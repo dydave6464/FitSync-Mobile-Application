@@ -76,8 +76,10 @@ test('what the starting dishes are often made with', () => {
     assert.ok(Array.isArray(f.contains) && f.contains.length > 0, `${f.name} contains`);
     assert.deepEqual(f.contains, FOOD_GROUPS.filter((g) => f.contains.includes(g)), `${f.name}: the six, in order`);
   }
-  const byTags = Object.fromEntries(tagged.map((f) => [f.name, f.contains.join(',')]));
-  assert.deepEqual(byTags, {
+  // The Meal ideas dishes' tags are pinned exactly: "Foods I avoid" filters
+  // suggestions by them. Foods added later (the 2026-11-14 round) may carry
+  // tags too, but none of them is a suggestion.
+  const STARTING = {
     Tapsilog: 'beef,egg',
     Bangsilog: 'fish,egg',
     'Sarciadong isda (fish with tomato-egg sauce)': 'fish,egg',
@@ -94,7 +96,15 @@ test('what the starting dishes are often made with', () => {
     'Sinigang na bangus (milkfish sour soup)': 'fish', 'Tilapia, grilled or steamed': 'fish',
     'Sutukil sinugba (grilled fish)': 'fish', 'Ginataang tulingan (frigate tuna in coconut milk)': 'fish',
     'Tinapang galunggong (smoked round scad)': 'fish', 'Inihaw na tuna (grilled tuna steak)': 'fish',
-  });
+  };
+  for (const [name, tags] of Object.entries(STARTING)) {
+    const f = FOODS.find((x) => x.name === name);
+    assert.ok(f, `${name} is still in the list`);
+    assert.equal((f.contains || []).join(','), tags, name);
+  }
+  for (const f of tagged) {
+    if (!(f.name in STARTING)) assert.ok(!f.suggestMeals, `${f.name}: a later tagged food is not a suggestion`);
+  }
 });
 
 test('food seed', async (t) => {
