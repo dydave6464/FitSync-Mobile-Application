@@ -4,6 +4,7 @@ const { createLogger } = require('./src/lib/logger');
 const { createPool } = require('./src/db/pool');
 const { createMlService } = require('./src/services/ml');
 const { createCueService } = require('./src/services/cues');
+const { createWeekReaderService } = require('./src/services/week-reader');
 const { createFatsecretService } = require('./src/services/fatsecret');
 const { createVisionService } = require('./src/services/vision');
 const { createPaymentsService } = require('./src/services/payments');
@@ -21,6 +22,7 @@ const pool = createPool(config.db);
 const ml = createMlService(config.ml);
 // Throws here, not on the first workout, when CUES_MODE=groq has no key.
 const cues = createCueService(config.cues);
+const weekReader = createWeekReaderService(config.weekReader);
 // FATSECRET_MODE left empty means the stub, whose invented foods would show in
 // search labelled FatSecret and be copied into foods when logged. In
 // production that is worse than no FatSecret: run without it (search returns
@@ -52,7 +54,7 @@ const google = createGoogleVerifier(config.google);
 const mail = createMailService(config.mail, logger);
 
 const app = createApp({
-  config, logger, pool, ml, storage, cues, fatsecret, vision, payments, jwt: config.jwt, google,
+  config, logger, pool, ml, storage, cues, weekReader, fatsecret, vision, payments, jwt: config.jwt, google,
   mail, publicBaseUrl: config.publicBaseUrl,
 });
 

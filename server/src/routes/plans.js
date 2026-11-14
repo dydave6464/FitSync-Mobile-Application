@@ -5,15 +5,20 @@ const AppError = require('../lib/app-error');
 const {
   getActivePlan, savePlan, restorePreviousPlan, createPlanFromSession,
 } = require('../db/plans');
-const { getProfile } = require('../db/profile');
+const { getProfile, listInjuries } = require('../db/profile');
 const { readRankerHistory } = require('../db/ranker-history');
 const { getActiveSession } = require('../db/sessions');
 const {
   loadSwapContext, listAlternatives, swapPlanExercise, revertPlanSwap,
 } = require('../db/plan-swap');
+const { createWeekReaderService } = require('../services/week-reader');
+const { cleanReading } = require('../services/week-reader/clean');
+const { createReadCache, createDailyLimit } = require('../services/week-reader/memory');
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
+const MAX_WEEK_TEXT = 300;
+const READINGS_PER_DAY = 30;
 
 function parseLimit(raw) {
   if (raw === undefined) return DEFAULT_LIMIT;
@@ -91,6 +96,11 @@ module.exports = function buildPlansRouter(deps) {
     exercises: plan.exercises.map((e) => ({ ...e, thumbnailUrl: toUrl(e.thumbnailUrl) })),
   });
 
+  // Per router, so each app (and each test app) starts with its own.
+  const weekReader = deps.weekReader || createWeekReaderService({});
+  const readCache = createReadCache();
+  const readLimit = createDailyLimit({ perDay: READINGS_PER_DAY });
+
   router.get('/active', requireAuth(deps), async (req, res, next) => {
     try {
       // Null rather than 404: "you have no plan yet" is a normal state during
@@ -108,6 +118,36 @@ module.exports = function buildPlansRouter(deps) {
       const profile = await getProfile(deps.pool, req.user.userId);
       const { sessionLengthMin, exercisesPerDay, lengthReason } = await deps.ml.planParameters({ ...profile });
       res.json({ data: { sessionLengthMin, exercisesPerDay, lengthReason } });
+    } catch (err) { next(err); }
+  });
+
+  // "Describe your week" read by Groq (spec 2026-11-14, Part 2b). Never
+  // writes the profile or the plan: days and injuries still need the user's
+  // own tap in the app.
+  router.post('/read-week', requireAuth(deps), async (req, res, next) => {
+    try {
+      const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+      if (text.length < 1 || text.length > MAX_WEEK_TEXT) {
+        throw AppError.badRequest('INVALID_WEEK_TEXT',
+          `text must be 1 to ${MAX_WEEK_TEXT} characters.`, [{ field: 'text' }]);
+      }
+      const key = text.toLowerCase().replace(/\s+/g, ' ');
+      const cached = readCache.get(key);
+      if (cached) return res.json({ data: cached });
+
+      const userId = req.user.userId;
+      if (!readLimit.hasRoom(userId)) {
+        throw new AppError(429, 'READ_LIMIT', 'AI reading is used up for today.');
+      }
+      const injuries = await listInjuries(deps.pool);
+      const raw = await weekReader.read({ text, injuryNames: injuries.map((i) => i.name) });
+      const reading = cleanReading(raw, { injuries });
+      if (reading === null) {
+        throw new AppError(503, 'AI_BUSY', 'AI reading is busy. Try again in a moment.');
+      }
+      readLimit.count(userId);
+      readCache.set(key, reading);
+      res.json({ data: reading });
     } catch (err) { next(err); }
   });
 

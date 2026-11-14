@@ -42,7 +42,7 @@ function reqSerializer(req) {
 }
 
 function createApp({
-  config, logger, pool, ml = null, storage = null, cues = null, fatsecret = null, vision = null, payments = null,
+  config, logger, pool, ml = null, storage = null, cues = null, weekReader = null, fatsecret = null, vision = null, payments = null,
   extraRouter = null, jwt = null, google = null,
   mail = null, publicBaseUrl = null, proStatusCheckMs,
 }) {
@@ -100,7 +100,7 @@ function createApp({
   }
 
   app.use('/api/v1', buildRoutes({
-    config, logger, pool, ml, storage, cues, fatsecret, vision, payments, extraRouter, jwt, google, mail, publicBaseUrl, proStatusCheckMs,
+    config, logger, pool, ml, storage, cues, weekReader, fatsecret, vision, payments, extraRouter, jwt, google, mail, publicBaseUrl, proStatusCheckMs,
   }));
 
   app.use(notFound);
