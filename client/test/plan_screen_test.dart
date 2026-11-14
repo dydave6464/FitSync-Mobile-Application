@@ -195,6 +195,35 @@ class _SwapRepo implements PlanRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+/// Brings the earlier plan back on request, counting each ask.
+class _RestoreRepo implements PlanRepository {
+  int restoreCalls = 0;
+
+  @override
+  String get baseUrl => 'http://test.local';
+
+  @override
+  Future<WorkoutPlan> restorePrevious() async {
+    restoreCalls += 1;
+    return _plan;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// [_plan] generated over [previousPlan], or over nothing.
+WorkoutPlan _planWith({required PreviousPlan? previousPlan}) => WorkoutPlan(
+  planId: _plan.planId,
+  name: _plan.name,
+  splitStyle: _plan.splitStyle,
+  daysPerWeek: _plan.daysPerWeek,
+  sessionLengthMin: _plan.sessionLengthMin,
+  weekNo: _plan.weekNo,
+  exercises: _plan.exercises,
+  previousPlan: previousPlan,
+);
+
 const _boxSquat = ExerciseAlternative(
   exerciseId: 12,
   name: 'box squat',
@@ -870,6 +899,50 @@ void main() {
       await tester.pumpAndSettle();
       // Only the latest swap is undoable.
       expect(repo.undos, [(601, 101)]);
+    });
+  });
+
+  group('Bring back the previous plan (spec 2026-11-14)', () {
+    testWidgets('the Plan tab offers to bring the previous plan back', (
+      tester,
+    ) async {
+      final repo = _RestoreRepo();
+      await _pump(
+        tester,
+        _planWith(
+          previousPlan: const PreviousPlan(
+            planId: 3,
+            name: 'Push / Pull / Legs',
+          ),
+        ),
+        repo: repo,
+      );
+      expect(
+        find.text("This plan replaced 'Push / Pull / Legs'."),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const Key('plan.previous.bringBack')));
+      await tester.pump();
+      expect(repo.restoreCalls, 1);
+      await tester.pump();
+      expect(find.text('Your previous plan is back.'), findsOneWidget);
+    });
+
+    testWidgets('no previous plan, no card', (tester) async {
+      await _pump(tester, _planWith(previousPlan: null), repo: _RestoreRepo());
+      expect(find.byKey(const Key('plan.previous')), findsNothing);
+    });
+
+    testWidgets('the Bring it back button has a full tap band', (tester) async {
+      await _pump(
+        tester,
+        _planWith(previousPlan: const PreviousPlan(planId: 3, name: 'P')),
+        repo: _RestoreRepo(),
+      );
+      expect(
+        tester.getSize(find.byKey(const Key('plan.previous.bringBack'))).height,
+        greaterThanOrEqualTo(48),
+      );
     });
   });
 }

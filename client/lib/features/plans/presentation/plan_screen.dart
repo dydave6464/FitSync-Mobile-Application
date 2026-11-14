@@ -21,6 +21,7 @@ import '../domain/workout_plan.dart';
 import 'exercise_swap_sheet.dart';
 import 'providers.dart';
 import 'start_workout_sheet.dart' show lookUpPendingOutcome;
+import 'widgets/previous_plan_card.dart';
 import 'widgets/regenerate_plan_button.dart';
 import 'widgets/session_card.dart';
 import 'widgets/week_strip.dart';
@@ -202,6 +203,13 @@ class _PlanViewState extends ConsumerState<_PlanView> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
       children: [
+        if (plan.previousPlan != null) ...[
+          PreviousPlanCard(
+            key: const Key('plan.previous'),
+            previous: plan.previousPlan!,
+          ),
+          const SizedBox(height: 14),
+        ],
         WeekStrip(
           daysPerWeek: plan.daysPerWeek,
           completedDates: completedDays,

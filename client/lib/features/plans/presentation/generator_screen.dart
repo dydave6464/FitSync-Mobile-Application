@@ -17,6 +17,7 @@ import '../domain/split_style.dart';
 import '../domain/week_description.dart';
 import '../domain/workout_plan.dart';
 import 'providers.dart';
+import 'undo_plan.dart';
 import 'widgets/describe_week_card.dart';
 import 'widgets/session_length_row.dart';
 import 'widgets/training_days_row.dart';
@@ -115,6 +116,8 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
     // already be disposed. ref.invalidate would throw in that case -- the
     // container outlives the widget, so the refresh does too.
     final container = ProviderScope.containerOf(context, listen: false);
+    // Read now, beside the messenger, for the snackbar after the await.
+    final screenReader = MediaQuery.accessibleNavigationOf(context);
     // The building screen's first frame is the one this setState schedules,
     // so the hold below is measured from here.
     final since = DateTime.now();
@@ -124,7 +127,7 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
       _leadLabel = _describeChoice(split, trainingDays, days);
     });
     try {
-      await ref
+      final plan = await ref
           .read(planRepositoryProvider)
           .regenerate(
             splitStyle: split,
@@ -152,8 +155,27 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
       // Nutrition, where the new plan is invisible and the only irreversible
       // action in this slice would otherwise finish with no evidence it
       // happened at all.
+      // Undo only when the server says there is a plan to bring back: a
+      // first plan replaced nothing.
+      messenger.hideCurrentSnackBar();
       messenger.showSnackBar(
-        const SnackBar(content: Text('New plan generated')),
+        SnackBar(
+          duration: const Duration(seconds: 10),
+          // As the swap Undo: with a screen reader the bar waits, since
+          // reaching its action by swiping takes longer than ten seconds.
+          persist: screenReader,
+          content: const Text('New plan generated'),
+          action: plan.previousPlan == null
+              ? null
+              : SnackBarAction(
+                  label: 'Undo',
+                  onPressed: () => bringBackPreviousPlan(
+                    messenger: messenger,
+                    container: container,
+                    persist: screenReader,
+                  ),
+                ),
+        ),
       );
       if (mounted) navigator.pop();
     } on ApiException catch (error) {

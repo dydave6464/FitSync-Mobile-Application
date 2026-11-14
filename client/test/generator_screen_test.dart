@@ -45,6 +45,24 @@ const _pplPlan = WorkoutPlan(
   exercises: [],
 );
 
+/// As [_pplPlan], but generated over an earlier plan the server can still
+/// bring back: the one answer that earns the snackbar its Undo.
+const _pplPlanReplacing = WorkoutPlan(
+  planId: 8,
+  name: 'Week 1 — Push/Pull/Legs',
+  splitStyle: 'push_pull_legs',
+  daysPerWeek: 3,
+  sessionLengthMin: 45,
+  weekNo: 1,
+  days: [
+    PlanDay(dayNo: 1, name: 'Push'),
+    PlanDay(dayNo: 2, name: 'Pull'),
+    PlanDay(dayNo: 3, name: 'Legs'),
+  ],
+  exercises: [],
+  previousPlan: PreviousPlan(planId: 3, name: 'Plan 1'),
+);
+
 /// The server's refusal message, shared by [FakePlanRepository] and the tests
 /// that check the dialog states it verbatim -- so the two never drift apart.
 const _customPlanMessage =
@@ -52,7 +70,28 @@ const _customPlanMessage =
     'Legs" and the 2 days you built in it.';
 
 class FakePlanRepository implements PlanRepository {
-  FakePlanRepository({this.error, this.pending, this.refuseCustomPlan = false});
+  FakePlanRepository({
+    this.error,
+    this.pending,
+    this.refuseCustomPlan = false,
+    this.result = _pplPlan,
+    this.restoreError,
+  });
+
+  /// What a successful `regenerate` answers.
+  final WorkoutPlan result;
+
+  /// Thrown by `restorePrevious` when set; otherwise it brings a plan back.
+  final Object? restoreError;
+
+  int restoreCalls = 0;
+
+  @override
+  Future<WorkoutPlan> restorePrevious() async {
+    restoreCalls += 1;
+    if (restoreError != null) throw restoreError!;
+    return _pplPlan;
+  }
 
   final Object? error;
 
@@ -127,7 +166,7 @@ class FakePlanRepository implements PlanRepository {
     }
     if (pending != null) return pending!;
     if (error != null) throw error!;
-    return _pplPlan;
+    return result;
   }
 
   @override
@@ -2229,7 +2268,99 @@ void main() {
       expect(find.byType(InjuriesEditor), findsOneWidget);
     });
   });
+
+  group('Undo a new plan (spec 2026-11-14)', () {
+    testWidgets('a new plan offers Undo when it replaced one', (tester) async {
+      final repo = FakePlanRepository(result: _pplPlanReplacing);
+      await _pumpBehind(tester, repo);
+      await _tapGenerate(tester);
+      await tester.pumpAndSettle();
+      expect(find.text(_generatedMessage), findsOneWidget);
+      await tester.tap(find.text('Undo'));
+      await tester.pump();
+      expect(repo.restoreCalls, 1);
+      // Tapping Undo dismisses the bar it sits on; the answer shows once
+      // that bar has finished leaving.
+      await tester.pumpAndSettle();
+      expect(find.text('Your previous plan is back.'), findsOneWidget);
+    });
+
+    testWidgets('a first plan has no Undo', (tester) async {
+      final repo = FakePlanRepository(result: _pplPlan); // previousPlan null
+      await _pumpBehind(tester, repo);
+      await _tapGenerate(tester);
+      await tester.pumpAndSettle();
+      expect(find.text(_generatedMessage), findsOneWidget);
+      expect(find.text('Undo'), findsNothing);
+    });
+
+    testWidgets('a refused Undo says why', (tester) async {
+      final repo = FakePlanRepository(
+        result: _pplPlanReplacing,
+        restoreError: const ApiException(
+          'PLAN_ALREADY_USED',
+          "You've started a workout on the new plan, so the old one can't "
+              'come back.',
+        ),
+      );
+      await _pumpBehind(tester, repo);
+      await _tapGenerate(tester);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      expect(repo.restoreCalls, 1);
+      expect(
+        find.textContaining("Couldn't bring back your previous plan."),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining("You've started a workout on the new plan"),
+        findsOneWidget,
+      );
+    });
+  });
 }
+
+/// The generator pushed over a page of its own, as the "+" opens it, so the
+/// pop after a new plan leaves a Scaffold behind for the snackbar to show on.
+Future<void> _pumpBehind(WidgetTester tester, FakePlanRepository repo) async {
+  tester.view.physicalSize = const Size(800, 1600);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        activeSessionProvider.overrideWith(() => _SessionController(null)),
+        activePlanProvider.overrideWith((ref) async => _pplPlan),
+        planRepositoryProvider.overrideWithValue(repo),
+        profileProvider.overrideWith(() => _FakeProfileNotifier(const [])),
+      ],
+      child: MaterialApp(
+        theme: fsLightTheme(),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: ElevatedButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const GeneratorScreen(),
+                  ),
+                ),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('open'));
+  await tester.pumpAndSettle();
+}
+
+Future<void> _tapGenerate(WidgetTester tester) =>
+    tester.tap(find.byKey(const Key('gen.generate')));
 
 /// Whether the "Describe your week" field holds the focus (keyboard up).
 bool _describeFocused(WidgetTester tester) => tester
