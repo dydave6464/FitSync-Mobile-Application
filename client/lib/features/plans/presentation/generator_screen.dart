@@ -17,6 +17,7 @@ import '../domain/split_style.dart';
 import '../domain/week_description.dart';
 import '../domain/workout_plan.dart';
 import 'providers.dart';
+import 'widgets/describe_week_card.dart';
 import 'widgets/session_length_row.dart';
 import 'widgets/training_days_row.dart';
 
@@ -433,7 +434,7 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
       children: [
-        _DescribeCard(
+        DescribeWeekCard(
           key: const Key('gen.describe'),
           // Rebuilt from scratch whenever the plan or profile it describes
           // changes, so a sentence the user has not touched never describes a
@@ -445,20 +446,15 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
           ),
           options: options,
           catalogueFailed: asyncOptions.hasError,
-          // So the card can say when a day count it read has been overruled
-          // by the picker below it. Still assigned to `_daysPerWeek` either
-          // way -- it is what the fallback chain takes the moment the last
-          // weekday is unticked -- but a value that changes nothing the user
-          // can currently see has to be named rather than swallowed.
+          // So the card can say whether named days are already the user's,
+          // and when a day count it read has been overruled by the picker
+          // below it.
           trainingDays: trainingDays,
-          onApply: (parsed) => setState(() {
-            // Only what the sentence actually resolved. Assigning a null
-            // through would reset a control the user set by hand to the
-            // fallback chain's default, which is the one thing a vague
-            // sentence must not do.
-            _splitStyle = parsed.splitStyle ?? _splitStyle;
-            _daysPerWeek = parsed.daysPerWeek ?? _daysPerWeek;
-          }),
+          onSplit: (split) => setState(() => _splitStyle = split),
+          onLength: applyLength,
+          // Still kept while weekdays are ticked: it is what the fallback
+          // chain takes the moment the last one is unticked.
+          onDayCount: (count) => setState(() => _daysPerWeek = count),
         ),
         const SizedBox(height: 22),
         const FsEyebrow('Split style'),
@@ -658,285 +654,4 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
       ],
     );
   }
-}
-
-/// The prototype's "Describe your week" card.
-///
-/// Everything it understands lands in the controls below it, where the user
-/// can see and correct it before generating. Nothing here reaches the
-/// generator directly: the payload carries the controls, not this sentence.
-class _DescribeCard extends ConsumerStatefulWidget {
-  const _DescribeCard({
-    super.key,
-    required this.composed,
-    required this.options,
-    required this.catalogueFailed,
-    required this.trainingDays,
-    required this.onApply,
-  });
-
-  /// The sentence "From profile" writes, composed from the live profile and
-  /// plan.
-  final String composed;
-
-  final List<InjuryOption> options;
-
-  /// Whether the injury catalogue failed to load. Distinct from an empty
-  /// catalogue: one means "nothing matched", the other means "nothing could
-  /// be checked", and only one of those is safe to say.
-  final bool catalogueFailed;
-
-  /// The weekdays currently ticked below. Read only to decide whether a day
-  /// count in the sentence has anywhere to land.
-  final List<int> trainingDays;
-
-  final ValueChanged<WeekDescription> onApply;
-
-  @override
-  ConsumerState<_DescribeCard> createState() => _DescribeCardState();
-}
-
-class _DescribeCardState extends ConsumerState<_DescribeCard> {
-  late final TextEditingController _controller = TextEditingController(
-    text: widget.composed,
-  );
-
-  /// The last applied parse, or null before the first Apply. Held so the
-  /// offers and notes below the field survive rebuilds without re-parsing
-  /// text the user may have edited since.
-  WeekDescription? _applied;
-
-  /// Regions the user has dismissed by adding them, kept so the offer goes
-  /// away the moment the write succeeds rather than waiting for the profile
-  /// to come back round.
-  final Set<int> _added = {};
-
-  int? _adding;
-
-  @override
-  void didUpdateWidget(_DescribeCard old) {
-    super.didUpdateWidget(old);
-    // The profile is fetched separately from the plan, so the first build of
-    // this card routinely happens before there is a goal to write about. The
-    // box has to follow what it describes until the user takes it over --
-    // comparing against the PREVIOUS sentence is what tells those apart:
-    // still untouched means still ours to fill, edited means hands off.
-    if (widget.composed != old.composed && _controller.text == old.composed) {
-      _controller.text = widget.composed;
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _apply() {
-    final parsed = parseWeekDescription(_controller.text, widget.options);
-    setState(() => _applied = parsed);
-    widget.onApply(parsed);
-  }
-
-  Future<void> _add(SelectedInjury injury) async {
-    final messenger = ScaffoldMessenger.of(context);
-    final current =
-        ref.read(profileProvider).value?.injuries ?? const <SelectedInjury>[];
-    setState(() => _adding = injury.injuryId);
-    try {
-      // PUT /profile/injuries replaces the whole set, so the existing
-      // injuries go back with it. Sending only the new region would delete
-      // every other injury the user has.
-      await ref.read(profileProvider.notifier).setInjuries([
-        ...current,
-        injury,
-      ]);
-      if (!mounted) return;
-      setState(() {
-        _added.add(injury.injuryId);
-        _adding = null;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      // The offer stays: nothing was saved, so nothing should look saved.
-      setState(() => _adding = null);
-      messenger.showSnackBar(SnackBar(content: Text(describeError(error))));
-    }
-  }
-
-  /// Regions the sentence named that the profile does not already carry.
-  List<({InjuryOption option, SelectedInjury injury})> get _offers {
-    final parsed = _applied;
-    if (parsed == null) return const [];
-    final held = {
-      for (final i
-          in ref.watch(profileProvider).value?.injuries ??
-              const <SelectedInjury>[])
-        i.injuryId,
-    };
-
-    return [
-      for (final injury in parsed.injuries)
-        if (!held.contains(injury.injuryId) &&
-            !_added.contains(injury.injuryId))
-          for (final option in widget.options)
-            if (option.injuryId == injury.injuryId)
-              (option: option, injury: injury),
-    ];
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.fs;
-    final parsed = _applied;
-
-    return FsCard(
-      // While the chips end the card, the card's padding below them, outside
-      // the Column, is their room. Once a parsed result ends the card, a tap
-      // there lands on the result's last line, and under an offer's centred
-      // Add button it answers nothing.
-      child: FsTapRoom(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const FsEyebrow('Describe your week'),
-            const SizedBox(height: 8),
-            FsField(
-              key: const Key('gen.describe.field'),
-              controller: _controller,
-              hint: 'e.g. full body, 4 days a week, protecting my lower back',
-              maxLines: 3,
-              textCapitalization: TextCapitalization.sentences,
-              // A sentence needs no new lines, so Return is Done; it and a
-              // tap anywhere else close the keyboard and bring Generate back.
-              textInputAction: TextInputAction.done,
-              onTapOutside: (_) => FocusScope.of(context).unfocus(),
-            ),
-            const SizedBox(height: 10),
-            FsTapRoom(
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  // Actions, not choices: as the prototype's sm chips, off,
-                  // and announced with no selected state. Apply used to be
-                  // drawn and read as permanently "selected".
-                  FsChip(
-                    key: const Key('gen.describe.apply'),
-                    label: 'Apply',
-                    selected: false,
-                    toggle: false,
-                    onTap: _apply,
-                  ),
-                  FsChip(
-                    key: const Key('gen.describe.fromProfile'),
-                    label: 'From profile',
-                    selected: false,
-                    toggle: false,
-                    onTap: () => setState(() {
-                      _controller.text = widget.composed;
-                      _applied = null;
-                      _added.clear();
-                    }),
-                  ),
-                ],
-              ),
-            ),
-            if (parsed != null) ...[
-              const SizedBox(height: 12),
-              _result(t, parsed),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _result(FsTokens t, WeekDescription parsed) {
-    final note = TextStyle(fontSize: 12, color: t.text3, height: 1.35);
-
-    // The parser's topics plus the one only this screen can see. Recomputed
-    // on every build rather than captured at Apply, because ticking a
-    // weekday afterwards changes whether the count landed -- and a note that
-    // went stale would be the same silent contradiction it exists to stop.
-    final notes = [
-      ...parsed.elsewhere,
-      if (parsed.daysPerWeek != null && widget.trainingDays.isNotEmpty)
-        WeekTopic.dayCount,
-    ];
-
-    return Column(
-      key: const Key('gen.describe.result'),
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (parsed.isEmpty && !widget.catalogueFailed)
-          Text(
-            "Nothing in that changed your plan -- the controls below are "
-            "unchanged.",
-            style: note,
-          ),
-
-        // Said whatever else was parsed: the catalogue is what injury
-        // matching depends on, so without it "no regions matched" is a claim
-        // this card cannot support.
-        if (widget.catalogueFailed)
-          Padding(
-            key: const Key('gen.describe.catalogueError'),
-            padding: const EdgeInsets.only(bottom: 6),
-            child: const FsErrorLine(
-              "Couldn't check that against your injuries. Anything you wrote "
-              'about them has been left alone.',
-            ),
-          ),
-
-        for (final offer in _offers)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Row(
-              children: [
-                Icon(Icons.shield_outlined, size: 16, color: t.red),
-                const SizedBox(width: 9),
-                Expanded(
-                  child: Text(
-                    // Names the consequence, not the database state. Whether a
-                    // row exists in the profile is not what the user is
-                    // deciding; whether their plan works around the region
-                    // is, and only the profile drives that -- /regenerate
-                    // reads injuries server-side and never from this screen.
-                    '${injuryLabel(offer.option, offer.injury)} '
-                    'is not in your injuries. Add it and every plan from now '
-                    'on will work around it.',
-                    style: note,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                FsButton(
-                  key: Key('gen.describe.add.${offer.option.injuryId}'),
-                  label: 'Add',
-                  small: true,
-                  kind: FsButtonKind.secondary,
-                  busy: _adding == offer.option.injuryId,
-                  onPressed: () => _add(offer.injury),
-                ),
-              ],
-            ),
-          ),
-
-        if (notes.isNotEmpty)
-          Padding(
-            key: const Key('gen.describe.elsewhere'),
-            padding: const EdgeInsets.only(top: 6),
-            child: Text(notes.map(_topicNote).join(' '), style: note),
-          ),
-      ],
-    );
-  }
-
-  /// The domain reports a topic; the wording lives here.
-  static String _topicNote(WeekTopic topic) => switch (topic) {
-    WeekTopic.goal => 'Your goals are set in your profile.',
-    WeekTopic.dayCount =>
-      'How many days you train follows the weekdays you have chosen '
-          'below, so that count was not applied.',
-  };
 }

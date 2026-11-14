@@ -12,9 +12,11 @@ import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/onboarding/presentation/generating_view.dart';
 import 'package:fitsync/features/plans/data/plan_repository.dart';
 import 'package:fitsync/features/plans/domain/plan_defaults.dart';
+import 'package:fitsync/features/plans/domain/week_description.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/generator_screen.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
+import 'package:fitsync/features/plans/presentation/widgets/describe_week_card.dart';
 import 'package:fitsync/features/plans/presentation/widgets/training_days_row.dart';
 import 'package:fitsync/features/profile/data/profile_repository.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
@@ -91,6 +93,16 @@ class FakePlanRepository implements PlanRepository {
   Future<PlanDefaults> defaults() async {
     if (defaultsError) throw Exception('defaults down');
     return defaultsValue;
+  }
+
+  /// Every sentence the describe card sent to the AI. The AI is busy here:
+  /// the card tests pin its readings, and these keep the phone's.
+  final List<String> readWeekCalls = [];
+
+  @override
+  Future<WeekDescription> readWeek(String text) async {
+    readWeekCalls.add(text);
+    throw const ApiException('AI_BUSY', 'AI reading is busy.');
   }
 
   @override
@@ -1436,8 +1448,11 @@ void main() {
       await tester.pump();
     }
 
-    Future<void> apply(WidgetTester tester) async {
-      await tester.tap(find.byKey(const Key('gen.describe.apply')));
+    /// Types [text] and waits out the pause the card reads after. The card
+    /// tests own the timing; these only need the reading to have landed.
+    Future<void> typeAndPause(WidgetTester tester, String text) async {
+      await tester.enterText(field(), text);
+      await tester.pump(kPhoneReadDelay);
       await tester.pumpAndSettle();
     }
 
@@ -1450,6 +1465,15 @@ void main() {
       expect(text, contains('build muscle'));
       expect(text, contains('4 days'));
       expect(text, contains('push / pull / legs'));
+    });
+
+    testWidgets('there is no Apply: the sentence is read as it is typed', (
+      tester,
+    ) async {
+      await _pump(tester, plan: _pplPlan);
+
+      expect(find.byKey(const Key('gen.describe.apply')), findsNothing);
+      expect(find.text('Apply'), findsNothing);
     });
 
     testWidgets(
@@ -1466,19 +1490,59 @@ void main() {
       },
     );
 
-    testWidgets('applying the sentence moves the split and the day count', (
+    testWidgets('the sentence it opens with applies nothing', (tester) async {
+      // A hand-tapped chip must not be undone by the box re-reading the
+      // sentence it wrote itself.
+      await _pump(tester, plan: _pplPlan);
+      await tester.tap(find.text('Full body'));
+      await tester.pump(kAiReadDelay);
+      await tester.pumpAndSettle();
+
+      final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
+      expect(screen.debugSplitStyle, 'full_body');
+      expect(_plans.readWeekCalls, isEmpty);
+    });
+
+    testWidgets('typing moves the split and the day count after a pause', (
       tester,
     ) async {
       await _pump(tester, plan: _pplPlan); // opens on push/pull/legs, 4 days
 
-      await write(tester, 'full body, 2 days a week');
-      await apply(tester);
+      await typeAndPause(tester, 'full body, 2 days a week');
 
       final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
       expect(screen.debugSplitStyle, 'full_body');
       expect(screen.debugDaysPerWeek, 2);
       expect(_chipOn(tester, 'Full body'), isTrue);
     });
+
+    testWidgets('a typed length picks its chip, snapped to 45 or 60', (
+      tester,
+    ) async {
+      await _pump(tester, plan: _pplPlan);
+
+      await typeAndPause(tester, 'full body, 50 min');
+
+      final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
+      expect(screen.debugSessionLengthMin, 45);
+      expect(find.text('Length: 45 min (nearest to 50)'), findsOneWidget);
+    });
+
+    testWidgets(
+      'a hand-tapped chip survives typing that keeps the same split',
+      (tester) async {
+        await _pump(tester, plan: _pplPlan);
+        await typeAndPause(tester, 'ppl');
+        await tester.tap(find.text('Upper / Lower'));
+        await tester.pump();
+
+        await typeAndPause(tester, 'ppl, 45 min');
+
+        final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
+        expect(screen.debugSplitStyle, 'upper_lower');
+        expect(screen.debugSessionLengthMin, 45);
+      },
+    );
 
     testWidgets('a sentence it cannot read leaves the controls alone', (
       tester,
@@ -1487,12 +1551,17 @@ void main() {
       // the flattening this screen already refuses for its loading state.
       await _pump(tester, plan: _pplPlan);
 
-      await write(tester, 'asdf qwer zxcv');
-      await apply(tester);
+      await typeAndPause(tester, 'asdf qwer zxcv');
 
       final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
       expect(screen.debugSplitStyle, 'push_pull_legs');
       expect(screen.debugDaysPerWeek, 4);
+      expect(
+        find.text(
+          "Nothing to change yet. Try: 'ppl, 45 min, protect my knee'.",
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('from profile rewrites the sentence after an edit', (
@@ -1519,41 +1588,55 @@ void main() {
       expect(fieldText(tester), contains('push / pull / legs'));
     });
 
+    testWidgets('Use these days saves the named days to the picker', (
+      tester,
+    ) async {
+      await _pump(tester, plan: _pplPlan, trainingDays: const [1, 3, 5]);
+
+      await typeAndPause(tester, 'tue and thu');
+      await tester.tap(find.byKey(const Key('gen.describe.useDays')));
+      await tester.pumpAndSettle();
+
+      expect(_profile.lastTrainingDays, [2, 4]);
+      expect(_ticked(tester), 2);
+      expect(find.text('Days: Tue · Thu (already your days)'), findsOneWidget);
+    });
+
+    testWidgets('a failed Use these days keeps the button', (tester) async {
+      await _pump(
+        tester,
+        plan: _pplPlan,
+        trainingDays: const [1, 3, 5],
+        failTrainingDays: true,
+      );
+
+      await typeAndPause(tester, 'tue and thu');
+      await tester.tap(find.byKey(const Key('gen.describe.useDays')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('Could not save your training days.'),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('gen.describe.useDays')), findsOneWidget);
+      expect(_ticked(tester), 3);
+    });
+
     testWidgets('a region the profile lacks is offered, not applied', (
       tester,
     ) async {
       // The generator reads injuries from the profile server-side. Treating a
       // typed region as already honoured would promise protection the plan
-      // does not have.
+      // does not have. The offer itself is pinned in describe_week_card_test.
       await _pump(tester, plan: _pplPlan, injuryOptions: const [knee, back]);
 
-      await write(tester, 'protect my right knee');
-      await apply(tester);
+      await typeAndPause(tester, 'protect my right knee');
 
       expect(find.byKey(const Key('gen.describe.add.3')), findsOneWidget);
       expect(
         find.byKey(const Key('gen.avoiding')),
         findsNothing,
         reason: 'nothing is being avoided until the profile says so',
-      );
-    });
-
-    testWidgets('the offer says what adding the region will do', (
-      tester,
-    ) async {
-      // "Not in your injuries yet" states a fact about a database. What the
-      // user is deciding is whether their plan works around the region, and
-      // the offer should say so in the words the screen uses once it does
-      // ("Working around"): an injury leaves some exercises out and coaches
-      // the rest, and none of that happens until this is tapped.
-      await _pump(tester, plan: _pplPlan, injuryOptions: const [knee, back]);
-
-      await write(tester, 'protect my right knee');
-      await apply(tester);
-
-      expect(
-        find.textContaining('every plan from now on will work around it.'),
-        findsOneWidget,
       );
     });
 
@@ -1568,8 +1651,7 @@ void main() {
         injuryOptions: const [knee, back],
       );
 
-      await write(tester, 'protect my right knee');
-      await apply(tester);
+      await typeAndPause(tester, 'protect my right knee');
       await tester.tap(find.byKey(const Key('gen.describe.add.3')));
       await tester.pumpAndSettle();
 
@@ -1577,93 +1659,6 @@ void main() {
       expect(profileRepo.sent!.single.injuryId, 3);
       expect(profileRepo.sent!.single.side, 'right');
     });
-
-    testWidgets('adding keeps the injuries the profile already had', (
-      tester,
-    ) async {
-      // PUT /profile/injuries replaces the whole set, so an add that sends
-      // only the new region silently deletes every other injury the user has.
-      final profileRepo = FakeProfileRepository();
-      await _pump(
-        tester,
-        plan: _pplPlan,
-        profileRepo: profileRepo,
-        injuries: const [SelectedInjury(injuryId: 9)],
-        injuryOptions: const [knee, back],
-      );
-
-      await write(tester, 'protect my right knee');
-      await apply(tester);
-      await tester.tap(find.byKey(const Key('gen.describe.add.3')));
-      await tester.pumpAndSettle();
-
-      expect(
-        profileRepo.sent!.map((i) => i.injuryId),
-        containsAll(<int>[9, 3]),
-      );
-    });
-
-    testWidgets('a region already in the profile is not offered again', (
-      tester,
-    ) async {
-      await _pump(
-        tester,
-        plan: _pplPlan,
-        injuries: const [SelectedInjury(injuryId: 3, side: 'right')],
-        injuryOptions: const [knee, back],
-      );
-
-      await write(tester, 'protect my right knee');
-      await apply(tester);
-
-      expect(find.byKey(const Key('gen.describe.add.3')), findsNothing);
-    });
-
-    testWidgets('a failed add says so and keeps the offer', (tester) async {
-      final profileRepo = FakeProfileRepository(
-        error: const ApiException('VALIDATION_ERROR', 'Could not save that.'),
-      );
-      await _pump(
-        tester,
-        plan: _pplPlan,
-        profileRepo: profileRepo,
-        injuryOptions: const [knee, back],
-      );
-
-      await write(tester, 'protect my right knee');
-      await apply(tester);
-      await tester.tap(find.byKey(const Key('gen.describe.add.3')));
-      await tester.pumpAndSettle();
-
-      expect(find.textContaining('Could not save that'), findsOneWidget);
-      expect(
-        find.byKey(const Key('gen.describe.add.3')),
-        findsOneWidget,
-        reason: 'nothing was saved, so the offer must still stand',
-      );
-    });
-
-    testWidgets(
-      'a catalogue that failed to load does not claim nothing matched',
-      (tester) async {
-        // value ?? const [] reads the same for "still loading", "failed" and
-        // "no regions exist". With a card that reports what it recognised, that
-        // silence becomes a false statement about the user's injuries.
-        await _pump(tester, plan: _pplPlan, injuryOptionsFail: true);
-
-        await write(tester, 'protect my right knee');
-        await apply(tester);
-
-        expect(
-          find.descendant(
-            of: find.byKey(const Key('gen.describe.catalogueError')),
-            matching: find.byType(FsErrorLine),
-          ),
-          findsOneWidget,
-        );
-        expect(find.byKey(const Key('gen.describe.add.3')), findsNothing);
-      },
-    );
 
     testWidgets('the sentence counts the days the picker shows', (
       tester,
@@ -1686,16 +1681,14 @@ void main() {
     testWidgets('a day count the picker overrules is reported, not swallowed', (
       tester,
     ) async {
-      // _resolve takes the count from the chosen days, so the applied number
-      // has nowhere to land. It cannot simply be dropped: parsed.isEmpty is
-      // false -- the split did land -- so "Nothing in that changed your plan"
-      // never prints either, and Apply looks like it did nothing at all.
+      // _resolve takes the count from the chosen days, so the typed number
+      // has nowhere to land. It cannot simply be dropped: the split did land,
+      // so the example line never prints either, and the count would look
+      // understood and ignored.
       await _pump(tester, plan: _pplPlan, trainingDays: const [1, 3, 5]);
 
-      await write(tester, 'full body, 5 days a week');
-      await apply(tester);
+      await typeAndPause(tester, 'full body, 5 days a week');
 
-      expect(find.byKey(const Key('gen.describe.elsewhere')), findsOneWidget);
       expect(find.textContaining('weekdays you have chosen'), findsOneWidget);
 
       final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
@@ -1706,17 +1699,17 @@ void main() {
       );
     });
 
-    testWidgets('with no days chosen the count lands and nothing is reported', (
+    testWidgets('with no days chosen the count lands and asks for the days', (
       tester,
     ) async {
       // The other half of the pair: with nothing ticked the sentence's count
       // IS what the controls take, so saying it went nowhere would be false.
       await _pump(tester, plan: _pplPlan, trainingDays: const []);
 
-      await write(tester, 'full body, 5 days a week');
-      await apply(tester);
+      await typeAndPause(tester, 'full body, 5 days a week');
 
-      expect(find.byKey(const Key('gen.describe.elsewhere')), findsNothing);
+      expect(find.textContaining('weekdays you have chosen'), findsNothing);
+      expect(find.text('5 days a week: tick which days below'), findsOneWidget);
       final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
       expect(screen.debugDaysPerWeek, 5);
     });
@@ -1726,14 +1719,9 @@ void main() {
     ) async {
       await _pump(tester, plan: _pplPlan);
 
-      await write(tester, 'I want to gain muscle');
-      await apply(tester);
+      await typeAndPause(tester, 'I want to gain muscle');
 
-      expect(find.byKey(const Key('gen.describe.elsewhere')), findsOneWidget);
-      expect(
-        find.textContaining('Your goals are set in your profile.'),
-        findsOneWidget,
-      );
+      expect(find.text('Goals are set in your profile.'), findsOneWidget);
     });
   });
 
@@ -1945,20 +1933,21 @@ void main() {
     handle.dispose();
   });
 
-  testWidgets('Apply is an action, not a chip stuck selected (PT-19)', (
+  testWidgets('From profile is an action, not a chip stuck selected (PT-19)', (
     tester,
   ) async {
     final handle = tester.ensureSemantics();
     await _pump(tester, plan: _pplPlan);
 
-    final apply = find.byKey(const Key('gen.describe.apply'));
-    final chip = tester.widget<FsChip>(apply);
+    final chipFinder = find.byKey(const Key('gen.describe.fromProfile'));
+    final chip = tester.widget<FsChip>(chipFinder);
     expect(chip.selected, isFalse);
-    final data = tester.getSemantics(apply).getSemanticsData();
+    final data = tester.getSemantics(chipFinder).getSemanticsData();
     expect(data.flagsCollection.isButton, isTrue);
     expect(data.flagsCollection.isSelected, Tristate.none);
     handle.dispose();
   });
+
   group('session length, the pinned bar and Edit (C3)', () {
     Future<void> tapGenerate(WidgetTester tester) async {
       await tester.tap(find.byKey(const Key('gen.generate')));
