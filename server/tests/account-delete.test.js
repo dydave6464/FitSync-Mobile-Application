@@ -43,8 +43,23 @@ test('delete account from the app', async (t) => {
 
   /// A row in each kind of table the account owns: profile (its health
   /// check), training, nutrition, weigh-ins, payments, sign-in identities
-  /// and emailed tokens.
+  /// and emailed tokens. Plus three plans chained A <- B <- C through
+  /// replaced_plan_id (migration 054), as three generations leave them:
+  /// the self-referencing key must not stop the users row's cascade.
+  const seedPlanChain = async (userId) => {
+    let replaced = null;
+    for (const [name, active] of [['A', false], ['B', false], ['C', true]]) {
+      const [result] = await pool.query(
+        `INSERT INTO workout_plans
+           (user_id, name, split_style, days_per_week, session_length_min, week_no, is_active, replaced_plan_id)
+         VALUES (?, ?, 'full_body', 3, 45, 1, ?, ?)`,
+        [userId, `Plan ${name}`, active, replaced],
+      );
+      replaced = result.insertId;
+    }
+  };
   const seed = async (userId) => {
+    await seedPlanChain(userId);
     await pool.query(
       `INSERT INTO health_checks (user_id, chest_pain, dizziness, supervised_only)
        VALUES (?, 0, 0, 0)`, [userId],
@@ -71,7 +86,7 @@ test('delete account from the app', async (t) => {
 
   const REPRESENTATIVE = [
     'health_checks', 'workout_sessions', 'meal_logs', 'body_weight_logs',
-    'pro_payments', 'user_identities', 'auth_tokens',
+    'pro_payments', 'user_identities', 'auth_tokens', 'workout_plans',
   ];
   const representativeCounts = async (userId) => {
     const counts = {};
@@ -119,6 +134,11 @@ test('delete account from the app', async (t) => {
     for (const [table, n] of Object.entries(await representativeCounts(userId))) {
       assert.ok(n > 0, `seeded a row in ${table}`);
     }
+    const [chained] = await pool.query(
+      `SELECT COUNT(*) AS n FROM workout_plans
+        WHERE user_id = ? AND replaced_plan_id IS NOT NULL`, [userId],
+    );
+    assert.equal(Number(chained[0].n), 2, 'the plans are chained A <- B <- C');
 
     const res = await del(token, { password: 's3cret-pass' });
     assert.equal(res.status, 204);
