@@ -1508,25 +1508,6 @@ void main() {
       );
     });
 
-    testWidgets('a typed session length is told what decides it', (
-      tester,
-    ) async {
-      // The generator derives the length from goal, fitness level and the
-      // health check; naming only the first two left the third unexplained.
-      await _pump(tester, plan: _pplPlan, injuryOptions: const [knee, back]);
-
-      await write(tester, 'about 50 min a session');
-      await apply(tester);
-
-      expect(
-        find.textContaining(
-          'Session length follows your goal, fitness level and health '
-          'check, so it is not set here.',
-        ),
-        findsOneWidget,
-      );
-    });
-
     testWidgets('adding an offered region sends it to the profile', (
       tester,
     ) async {
@@ -1696,11 +1677,14 @@ void main() {
     ) async {
       await _pump(tester, plan: _pplPlan);
 
-      await write(tester, 'about 50 min a session');
+      await write(tester, 'I want to gain muscle');
       await apply(tester);
 
       expect(find.byKey(const Key('gen.describe.elsewhere')), findsOneWidget);
-      expect(find.textContaining('Session length'), findsOneWidget);
+      expect(
+        find.textContaining('Your goals are set in your profile.'),
+        findsOneWidget,
+      );
     });
   });
 

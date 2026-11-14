@@ -831,9 +831,6 @@ class _DescribeCardState extends ConsumerState<_DescribeCard> {
 
   /// The domain reports a topic; the wording lives here.
   static String _topicNote(WeekTopic topic) => switch (topic) {
-    WeekTopic.sessionLength =>
-      'Session length follows your goal, fitness level and health check, '
-          'so it is not set here.',
     WeekTopic.goal => 'Your goals are set in your profile.',
     WeekTopic.dayCount =>
       'How many days you train follows the weekdays you have chosen '
