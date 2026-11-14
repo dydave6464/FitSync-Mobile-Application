@@ -19,9 +19,13 @@ test('undoing a generated plan', async (t) => {
   const known = live[0].name;
 
   let planNo = 0;
+  // Every `overrides` the generator was handed, as handed, so a test can
+  // see what reached ML rather than what the fake echoed back.
+  const sentOverrides = [];
   const ml = {
     generatePlan: async (profile = {}) => {
       planNo += 1;
+      sentOverrides.push(profile.overrides);
       const overrides = profile.overrides || {};
       return {
         name: `Plan ${planNo}`,
@@ -57,6 +61,7 @@ test('undoing a generated plan', async (t) => {
     await pool.query('DELETE FROM user_identities');
     await pool.query('DELETE FROM users');
     planNo = 0;
+    sentOverrides.length = 0;
   };
   const regenerate = (auth, body = {}) => request(app).post('/api/v1/plans/regenerate')
     .set('Authorization', auth).send({ splitStyle: 'full_body', daysPerWeek: 3, ...body }).expect(200);
@@ -161,14 +166,28 @@ test('undoing a generated plan', async (t) => {
     await reset();
     const a = await signUp('a@example.com');
     const b = await signUp('b@example.com');
+    // Interleaved, so B's plan is the newest active row in the table and
+    // B's plans sit either side of A's.
+    const a1 = (await regenerate(a.auth)).body.data.plan;
+    await regenerate(b.auth);
     await regenerate(a.auth);
-    await regenerate(a.auth);
-    const [before] = await pool.query('SELECT plan_id, is_active FROM workout_plans ORDER BY plan_id');
+    const b2 = (await regenerate(b.auth)).body.data.plan;
+    const bRows = async () => (await pool.query(
+      `SELECT plan_id, is_active, replaced_plan_id FROM workout_plans
+        WHERE user_id = ? ORDER BY plan_id`, [b.userId]))[0]
+      .map((r) => [r.plan_id, Boolean(r.is_active), r.replaced_plan_id]);
+    const before = await bRows();
+
     const res = await request(app).post('/api/v1/plans/restore-previous')
-      .set('Authorization', b.auth).expect(409);
-    assert.equal(res.body.error.code, 'NO_PREVIOUS_PLAN');
-    const [after] = await pool.query('SELECT plan_id, is_active FROM workout_plans ORDER BY plan_id');
-    assert.deepEqual(after, before);
+      .set('Authorization', a.auth).expect(200);
+    assert.equal(res.body.data.plan.planId, a1.planId);
+    assert.deepEqual(await bRows(), before);
+
+    // B's own Undo still has B's plan to bring back.
+    const resB = await request(app).post('/api/v1/plans/restore-previous')
+      .set('Authorization', b.auth).expect(200);
+    assert.equal(resB.body.data.plan.planId, b2.previousPlan.planId);
+    assert.equal((await active(a.auth)).planId, a1.planId);
   });
 
   await t.test('a chosen length reaches the generator as sent', async () => {
@@ -176,6 +195,20 @@ test('undoing a generated plan', async (t) => {
     const { auth } = await signUp('a@example.com');
     const res = await regenerate(auth, { sessionLengthMin: 60 });
     assert.equal(res.body.data.plan.sessionLengthMin, 60);
+  });
+
+  await t.test('regenerate with 45, 60 and no length reaches ML as sent', async () => {
+    await reset();
+    const { auth } = await signUp('a@example.com');
+    await regenerate(auth, { sessionLengthMin: 45 });
+    await regenerate(auth, { sessionLengthMin: 60 });
+    await regenerate(auth);
+    assert.equal(sentOverrides.length, 3);
+    assert.equal(sentOverrides[0].sessionLengthMin, 45);
+    assert.equal(sentOverrides[1].sessionLengthMin, 60);
+    // Auto sends no key, and none is made up on the way: ML decides.
+    assert.ok(sentOverrides[2], 'the split and days still go as overrides');
+    assert.equal(Object.hasOwn(sentOverrides[2], 'sessionLengthMin'), false);
   });
 
   await t.test('Undo needs a signed-in user', async () => {
