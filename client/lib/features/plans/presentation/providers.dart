@@ -41,4 +41,4 @@ final alternativesProvider = FutureProvider.autoDispose
 final planDefaultsProvider = FutureProvider.autoDispose<PlanDefaults>((ref) {
   ref.watch(profileProvider);
   return ref.watch(planRepositoryProvider).defaults();
-});
+}, retry: apiRetryPolicy);
