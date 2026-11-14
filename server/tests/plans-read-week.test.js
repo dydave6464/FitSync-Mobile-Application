@@ -8,6 +8,7 @@ const { buildTestApp } = require('./helpers/test-app');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { markEmailVerified } = require('../src/db/users');
 const { seedInjuries } = require('../src/db/seed-injuries');
+const { offWeekReader } = require('../src/services/week-reader');
 
 test('POST /plans/read-week', async (t) => {
   const pool = createPool(testDbConfig());
@@ -83,6 +84,36 @@ test('POST /plans/read-week', async (t) => {
     await read('tue thu, right knee').expect(200);
     const after = (await request(app).get('/api/v1/profile').set('Authorization', auth).expect(200)).body;
     assert.deepEqual(after, before);
+  });
+
+  await t.test('the injury catalogue is read from the DB once per app, not per reading', async () => {
+    let catalogueReads = 0;
+    const countingPool = new Proxy(pool, {
+      get(target, prop) {
+        if (prop === 'query') {
+          return (sql, ...rest) => {
+            if (typeof sql === 'string' && /FROM injuries\b/.test(sql)) catalogueReads += 1;
+            return target.query(sql, ...rest);
+          };
+        }
+        const value = Reflect.get(target, prop);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    app = buildTestApp({ pool: countingPool, weekReader });
+    answer = (text) => ({ injuries: [{ name: 'Knee', side: 'left' }], text });
+    const first = await read('catalogue once, left knee').expect(200);
+    const second = await read('catalogue twice, left knee').expect(200);
+    assert.deepEqual(first.body.data.injuries, [{ injuryId: knee.injury_id, side: 'left' }]);
+    assert.deepEqual(second.body.data.injuries, [{ injuryId: knee.injury_id, side: 'left' }]);
+    assert.equal(catalogueReads, 1);
+  });
+
+  await t.test('with the reader off (a server left on the stub) every reading is AI_BUSY', async () => {
+    app = buildTestApp({ pool, weekReader: offWeekReader });
+    const r = await read('upper lower mon wed fri').expect(503);
+    assert.equal(r.body.error.code, 'AI_BUSY');
+    assert.equal(r.body.error.message, 'AI reading is busy. Try again in a moment.');
   });
 
   await t.test('needs a signed-in user', async () => {

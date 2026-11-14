@@ -3,8 +3,9 @@ const stub = require('./stub');
 const groqClient = require('./groq-client');
 
 /// Picks the sentence reader, mirroring services/cues. Stub by default: no
-/// test may make a network call. No production guard: without Groq the app
-/// keeps its own quick reading, which is a working screen.
+/// test may make a network call. The stub's fixed phrases are not a reading
+/// of anyone's week, so a running server never uses it: server.js swaps in
+/// offWeekReader instead (see below).
 function createWeekReaderService(config = {}) {
   const mode = config.mode || 'stub';
   if (mode === 'stub') return stub;
@@ -15,4 +16,11 @@ function createWeekReaderService(config = {}) {
   throw new Error(`Unsupported WEEK_READER_MODE: ${mode}`);
 }
 
-module.exports = { createWeekReaderService };
+/// What a running server outside tests uses when WEEK_READER_MODE is not
+/// groq. Every reading fails, so the route answers 503 AI_BUSY and the app
+/// silently keeps its own quick reading. The stub would instead answer 200
+/// with a near-empty reading tagged "Read by AI" that replaces the phone's
+/// correct lines.
+const offWeekReader = { read: async () => null, model: 'off' };
+
+module.exports = { createWeekReaderService, offWeekReader };

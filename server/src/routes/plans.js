@@ -100,6 +100,19 @@ module.exports = function buildPlansRouter(deps) {
   const weekReader = deps.weekReader || createWeekReaderService({});
   const readCache = createReadCache();
   const readLimit = createDailyLimit({ perDay: READINGS_PER_DAY });
+  // The injury catalogue the reader maps names onto (spec Part 2b step 3:
+  // read from the DB, cached). Only seed-injuries.js changes it, before the
+  // server starts, so once per router is enough. An empty list is not kept:
+  // a catalogue seeded after startup is still picked up.
+  let injuryCatalogue = null;
+  const readInjuryCatalogue = async () => {
+    if (injuryCatalogue === null) {
+      const rows = await listInjuries(deps.pool);
+      if (rows.length > 0) injuryCatalogue = rows;
+      return rows;
+    }
+    return injuryCatalogue;
+  };
 
   router.get('/active', requireAuth(deps), async (req, res, next) => {
     try {
@@ -139,7 +152,7 @@ module.exports = function buildPlansRouter(deps) {
       if (!readLimit.hasRoom(userId)) {
         throw new AppError(429, 'READ_LIMIT', 'AI reading is used up for today.');
       }
-      const injuries = await listInjuries(deps.pool);
+      const injuries = await readInjuryCatalogue();
       const raw = await weekReader.read({ text, injuryNames: injuries.map((i) => i.name) });
       const reading = cleanReading(raw, { injuries });
       if (reading === null) {

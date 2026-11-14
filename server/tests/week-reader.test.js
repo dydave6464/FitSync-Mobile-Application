@@ -111,3 +111,9 @@ test('the stub reads a few fixed phrases offline', async () => {
       injuries: [{ name: 'Knee', side: null }], mentionsGoal: false });
   assert.equal(await stub.read({ text: 'stub busy' }), null);
 });
+
+test('the off reader answers null for every sentence, so the route says AI_BUSY', async () => {
+  const { offWeekReader } = require('../src/services/week-reader');
+  assert.equal(offWeekReader.model, 'off');
+  assert.equal(await offWeekReader.read({ text: 'upper lower mon wed fri', injuryNames: ['Knee'] }), null);
+});
