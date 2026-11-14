@@ -2083,6 +2083,51 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('an open keyboard hides the bar instead of overflowing', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1;
+      tester.view.viewInsets = const FakeViewPadding(bottom: 260);
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await _pump(
+        tester,
+        plan: _pplPlan,
+        trainingDays: const [1, 3, 5],
+        tall: false,
+      );
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const Key('gen.bar')), findsNothing);
+
+      // Keyboard closed: the bar, and Generate with it, come back.
+      tester.view.resetViewInsets();
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(
+        find.byKey(const Key('gen.generate')).hitTestable(),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a landscape keyboard does not overflow the body', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(568, 320);
+      tester.view.devicePixelRatio = 1;
+      tester.view.viewInsets = const FakeViewPadding(bottom: 200);
+      addTearDown(tester.view.reset);
+      await _pump(
+        tester,
+        plan: _pplPlan,
+        trainingDays: const [1, 3, 5],
+        tall: false,
+      );
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const Key('gen.bar')), findsNothing);
+    });
+
     testWidgets('the summary follows a chosen length', (tester) async {
       await _pump(tester, plan: _pplPlan, trainingDays: const [1, 3, 5]);
       await tester.tap(find.byKey(const Key('gen.length.60')));

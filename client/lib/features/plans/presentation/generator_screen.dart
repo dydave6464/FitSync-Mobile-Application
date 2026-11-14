@@ -643,10 +643,15 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
       ),
     );
 
+    // While the keyboard is up (typing in "Describe your week"), the bar
+    // steps aside: on a short or landscape screen at large text it would
+    // otherwise fill what the keyboard leaves and overflow, hiding the very
+    // field being typed into. It returns as soon as the keyboard closes.
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     return Column(
       children: [
         Expanded(child: list),
-        bar,
+        if (!keyboardOpen) bar,
       ],
     );
   }
