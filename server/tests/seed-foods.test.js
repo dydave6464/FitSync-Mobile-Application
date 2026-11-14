@@ -14,11 +14,12 @@ test('the seed list is well formed', () => {
     assert.ok(['filipino', 'international'].includes(f.category), f.name);
     assert.ok(typeof f.source === 'string' && f.source.length > 0, `${f.name} needs a source`);
     for (const k of ['proteinG', 'carbsG', 'fatG']) assert.ok(f[k] >= 0 && f[k] < 1000, `${f.name} ${k}`);
-    assert.ok(typeof f.fiberG === 'number' && f.fiberG >= 0 && f.fiberG < 100, `${f.name} fiberG`);
+    // null = the brand publishes no fiber (or sugar) and none is invented.
+    assert.ok(f.fiberG === null || (typeof f.fiberG === 'number' && f.fiberG >= 0 && f.fiberG < 100), `${f.name} fiberG`);
     if (f.alcoholG !== undefined) assert.ok(typeof f.alcoholG === 'number' && f.alcoholG > 0 && f.alcoholG < 100, `${f.name} alcoholG`);
-    assert.ok(typeof f.sugarG === 'number' && f.sugarG >= 0 && f.sugarG <= f.carbsG, `${f.name} sugarG`);
+    assert.ok(f.sugarG === null || (typeof f.sugarG === 'number' && f.sugarG >= 0 && f.sugarG <= f.carbsG), `${f.name} sugarG`);
     assert.ok(typeof f.sodiumMg === 'number' && f.sodiumMg >= 0 && f.sodiumMg <= 10000, `${f.name} sodiumMg`);
-    assert.ok(f.fiberG <= f.carbsG, `${f.name}: fiber is part of carbs`);
+    assert.ok(f.fiberG === null || f.fiberG <= f.carbsG, `${f.name}: fiber is part of carbs`);
     // Atwater check, to catch a typo: within 40 kcal or 20 %. Alcohol is 7 kcal/g.
     const atwater = 4 * f.proteinG + 4 * f.carbsG + 9 * f.fatG + 7 * (f.alcoholG ?? 0);
     assert.ok(Math.abs(atwater - f.kcal) <= Math.max(40, f.kcal * 0.2), `${f.name}: ${f.kcal} vs ${atwater}`);
@@ -377,4 +378,21 @@ test('a plain Pancit palabok follows the Snap a meal foods, with its serving gra
     assert.equal(typeof palabok[k], 'number', `${k} is a number`);
   }
   assert.ok(palabok.source.length > 20);
+});
+
+// Chains that publish no fiber or sugar leave them empty rather than
+// estimated (2026-11-14); a figure the chain does publish is kept as published.
+test('chain foods keep only the fiber and sugar their chain publishes', () => {
+  const byName = (n) => FOODS.find((f) => f.name === n);
+  for (const n of ['KFC Ala King Zinger Steak with rice', 'KFC coleslaw', 'KFC buttered corn', 'KFC Ala King rice bowl']) {
+    assert.equal(byName(n).fiberG, null, `${n} fiberG`);
+    assert.equal(byName(n).sugarG, null, `${n} sugarG`);
+  }
+  assert.equal(byName("McDonald's PH Coke McFloat").fiberG, 2);
+  const fries = byName("McDonald's French fries");
+  assert.deepEqual(
+    [fries.kcal, fries.proteinG, fries.carbsG, fries.fatG, fries.fiberG, fries.sugarG, fries.sodiumMg],
+    [183, 3, 22, 9, 0, 0, 252],
+  );
+  assert.match(fries.source, /mcdonalds\.com\.ph\/our-food\/fries/);
 });
