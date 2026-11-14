@@ -103,6 +103,15 @@ async function savePlan(pool, userId, plan) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+    // The plan this one replaces, for Undo (POST /plans/restore-previous).
+    // Read inside the transaction, before it is deactivated: the active plan
+    // at this moment is exactly the one a user who taps Undo expects back.
+    const [current] = await conn.query(
+      `SELECT plan_id FROM workout_plans
+        WHERE user_id = ? AND is_active = TRUE ORDER BY plan_id DESC LIMIT 1`,
+      [userId],
+    );
+    const replacedPlanId = current.length > 0 ? current[0].plan_id : null;
     // One active plan per user. Module 2 will add history; this keeps the
     // "current plan" question unambiguous until then.
     await conn.query(
@@ -110,9 +119,9 @@ async function savePlan(pool, userId, plan) {
     );
     const [result] = await conn.query(
       `INSERT INTO workout_plans
-         (user_id, name, split_style, days_per_week, session_length_min, week_no, is_active)
-       VALUES (?, ?, ?, ?, ?, ?, TRUE)`,
-      [userId, plan.name, plan.splitStyle, plan.daysPerWeek, plan.sessionLengthMin, plan.weekNo || 1],
+         (user_id, name, split_style, days_per_week, session_length_min, week_no, is_active, replaced_plan_id)
+       VALUES (?, ?, ?, ?, ?, ?, TRUE, ?)`,
+      [userId, plan.name, plan.splitStyle, plan.daysPerWeek, plan.sessionLengthMin, plan.weekNo || 1, replacedPlanId],
     );
     for (const ex of plan.exercises) {
       await conn.query(
@@ -125,6 +134,51 @@ async function savePlan(pool, userId, plan) {
     }
     await conn.commit();
     return result.insertId;
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+/// Undo for a generated plan: the plan it replaced becomes active again.
+/// Nothing is deleted. The restored plan's own pointer is cleared, so there
+/// is no Undo of an Undo. The caller has already refused a workout in
+/// progress (as regenerate does).
+async function restorePreviousPlan(pool, userId) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [active] = await conn.query(
+      `SELECT plan_id, replaced_plan_id FROM workout_plans
+        WHERE user_id = ? AND is_active = TRUE ORDER BY plan_id DESC LIMIT 1 FOR UPDATE`,
+      [userId],
+    );
+    const replacedId = active.length > 0 ? active[0].replaced_plan_id : null;
+    const [target] = replacedId === null ? [[]] : await conn.query(
+      'SELECT plan_id FROM workout_plans WHERE plan_id = ? AND user_id = ? FOR UPDATE',
+      [replacedId, userId],
+    );
+    if (target.length === 0) {
+      throw AppError.conflict('NO_PREVIOUS_PLAN', "There's no earlier plan to bring back.");
+    }
+    const [[used]] = await conn.query(
+      'SELECT EXISTS(SELECT 1 FROM workout_sessions WHERE plan_id = ?) AS used',
+      [active[0].plan_id],
+    );
+    if (Number(used.used) === 1) {
+      throw AppError.conflict(
+        'PLAN_ALREADY_USED',
+        "You've started a workout on the new plan, so the old one can't come back.",
+      );
+    }
+    await conn.query('UPDATE workout_plans SET is_active = FALSE WHERE user_id = ?', [userId]);
+    await conn.query(
+      'UPDATE workout_plans SET is_active = TRUE, replaced_plan_id = NULL WHERE plan_id = ? AND user_id = ?',
+      [replacedId, userId],
+    );
+    await conn.commit();
   } catch (err) {
     await conn.rollback();
     throw err;
@@ -171,11 +225,28 @@ function effectiveDaysPerWeekSql(planAlias) {
   return `COALESCE((SELECT NULLIF(COUNT(*), 0) FROM user_training_days utd WHERE utd.user_id = ${planAlias}.user_id), ${planAlias}.days_per_week)`;
 }
 
+/// The plan Undo would bring back, or null when Undo is no longer offered:
+/// nothing was replaced, the replaced row is not this user's, or a workout
+/// (any status) has been logged on the active plan.
+async function previousPlanFor(pool, userId, activePlanId, replacedPlanId) {
+  if (replacedPlanId === null || replacedPlanId === undefined) return null;
+  const [[used]] = await pool.query(
+    'SELECT EXISTS(SELECT 1 FROM workout_sessions WHERE plan_id = ?) AS used',
+    [activePlanId],
+  );
+  if (Number(used.used) === 1) return null;
+  const [rows] = await pool.query(
+    'SELECT plan_id, name FROM workout_plans WHERE plan_id = ? AND user_id = ?',
+    [replacedPlanId, userId],
+  );
+  return rows.length === 0 ? null : { planId: rows[0].plan_id, name: rows[0].name };
+}
+
 async function getActivePlan(pool, userId) {
   const [plans] = await pool.query(
     `SELECT wp.plan_id, wp.name, wp.split_style,
             ${effectiveDaysPerWeekSql('wp')} AS days_per_week,
-            wp.session_length_min, wp.week_no, wp.source, wp.created_at
+            wp.session_length_min, wp.week_no, wp.source, wp.replaced_plan_id, wp.created_at
        FROM workout_plans wp WHERE wp.user_id = ? AND wp.is_active = TRUE
       ORDER BY wp.plan_id DESC LIMIT 1`, [userId],
   );
@@ -217,6 +288,8 @@ async function getActivePlan(pool, userId) {
     // The client labels a custom plan "Your plan" and warns before the
     // generator replaces one.
     source: p.source,
+    // Undo's offer (spec 2026-11-14): null once it no longer applies.
+    previousPlan: await previousPlanFor(pool, userId, p.plan_id, p.replaced_plan_id),
     // The full rotation, not merely the days that have exercises: a day that
     // came back empty is still a day of the plan, and the Plan tab needs to
     // name it rather than silently renumbering the ones that survived --
@@ -519,6 +592,6 @@ async function createPlanFromSession(pool, userId, { sessionId, splitStyle, dayN
 }
 
 module.exports = {
-  resolveExerciseIds, savePlan, getActivePlan, dayNamesFor, createPlanFromSession,
-  effectiveDaysPerWeekSql,
+  resolveExerciseIds, savePlan, restorePreviousPlan, getActivePlan, dayNamesFor,
+  createPlanFromSession, effectiveDaysPerWeekSql,
 };

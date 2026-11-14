@@ -2,7 +2,9 @@
 const express = require('express');
 const requireAuth = require('../middleware/require-auth');
 const AppError = require('../lib/app-error');
-const { getActivePlan, savePlan, createPlanFromSession } = require('../db/plans');
+const {
+  getActivePlan, savePlan, restorePreviousPlan, createPlanFromSession,
+} = require('../db/plans');
 const { getProfile } = require('../db/profile');
 const { readRankerHistory } = require('../db/ranker-history');
 const { getActiveSession } = require('../db/sessions');
@@ -131,6 +133,18 @@ module.exports = function buildPlansRouter(deps) {
       const generated = await deps.ml.generatePlan({ ...profile, overrides, history });
       await savePlan(deps.pool, userId, generated);
 
+      res.json({ data: { plan: withUrls(await getActivePlan(deps.pool, userId)) } });
+    } catch (err) { next(err); }
+  });
+
+  router.post('/restore-previous', requireAuth(deps), async (req, res, next) => {
+    try {
+      const userId = req.user.userId;
+      // As regenerate: swapping the plan under a running workout would strand
+      // the logger on exercises no longer in the active plan.
+      const open = await getActiveSession(deps.pool, userId);
+      if (open) throw sessionInProgress(open);
+      await restorePreviousPlan(deps.pool, userId);
       res.json({ data: { plan: withUrls(await getActivePlan(deps.pool, userId)) } });
     } catch (err) { next(err); }
   });

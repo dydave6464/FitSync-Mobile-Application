@@ -157,7 +157,7 @@ test('complete FitSync schema', async (t) => {
     assert.equal(srows[0].plan_day_no, null, 'a session predating 013 has no day');
   });
 
-  await t.test('all fifty-three migrations are recorded', async () => {
+  await t.test('all fifty-four migrations are recorded', async () => {
     const [rows] = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
     assert.deepEqual(rows.map((r) => r.version), [
       '001_account_and_profile.sql',
@@ -211,6 +211,7 @@ test('complete FitSync schema', async (t) => {
       '051_user_avoid_foods.sql',
       '052_user_hidden_suggestions.sql',
       '053_food_photo.sql',
+      '054_plan_replaced.sql',
     ]);
   });
 
@@ -284,5 +285,24 @@ test('complete FitSync schema', async (t) => {
     // The default is what makes this safe without a backfill: every plan that
     // already exists came from the generator.
     assert.equal(row.def, 'generated');
+  });
+
+  await t.test('workout_plans remembers the plan a generated plan replaced', async () => {
+    const [[row]] = await pool.query(
+      `SELECT column_type AS type, is_nullable AS nullable
+         FROM information_schema.columns
+        WHERE table_schema = ? AND table_name = 'workout_plans'
+          AND column_name = 'replaced_plan_id'`,
+      [testDbConfig().database],
+    );
+    assert.ok(row, 'workout_plans.replaced_plan_id must exist');
+    assert.equal(row.type, 'int');
+    assert.equal(row.nullable, 'YES');
+    const [[fk]] = await pool.query(
+      `SELECT delete_rule AS onDelete FROM information_schema.referential_constraints
+        WHERE constraint_schema = ? AND constraint_name = 'fk_workout_plans_replaced'`,
+      [testDbConfig().database],
+    );
+    assert.equal(fk?.onDelete, 'SET NULL');
   });
 });
