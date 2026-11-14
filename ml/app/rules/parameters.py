@@ -124,3 +124,22 @@ def derive(profile: Mapping[str, Any],
         target_reps=reps,
         exercise_count=EXERCISES_BY_SESSION[session],
     )
+
+
+def length_reason(profile: Mapping[str, Any],
+                  overrides: Optional[Mapping[str, Any]] = None) -> str:
+    """Why derive() chose its session length, for the app's note.
+
+    "chosen" when the request carries a length; "health" when a health
+    caution applies (it plans as a beginner, whatever the level); "level"
+    when a long-session goal was capped for a beginner; otherwise "goal".
+    Kept beside derive() so the two read the same fields the same way.
+    """
+    overrides = overrides or {}
+    if overrides.get("sessionLengthMin") is not None:
+        return "chosen"
+    if profile.get("healthCaution"):
+        return "health"
+    if is_beginner_plan(profile) and profile.get("mainGoal") in LONG_SESSION_GOALS:
+        return "level"
+    return "goal"

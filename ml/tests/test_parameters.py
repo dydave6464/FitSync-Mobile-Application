@@ -1,6 +1,6 @@
 import pytest
 
-from app.rules.parameters import PlanParameters, derive, is_beginner_plan
+from app.rules.parameters import PlanParameters, derive, is_beginner_plan, length_reason
 
 
 def profile(**overrides):
@@ -265,3 +265,30 @@ def test_a_health_caution_makes_an_intermediate_a_beginner_plan():
     assert is_beginner_plan(
         {"fitnessLevel": "intermediate", "healthCaution": True}
     ) is True
+
+
+@pytest.mark.parametrize(
+    "fields,overrides,expected",
+    [
+        ({"mainGoal": "build_muscle", "fitnessLevel": "intermediate"}, None, "goal"),
+        ({"mainGoal": "lose_weight", "fitnessLevel": "intermediate"}, None, "goal"),
+        ({"mainGoal": "lose_weight", "fitnessLevel": "beginner"}, None, "goal"),
+        ({"mainGoal": "build_muscle", "fitnessLevel": "beginner"}, None, "level"),
+        ({"mainGoal": "gain_strength", "fitnessLevel": "new"}, None, "level"),
+        ({"mainGoal": "gain_strength", "fitnessLevel": None}, None, "level"),
+        ({"mainGoal": "build_muscle", "fitnessLevel": "intermediate", "healthCaution": True}, None, "health"),
+        ({"mainGoal": "lose_weight", "fitnessLevel": "intermediate", "healthCaution": True}, None, "health"),
+        ({"mainGoal": "build_muscle", "fitnessLevel": "beginner"}, {"sessionLengthMin": 60}, "chosen"),
+        ({"mainGoal": "build_muscle", "fitnessLevel": "beginner"}, {"sessionLengthMin": None}, "level"),
+    ],
+)
+def test_length_reason_names_what_decided_the_length(fields, overrides, expected):
+    assert length_reason(profile(**fields), overrides) == expected
+
+
+def test_length_reason_agrees_with_derive_about_the_cap():
+    # "level" is said only when the cap actually changed the length.
+    capped = profile(mainGoal="build_muscle", fitnessLevel="beginner")
+    assert derive(capped).session_length_min == 45
+    assert derive(profile(mainGoal="build_muscle", fitnessLevel="intermediate")).session_length_min == 60
+    assert length_reason(capped) == "level"

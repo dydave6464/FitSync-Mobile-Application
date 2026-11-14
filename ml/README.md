@@ -14,6 +14,8 @@ it never calls Node.
   [Plan ranker](#plan-ranker-exercise-picking-model) below) then reorders
   the rules' candidates, only within a run that shares the team's curated
   mark and the picked-equipment tier; it never adds or drops an exercise.
+- `POST /plan-parameters` — the session length and exercises per day
+  `/generate-plan` would use for this profile, and why (`lengthReason`).
 - `/injury-risk` is called by the Node server's morning check-in route
   (`POST /api/v1/recovery/checkin`). It returns the larger of a scikit-learn
   model's score and a rule-based score; see
