@@ -8,8 +8,10 @@ const { listRecentFoods } = require('../db/nutrition');
 const MIN_Q = 2;
 const MAX_Q = 60;
 const LIMIT = 20;
-// FitSync's own foods per search; FatSecret's stay at LIMIT.
-const OWN_LIMIT = 30;
+// FitSync's own foods per search; FatSecret's stay at LIMIT. 60 since the
+// 2026-11-14 food round: "chicken" alone matches 50 foods, and at 30 the
+// broad searches dropped Grilled chicken breast and Fried chicken.
+const OWN_LIMIT = 60;
 const MAX_EXTERNAL_ID = 64;
 // The whole FatSecret search (token + request) gets this long before the
 // response goes out with FitSync's own foods alone.

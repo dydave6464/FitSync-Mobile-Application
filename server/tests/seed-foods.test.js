@@ -190,8 +190,8 @@ test('food seed', async (t) => {
   await t.test('searching "coffee" finds every coffee pack', async () => {
     const names = (await searchOwnFoods(pool, 'coffee')).map((f) => f.name);
     assert.deepEqual(names.sort(), [
-      '3-in-1 coffee', 'Black coffee', 'Great Taste White coffee', 'Kopiko Blanca coffee', 'Kopiko Brown coffee',
-      'Nescafé Creamy White coffee', 'Nescafé Original 3-in-1 coffee', 'Nescafé Sugarfree Original coffee',
+      '3-in-1 coffee', 'Black coffee', 'Great Taste White coffee', 'Kapeng barako (brewed Batangas coffee, black)',
+      'Kopiko 78°C coffee latte (bottle)', 'Kopiko Blanca coffee', 'Kopiko Brown coffee', 'Nescafé Creamy White coffee', 'Nescafé Original 3-in-1 coffee', 'Nescafé Sugarfree Original coffee',
       'San Mig Sugar Free Original coffee', 'UCC 3-in-1 Regular coffee',
     ]);
   });
@@ -199,7 +199,8 @@ test('food seed', async (t) => {
   await t.test('searching "bread" finds the loaf slices and named breads', async () => {
     const names = (await searchOwnFoods(pool, 'bread')).map((f) => f.name);
     assert.deepEqual(names.sort(), [
-      'Cheese bread', 'Gardenia Classic White bread', 'Gardenia High Fiber Whole Wheat bread', 'Pinoy Tasty bread',
+      'Cheese bread', 'Gardenia Classic White bread', 'Gardenia High Fiber Whole Wheat bread',
+      'Pan de regla (kalihim, red-filled bread)', 'Piaya (muscovado flatbread)', 'Pinoy Tasty bread',
       'Spanish bread', 'Whole wheat bread',
     ]);
   });
@@ -365,7 +366,8 @@ test('Fishball\'s sodium is FNRI\'s measured value plus the sauce', () => {
 // The dish classifier's palabok had only a brand to point to (spec
 // 2026-11-05-food-classifier, section 1).
 test('a plain Pancit palabok follows the Snap a meal foods, with its serving grams', () => {
-  assert.equal(FOODS.length, 317);
+  // The 2026-11-14 food round appends after it, so it is no longer the last.
+  assert.equal(FOODS.findIndex((x) => x.name === 'Pancit palabok'), 316);
   const palabok = FOODS[316];
   assert.equal(palabok.name, 'Pancit palabok');
   assert.equal(palabok.category, 'filipino');
