@@ -1,5 +1,7 @@
 import '../../../core/api_client.dart';
 import '../domain/exercise_alternative.dart';
+import '../domain/plan_defaults.dart';
+import '../domain/week_description.dart';
 import '../domain/workout_plan.dart';
 
 /// A swap that landed: the updated plan, and the exercise the swap replaced
@@ -130,5 +132,27 @@ class PlanRepository {
       'dayNo': ?dayNo,
     });
     return WorkoutPlan.fromJson(data['plan'] as Map<String, dynamic>);
+  }
+
+  /// What "Auto" would choose now: GET /plans/defaults (ML's own derive()).
+  Future<PlanDefaults> defaults() async {
+    final data = await _api.getJson('/api/v1/plans/defaults');
+    return PlanDefaults.fromJson(data);
+  }
+
+  /// Undo for a generated plan: the plan it replaced becomes active again.
+  Future<WorkoutPlan> restorePrevious() async {
+    final data = await _api.postJson(
+      '/api/v1/plans/restore-previous',
+      const {},
+    );
+    return WorkoutPlan.fromJson(data['plan'] as Map<String, dynamic>);
+  }
+
+  /// "Describe your week" read by the server's AI. Throws ApiException with
+  /// AI_BUSY or READ_LIMIT; the caller keeps the phone's own reading then.
+  Future<WeekDescription> readWeek(String text) async {
+    final data = await _api.postJson('/api/v1/plans/read-week', {'text': text});
+    return WeekDescription.fromJson(data);
   }
 }

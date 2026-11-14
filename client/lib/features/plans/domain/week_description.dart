@@ -33,10 +33,6 @@ String injuryLabel(InjuryOption option, SelectedInjury selected) {
 /// Reported as a topic rather than a phrase so the domain says WHAT was
 /// mentioned and the widget decides how to word it.
 enum WeekTopic {
-  /// Derived by the service from goal, fitness level and health check, and
-  /// shown here only as a readout.
-  sessionLength,
-
   /// A profile field. The generator reads it server-side; this screen cannot
   /// change it.
   goal,
@@ -44,10 +40,13 @@ enum WeekTopic {
   /// A count of days, raised while particular weekdays are chosen. The
   /// picker is then what sets the number -- the payload takes
   /// `trainingDays.length` -- so the count in the sentence is understood and
-  /// then overruled. Unlike the two above it depends on live state rather
+  /// then overruled. Unlike the goal it depends on live state rather
   /// than on the words alone, so the screen raises it, not the parser.
   dayCount,
 }
+
+/// Who read the sentence: the phone's own parser, or the server's AI.
+enum WeekSource { phone, ai }
 
 /// What a sentence about the coming week resolved to.
 ///
@@ -60,7 +59,39 @@ class WeekDescription {
     this.daysPerWeek,
     this.injuries = const [],
     this.elsewhere = const [],
+    this.sessionLengthMin,
+    this.requestedMinutes,
+    this.weekdays = const [],
+    this.mentionsGoal = false,
+    this.source = WeekSource.phone,
   });
+
+  /// The server's Reading (`POST /plans/read-week`). The server has already
+  /// checked it against the catalogue; the goal is reported, not applied.
+  factory WeekDescription.fromJson(Map<String, dynamic> json) {
+    final mentionsGoal = json['mentionsGoal'] as bool? ?? false;
+    return WeekDescription(
+      splitStyle: json['splitStyle'] as String?,
+      daysPerWeek: json['daysPerWeek'] as int?,
+      sessionLengthMin: json['sessionLengthMin'] as int?,
+      requestedMinutes: json['requestedMinutes'] as int?,
+      weekdays: ((json['weekdays'] as List<dynamic>?) ?? const [])
+          .cast<int>()
+          .toList(growable: false),
+      injuries: ((json['injuries'] as List<dynamic>?) ?? const [])
+          .cast<Map<String, dynamic>>()
+          .map(
+            (i) => SelectedInjury(
+              injuryId: i['injuryId'] as int,
+              side: i['side'] as String?,
+            ),
+          )
+          .toList(growable: false),
+      mentionsGoal: mentionsGoal,
+      elsewhere: [if (mentionsGoal) WeekTopic.goal],
+      source: WeekSource.ai,
+    );
+  }
 
   final String? splitStyle;
   final int? daysPerWeek;
@@ -75,10 +106,30 @@ class WeekDescription {
   /// they can be named back rather than silently dropped.
   final List<WeekTopic> elsewhere;
 
+  /// The length the sentence asked for, snapped to 45 or 60.
+  final int? sessionLengthMin;
+
+  /// The minutes as written ("50 min"), before snapping, so the screen can
+  /// say what it rounded.
+  final int? requestedMinutes;
+
+  /// Weekdays the sentence named, 1 = Monday … 7 = Sunday.
+  final List<int> weekdays;
+
+  /// Whether the sentence talked about a goal, which this screen cannot set.
+  final bool mentionsGoal;
+
+  /// Who read the sentence; [WeekSource.ai] shows the "Read by AI" tag.
+  final WeekSource source;
+
   /// Whether there is anything here to apply. [elsewhere] deliberately does
   /// not count -- it is something to say, not something to change.
   bool get isEmpty =>
-      splitStyle == null && daysPerWeek == null && injuries.isEmpty;
+      splitStyle == null &&
+      daysPerWeek == null &&
+      sessionLengthMin == null &&
+      weekdays.isEmpty &&
+      injuries.isEmpty;
 }
 
 const _minDays = 1;
@@ -119,9 +170,54 @@ final _daysPattern = RegExp(
   r'\s*(?:x|times)?\s*(?:a|per)?\s*\b(?:days?|week)\b',
 );
 
-final _minutesPattern = RegExp(
-  r'\b\d{1,3}\s*(?:min\b|mins\b|minutes\b)|\bminutes?\b|\bhours?\b',
-);
+/// ML's _nearest_session_length: the nearest of 45 and 60, ties to 45.
+int snapSessionLength(int minutes) =>
+    (minutes - 45).abs() <= (minutes - 60).abs() ? 45 : 60;
+
+final _minutesNumber = RegExp(r'\b(\d{1,3})\s*(?:min|mins|minutes)\b');
+final _hoursNumber = RegExp(r'\b(\d+(?:\.\d+)?|an|one|a)\s*hours?\b');
+final _halfHour = RegExp(r'\bhalf\s+an?\s+hour\b');
+
+/// The longest session a sentence may ask for and still count. Anything
+/// beyond it is a typo or a joke, and snapping it to 60 would act on it.
+const _maxMinutes = 240;
+
+/// Minutes as typed, or null. Hours are x 60; "half an hour" is 30.
+int? _minutes(String lower) {
+  if (_halfHour.hasMatch(lower)) return 30;
+  final m = _minutesNumber.firstMatch(lower);
+  if (m != null) return int.parse(m.group(1)!);
+  final h = _hoursNumber.firstMatch(lower);
+  if (h == null) return null;
+  final token = h.group(1)!;
+  final hours = (token == 'an' || token == 'one' || token == 'a')
+      ? 1.0
+      : double.tryParse(token);
+  return hours == null ? null : (hours * 60).round();
+}
+
+/// Each weekday's full name and the short forms people type, whole words
+/// only, so "month" is not Monday. 1 = Monday ... 7 = Sunday, as
+/// `user_training_days` numbers them.
+const _weekdayWords = <int, String>{
+  1: r'mon(?:day)?s?',
+  2: r'tue(?:s(?:day)?)?s?',
+  3: r'wed(?:nesday)?s?',
+  4: r'thu(?:r(?:s(?:day)?)?)?s?',
+  5: r'fri(?:day)?s?',
+  6: r'sat(?:urday)?s?',
+  7: r'sun(?:day)?s?',
+};
+
+List<int> _weekdays(String lower) {
+  final found = <int>{};
+  if (RegExp(r'\bweekdays\b').hasMatch(lower)) found.addAll([1, 2, 3, 4, 5]);
+  if (RegExp(r'\bweekends?\b').hasMatch(lower)) found.addAll([6, 7]);
+  _weekdayWords.forEach((day, pattern) {
+    if (RegExp('\\b(?:$pattern)\\b').hasMatch(lower)) found.add(day);
+  });
+  return found.toList()..sort();
+}
 
 final _goalPattern = RegExp(
   r'\b(?:gain|build|put on)\s+(?:muscle|mass|size)\b'
@@ -209,15 +305,21 @@ const _sideWindow = 24;
 /// throw away the parts that did read.
 WeekDescription parseWeekDescription(String text, List<InjuryOption> options) {
   final lower = text.toLowerCase();
+  final minutes = _minutes(lower);
+  final usable = minutes != null && minutes >= 1 && minutes <= _maxMinutes
+      ? minutes
+      : null;
+  final goal = _goalPattern.hasMatch(lower);
 
   return WeekDescription(
     splitStyle: _split(lower),
     daysPerWeek: _days(lower),
     injuries: _injuries(lower, options),
-    elsewhere: [
-      if (_minutesPattern.hasMatch(lower)) WeekTopic.sessionLength,
-      if (_goalPattern.hasMatch(lower)) WeekTopic.goal,
-    ],
+    sessionLengthMin: usable == null ? null : snapSessionLength(usable),
+    requestedMinutes: usable,
+    weekdays: _weekdays(lower),
+    mentionsGoal: goal,
+    elsewhere: [if (goal) WeekTopic.goal],
   );
 }
 
@@ -237,7 +339,7 @@ String? _split(String lower) {
     return 'push_pull_legs';
   }
   if (lower.contains('upper') && lower.contains('lower')) return 'upper_lower';
-  if (RegExp(r'full[\s-]?body').hasMatch(lower)) return 'full_body';
+  if (RegExp(r'(?:full|whole)[\s-]?body').hasMatch(lower)) return 'full_body';
   if (lower.contains('cardio') || lower.contains('core')) return 'cardio_core';
   return null;
 }

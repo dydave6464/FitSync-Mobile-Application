@@ -448,6 +448,7 @@ class FsField extends StatelessWidget {
     this.onChanged,
     this.onSubmitted,
     this.textInputAction,
+    this.onTapOutside,
     this.maxLines = 1,
     this.inputFormatters,
     this.autofillHints,
@@ -494,6 +495,12 @@ class FsField extends StatelessWidget {
   final ValueChanged<String>? onSubmitted;
   final TextInputAction? textInputAction;
 
+  /// Called on a pointer down anywhere outside the field. On a phone the
+  /// field's default does nothing, and iOS has no back key to close the
+  /// keyboard, so a screen whose keyboard can hide its controls passes one
+  /// that unfocuses.
+  final TapRegionCallback? onTapOutside;
+
   /// Lines the box may grow to before it scrolls. One, as every field in the
   /// app has been, until something needs to hold a sentence: typed into a
   /// single line, a sentence scrolls sideways and hides its own beginning.
@@ -520,6 +527,7 @@ class FsField extends StatelessWidget {
       onChanged: onChanged,
       onSubmitted: onSubmitted,
       textInputAction: textInputAction,
+      onTapOutside: onTapOutside,
       inputFormatters: inputFormatters,
       autofillHints: autofillHints,
       autocorrect: false,
