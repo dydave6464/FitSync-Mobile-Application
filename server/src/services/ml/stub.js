@@ -75,6 +75,25 @@ async function classifyDish() {
   return null;
 }
 
+// Mirrors ml/app/rules/parameters.py derive() + length_reason() for tests and
+// ML_MODE=stub. The orchestrator's contract check compares the two after merge.
+const LONG_SESSION_GOALS = ['gain_strength', 'build_muscle'];
+const snapLength = (m) => (Math.abs(m - 45) <= Math.abs(m - 60) ? 45 : 60);
+
+async function planParameters(profile = {}) {
+  const overrides = profile.overrides || {};
+  const caution = profile.healthCaution === true;
+  const beginner = profile.fitnessLevel !== 'intermediate' || caution;
+  const longGoal = LONG_SESSION_GOALS.includes(profile.mainGoal);
+  let sessionLengthMin = longGoal && !beginner ? 60 : 45;
+  let lengthReason = caution ? 'health' : (beginner && longGoal ? 'level' : 'goal');
+  if (overrides.sessionLengthMin !== undefined && overrides.sessionLengthMin !== null) {
+    sessionLengthMin = snapLength(overrides.sessionLengthMin);
+    lengthReason = 'chosen';
+  }
+  return { sessionLengthMin, exercisesPerDay: sessionLengthMin === 60 ? 8 : 6, lengthReason };
+}
+
 // isStub: the photo route warns about renamed classifier foods only when a
 // real classifier stands behind classifyDish.
-module.exports = { generatePlan, estimateInjuryRisk, classifyDish, isStub: true };
+module.exports = { generatePlan, planParameters, estimateInjuryRisk, classifyDish, isStub: true };
