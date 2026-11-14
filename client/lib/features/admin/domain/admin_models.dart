@@ -7,6 +7,8 @@ library;
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'admin_format.dart' show mediaUrl;
+
 double _php(Object? value) => (value as num).toDouble();
 
 /// One Manila day of the sign-ups chart.
@@ -315,6 +317,8 @@ class AdminFood {
     required this.hidden,
     this.suggestMeals = const [],
     this.suggestWithRice = false,
+    this.contains = const [],
+    this.photoUrl,
   });
 
   final int id;
@@ -347,28 +351,46 @@ class AdminFood {
   /// Offered as ulam with 1 cup of white rice (beside a main meal only).
   final bool suggestWithRice;
 
+  /// The food groups it is often made with (`foodGroups`, in that order):
+  /// trainees who avoid one are not suggested it. Empty when untagged.
+  final List<String> contains;
+
+  /// The dish's photo as a full URL, or null when it has none.
+  final String? photoUrl;
+
   bool get suggested => suggestMeals.isNotEmpty;
 
-  factory AdminFood.fromJson(Map<String, dynamic> json) => AdminFood(
-    id: (json['id'] as num).toInt(),
-    name: json['name'] as String,
-    category: json['category'] as String,
-    foodType: json['foodType'] as String?,
-    servingDesc: json['servingDesc'] as String?,
-    kcal: (json['kcal'] as num).round(),
-    proteinG: (json['proteinG'] as num).toDouble(),
-    carbsG: (json['carbsG'] as num).toDouble(),
-    fatG: (json['fatG'] as num).toDouble(),
-    fiberG: _optional(json['fiberG']),
-    sugarG: _optional(json['sugarG']),
-    sodiumMg: _optional(json['sodiumMg']),
-    hidden: json['hidden'] as bool,
-    suggestMeals: [
-      for (final meal in json['suggestMeals'] as List? ?? const [])
-        meal as String,
-    ],
-    suggestWithRice: json['suggestWithRice'] as bool? ?? false,
-  );
+  /// [mediaBase], the server's address, turns the photo's `/storage/...`
+  /// path into a full URL; without it the path is kept as sent.
+  factory AdminFood.fromJson(Map<String, dynamic> json, {String? mediaBase}) =>
+      AdminFood(
+        id: (json['id'] as num).toInt(),
+        name: json['name'] as String,
+        category: json['category'] as String,
+        foodType: json['foodType'] as String?,
+        servingDesc: json['servingDesc'] as String?,
+        kcal: (json['kcal'] as num).round(),
+        proteinG: (json['proteinG'] as num).toDouble(),
+        carbsG: (json['carbsG'] as num).toDouble(),
+        fatG: (json['fatG'] as num).toDouble(),
+        fiberG: _optional(json['fiberG']),
+        sugarG: _optional(json['sugarG']),
+        sodiumMg: _optional(json['sodiumMg']),
+        hidden: json['hidden'] as bool,
+        suggestMeals: [
+          for (final meal in json['suggestMeals'] as List? ?? const [])
+            meal as String,
+        ],
+        suggestWithRice: json['suggestWithRice'] as bool? ?? false,
+        contains: [
+          for (final group in json['contains'] as List? ?? const [])
+            group as String,
+        ],
+        photoUrl: switch (json['photoUrl'] as String?) {
+          final path? when mediaBase != null => mediaUrl(mediaBase, path),
+          final path => path,
+        },
+      );
 }
 
 /// One page of the Meals list, with the counts of all FitSync's own foods
@@ -399,12 +421,19 @@ class AdminFoodsPage implements AdminPaged<AdminFood> {
   @override
   bool get hasMore => page * limit < total;
 
-  factory AdminFoodsPage.fromJson(Map<String, dynamic> json) {
+  /// [mediaBase] as in [AdminFood.fromJson].
+  factory AdminFoodsPage.fromJson(
+    Map<String, dynamic> json, {
+    String? mediaBase,
+  }) {
     final counts = json['counts'] as Map<String, dynamic>;
     return AdminFoodsPage(
       foods: [
         for (final food in json['foods'] as List)
-          AdminFood.fromJson(food as Map<String, dynamic>),
+          AdminFood.fromJson(
+            food as Map<String, dynamic>,
+            mediaBase: mediaBase,
+          ),
       ],
       shownCount: (counts['shown'] as num).toInt(),
       hiddenCount: (counts['hidden'] as num).toInt(),
@@ -435,6 +464,10 @@ class FoodInput {
     this.sodiumMg,
     this.suggestMeals = const [],
     this.suggestWithRice = false,
+    this.contains = const [],
+    this.image,
+    this.mimeType,
+    this.removePhoto = false,
   });
 
   final String name;
@@ -459,6 +492,19 @@ class FoodInput {
   /// With 1 cup of rice; only ever true beside a main meal.
   final bool suggestWithRice;
 
+  /// The food groups it is often made with; empty for none.
+  final List<String> contains;
+
+  /// A new photo: a JPEG's or PNG's bytes, with its [mimeType]. Null keeps
+  /// the food's own.
+  final Uint8List? image;
+  final String? mimeType;
+
+  /// Takes the food's photo away; never with an [image].
+  final bool removePhoto;
+
+  /// The photo is sent only when changed: an untouched one sends neither
+  /// `image` nor `removePhoto`.
   Map<String, dynamic> toJson() => {
     'name': name,
     'category': category,
@@ -473,6 +519,13 @@ class FoodInput {
     'sodiumMg': sodiumMg,
     'suggestMeals': suggestMeals,
     'suggestWithRice': suggestWithRice,
+    'contains': contains,
+    // Plain base64, no `data:` prefix: the server's image rule.
+    if (image case final bytes?) ...{
+      'image': base64Encode(bytes),
+      'mimeType': mimeType,
+    },
+    if (removePhoto) 'removePhoto': true,
   };
 }
 

@@ -53,14 +53,15 @@ async function seedFoods(dbConfig) {
           unchanged += 1;
           continue;
         }
-        // Local meal suggestions are written here, on insert, and nowhere
-        // else: after that they are the admin's (the Meals tab), and the
-        // UPDATE below never touches them, so a re-seed never undoes a choice.
+        // Local meal suggestions and what a dish contains are written here,
+        // on insert, and nowhere else: after that they are the admin's (the
+        // Meals tab), and the UPDATE below never touches them, so a re-seed
+        // never undoes a choice.
         await pool.query(
           `INSERT INTO foods (name, category, food_type, list_order, serving_desc, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg,
-                              suggest_meals, suggest_with_rice)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [f.name, ...values, (f.suggestMeals || []).join(','), Boolean(f.suggestWithRice)],
+                              suggest_meals, suggest_with_rice, contains)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [f.name, ...values, (f.suggestMeals || []).join(','), Boolean(f.suggestWithRice), (f.contains || []).join(',')],
         );
         inserted += 1;
         continue;

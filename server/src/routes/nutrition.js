@@ -8,8 +8,11 @@ const {
   invalid, checkDate, checkServings, checkClientId, checkManual, perServingOf, scaled, round1,
 } = require('../lib/nutrition-input');
 const { resolveFood } = require('../lib/resolve-food');
-const { pickSuggestions } = require('../lib/meal-suggestions');
-const { readSuggestionPool, readRice } = require('../db/meal-suggestions');
+const { pickSuggestions, asRiceFood } = require('../lib/meal-suggestions');
+const { readSuggestionPool, readRice, readMealPrefs } = require('../db/meal-suggestions');
+const {
+  listHidden, hiddenFoodIds, hideFood, showFood,
+} = require('../db/hidden-suggestions');
 const {
   MEALS, insertEntry, insertEntryOnce, findEntryIdByClientId, getEntry, getStoredEntry, updateEntry, deleteEntry,
   listDayEntries, targetProfile,
@@ -29,7 +32,7 @@ function totalsOf(entries) {
 module.exports = function buildNutritionRouter(deps) {
   const router = express.Router();
   const auth = requireAuth(deps);
-  const { pool } = deps;
+  const { pool, storage = null } = deps;
 
   router.get('/day', auth, async (req, res, next) => {
     try {
@@ -44,8 +47,9 @@ module.exports = function buildNutritionRouter(deps) {
     } catch (err) { next(err); }
   });
 
-  // View Local Filipino Meal Suggestions (spec 2026-11-09): up to three
-  // dishes for [meal] that fit what is left of today. Always today in Manila,
+  // View Local Filipino Meal Suggestions (specs 2026-11-09 and 2026-11-13):
+  // up to nine dishes for [meal] that fit what is left of today, with the
+  // user's usual rice, without what they avoid or hid; yesterday's dishes last. Always today in Manila,
   // whatever else is asked: a suggestion is for the next thing eaten.
   router.get('/suggestions', auth, async (req, res, next) => {
     try {
@@ -53,16 +57,52 @@ module.exports = function buildNutritionRouter(deps) {
       if (typeof meal !== 'string' || !MEALS.includes(meal)) {
         throw AppError.badRequest('INVALID_MEAL', `meal must be one of: ${MEALS.join(', ')}.`, [{ field: 'meal' }]);
       }
-      const date = manilaDay();
+      // One instant for both days, so a request at midnight cannot read
+      // today and the day before yesterday.
+      const now = new Date();
+      const date = manilaDay(0, now);
       const userId = req.user.userId;
-      const [entries, profile, dishes, rice] = await Promise.all([
-        listDayEntries(pool, userId, date), targetProfile(pool, userId), readSuggestionPool(pool), readRice(pool),
+      const [entries, yesterday, profile, dishes, rice, prefs, hidden] = await Promise.all([
+        listDayEntries(pool, userId, date), listDayEntries(pool, userId, manilaDay(1, now)),
+        targetProfile(pool, userId), readSuggestionPool(pool), readRice(pool), readMealPrefs(pool, userId),
+        hiddenFoodIds(pool, userId),
       ]);
       const { target } = dailyTarget(profile, date);
       const picked = pickSuggestions({
         meal, date, target, totals: totalsOf(entries), entries, pool: dishes, rice,
+        riceCups: prefs.riceCups, avoid: prefs.avoid, hidden, yesterday,
       });
-      res.json({ data: { date, meal, ...picked } });
+      // Round 3: each plate's dish photo, from the pool just read; the picker
+      // never sees it, and rice has none.
+      const photoKeys = new Map(dishes.map((d) => [d.foodId, d.photoKey]));
+      const photoUrl = (foodId) => {
+        const key = photoKeys.get(foodId);
+        return key && storage ? storage.url(key) : null;
+      };
+      const suggestions = picked.suggestions.map((s) => ({ ...s, food: { ...s.food, photoUrl: photoUrl(s.food.foodId) } }));
+      res.json({ data: { date, meal, riceCups: prefs.riceCups, riceFood: asRiceFood(rice), ...picked, suggestions } });
+    } catch (err) { next(err); }
+  });
+
+  // "Don't suggest this" (spec 2026-11-13 round 2): each answers the
+  // updated list, so the app needs no second request.
+  const hiddenList = async (res, userId) => res.json({ data: { hidden: await listHidden(pool, userId) } });
+
+  router.get('/suggestions/hidden', auth, async (req, res, next) => {
+    try { await hiddenList(res, req.user.userId); } catch (err) { next(err); }
+  });
+
+  router.put('/suggestions/hidden/:foodId', auth, async (req, res, next) => {
+    try {
+      await hideFood(pool, req.user.userId, req.params.foodId);
+      await hiddenList(res, req.user.userId);
+    } catch (err) { next(err); }
+  });
+
+  router.delete('/suggestions/hidden/:foodId', auth, async (req, res, next) => {
+    try {
+      await showFood(pool, req.user.userId, req.params.foodId);
+      await hiddenList(res, req.user.userId);
     } catch (err) { next(err); }
   });
 

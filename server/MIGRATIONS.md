@@ -66,7 +66,7 @@ migrations (or an equivalent forward-only mechanism) with a real rollback
 and data-migration story. That transition is an **open item for a later
 sub-project** — it has not been designed yet.
 
-## Exceptions: `007`, `008`, `011`, `012`, `013`, `014`, `017`, `028`, `032`, `033`, `034`, `035`, `036`, `037`, `038`, `042`, `044`, `045`, `046`, `047` and `048`
+## Exceptions: `007`, `008`, `011`, `012`, `013`, `014`, `017`, `028`, `032`, `033`, `034`, `035`, `036`, `037`, `038`, `042`, `044`, `045`, `046`, `047`, `048`, `049`, `050`, `051` and `053`
 
 `007_auth_identities.sql`, `008_equipment_curation.sql`,
 `011_email_verification.sql`, `012_weight_unit.sql`, `013_plan_days.sql`,
@@ -76,9 +76,10 @@ sub-project** — it has not been designed yet.
 `036_meal_log_sugar_sodium.sql`, `037_injury_risk_drivers.sql` and
 `038_food_types.sql`, `042_account_deletion.sql`,
 `044_user_suspension.sql`, `045_food_hiding.sql`, `046_ad_details.sql`,
-`047_revenue_payments.sql` and `048_meal_suggestions.sql`.
+`047_revenue_payments.sql`, `048_meal_suggestions.sql`, `049_usual_rice_cups.sql`,
+`050_food_contains.sql`, `051_user_avoid_foods.sql` and `053_food_photo.sql`.
 
-All twenty-one files break the rule above on purpose. Twenty of them do so for
+All twenty-five files break the rule above on purpose. Twenty-four of them do so for
 the same reason: each needs to change tables that migrations `001`–`006`
 already defined and that may already be applied on someone's database.
 The runner has no checksum
@@ -90,19 +91,19 @@ the failure mode the pre-release policy above depends on nobody hitting. A
 new, forward-only file sidesteps that. `047` is the odd one: it creates a new
 table, then copies rows already in `pro_payments` into it (see its entry
 below). The tradeoff is the one below: unlike
-a `CREATE TABLE IF NOT EXISTS`-only file, seven of the twenty-one are not safe to
+a `CREATE TABLE IF NOT EXISTS`-only file, eight of the twenty-five are not safe to
 replay after a partial failure. `014`, `028`, `032`, `033`, `034`, `035`,
-`036`, `037`, `038`, `042`, `044`, `045`, `046` and `047` are the exceptions to the exception, and they
+`036`, `037`, `038`, `042`, `044`, `045`, `046`, `047`, `049`, `051` and `053` are the exceptions to the exception, and they
 replay cleanly for different reasons: `014` and `028` restate a column
 definition rather than adding to one, while `032`, `033`, `034`, `035`, `036`,
 `037` and `038` rely on MySQL 8's atomic DDL — `032` also on statement
 ordering, `033`, `034`, `035`, `036`, `037` and `038` on the DDL alone, since
 each of those six files is nothing but the one `ALTER`. `042` combines the
 two: it restates the `purpose` column like `014`, then ends on one atomic
-`ADD COLUMN` like `032`; `044` and `045` are each one atomic `ADD COLUMN` like
+`ADD COLUMN` like `032`; `044`, `045`, `049`, `051` and `053` are each one atomic `ADD COLUMN` like
 `033`, and `046` one atomic `ALTER`, for the same reason (see their entries
 below); `047` is a `CREATE TABLE IF NOT EXISTS` followed by an `INSERT
-IGNORE` keyed on the primary key. Which of the twenty-one you
+IGNORE` keyed on the primary key. Which of the twenty-five you
 are holding is the thing to know before retrying one.
 
 **`007_auth_identities.sql`** — alongside its
@@ -162,8 +163,8 @@ followed by ONE `ALTER TABLE meal_logs` (adds `serving_desc`, widens
 single atomic statement, so a failure anywhere replays cleanly: before it,
 nothing non-idempotent has run; inside it, nothing was applied.
 
-**Consequence: seven of the twenty-one are not replay-safe.** Unlike every other
-migration file, if 007, 008, 011, 012, 013, 017 or 048 fails partway through,
+**Consequence: eight of the twenty-five are not replay-safe.** Unlike every other
+migration file, if 007, 008, 011, 012, 013, 017, 048 or 050 fails partway through,
 `IF NOT EXISTS` does not protect the `ALTER TABLE` (or, for 008, the
 trailing `CREATE INDEX`) statements — a second run will hit
 `ER_DUP_FIELDNAME` (or, for 008's index, the equivalent "duplicate key name"
@@ -171,7 +172,7 @@ error) on whichever statement had already committed. Because `ALTER TABLE`
 and `CREATE INDEX` both implicitly commit, a partial failure is not rolled
 back by the runner failing to record the version.
 
-**014, 028, 032, 033, 034, 035, 036, 037, 038, 042, 044, 045, 046 and 047 are the ones that can simply be re-run.** 014 and 028
+**014, 028, 032, 033, 034, 035, 036, 037, 038, 042, 044, 045, 046, 047, 049, 051 and 053 are the ones that can simply be re-run.** 014 and 028
 both use `MODIFY COLUMN`, which restates the column's whole definition rather
 than adding to it, so re-running the file is what is safe: it sets the same
 values both times — `014` on the split_style enum, `028` on fitness_level —
@@ -285,6 +286,52 @@ is not. A run where the `ALTER` applied and an `UPDATE` failed hits
 `ER_DUP_FIELDNAME` on re-run: check `DESCRIBE foods;` for `suggest_meals`, run
 the file's four `UPDATE`s by hand, then record it with
 `INSERT INTO schema_migrations (version) VALUES ('048_meal_suggestions.sql');`.
+
+**`049_usual_rice_cups.sql`** — one `ALTER TABLE users ADD COLUMN
+usual_rice_cups DECIMAL(2,1) NOT NULL DEFAULT 1.0`, the cups of white rice a
+suggested plate carries for this user (`0`–`2` in halves; `PATCH /profile`
+checks the set), 1 cup until they choose (Meal ideas round 1, spec
+2026-11-13). Like `044` and `045`, the file is nothing but that one atomic
+`ADD COLUMN`, so a failure inside it applied nothing and a failed run replays
+cleanly; a run that applied it and was not recorded would hit
+`ER_DUP_FIELDNAME` on re-run. Add a statement after it and that stops being
+true.
+
+**`050_food_contains.sql`** — one `ALTER TABLE foods` that adds `contains` (a
+`SET` of the six food groups `pork`, `beef`, `chicken`, `fish`, `shellfish`
+and `egg`, `''` = none), the groups a dish is often made with; then eleven
+`UPDATE`s that tag 28 of the 35 starting suggestions on FitSync's own,
+admin-untouched foods by exact name (Meal ideas round 2, spec 2026-11-13).
+Suggestions skip a dish that contains a group the trainee avoids
+(`users.avoid_foods`, 051). The `UPDATE`s are a seed of sorts, which the rule
+forbids: they are here, as in 048, because a database that already has its
+foods would otherwise get the column with nothing tagged, and `seed-foods.js`
+writes `contains` on insert only (after that it is the admin's). The
+`UPDATE`s set the same values every time and are safe to repeat; the `ALTER`
+is not. A run where the `ALTER` applied and an `UPDATE` failed hits
+`ER_DUP_FIELDNAME` on re-run: check `DESCRIBE foods;` for `contains`, run the
+file's eleven `UPDATE`s by hand, then record it with
+`INSERT INTO schema_migrations (version) VALUES ('050_food_contains.sql');`.
+
+**`051_user_avoid_foods.sql`** — one `ALTER TABLE users ADD COLUMN
+avoid_foods SET('pork','beef','chicken','fish','shellfish','egg') NOT NULL
+DEFAULT ''`, the food groups this trainee avoids (`''` = none; `PATCH
+/profile` checks the values), so suggestions skip dishes that contain any of
+them (Meal ideas round 2, spec 2026-11-13). Like `044`, `045` and `049`, the
+file is nothing but that one atomic `ADD COLUMN`, so a failure inside it
+applied nothing and a failed run replays cleanly; a run that applied it and
+was not recorded would hit `ER_DUP_FIELDNAME` on re-run. Add a statement after
+it and that stops being true.
+
+**`053_food_photo.sql`** — one `ALTER TABLE foods ADD COLUMN photo_key
+VARCHAR(255) NULL`, the storage key of one of FitSync's own foods' photo
+(`foods/<uuid>.jpg` or `.png`; `NULL` = none), shown beside its suggestion
+(Meal ideas round 3, spec 2026-11-13). The files live in the storage folder,
+which git ignores, never in the database. Like `044`, `045`, `049` and `051`,
+the file is nothing but that one atomic `ADD COLUMN`, so a failure inside it
+applied nothing and a failed run replays cleanly; a run that applied it and
+was not recorded would hit `ER_DUP_FIELDNAME` on re-run. Add a statement after
+it and that stops being true.
 
 **If 007, 008, 011, 012, 013 or 017 fails partway through**, recovery is
 manual:

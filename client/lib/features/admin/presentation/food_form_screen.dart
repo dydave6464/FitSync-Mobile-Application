@@ -4,11 +4,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
+import '../../nutrition/data/meal_photo_picker.dart'
+    show PickedPhoto, UnsupportedPhoto;
+import '../../nutrition/domain/meal_suggestion.dart'
+    show foodGroupLabel, foodGroups;
 import '../../nutrition/domain/nutrition.dart'
     show manualKcal, mealLabel, mealTypes;
+import '../../nutrition/presentation/widgets/dish_photo.dart';
 import '../../nutrition/presentation/widgets/number_box.dart';
 import '../../nutrition/presentation/widgets/text_limits.dart';
 import '../../onboarding/presentation/edit_scaffold.dart';
+import '../data/dish_photo_picker.dart';
 import '../domain/admin_format.dart';
 import '../domain/admin_models.dart';
 import 'providers.dart';
@@ -38,6 +44,12 @@ const _numbers = [
   ('sugar', 'sugarG'),
   ('sodium', 'sodiumMg'),
 ];
+
+/// The server's image limit (server/src/lib/image-check.js).
+const _maxPhotoBytes = 1500000;
+
+/// The photo preview's side, as the ad form's.
+const _previewSide = 96.0;
 
 /// "28", "870.5": a stored number as it is typed.
 String _typed(double? value) {
@@ -86,6 +98,30 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
       if (_suggest.contains(meal)) meal,
   ];
 
+  /// The food groups it is often made with, so a trainee who avoids one
+  /// is not suggested it.
+  late final Set<String> _contains = {...?widget.food?.contains};
+
+  /// The tagged groups in group order, as the server keeps them.
+  List<String> get _containsList => [
+    for (final g in foodGroups)
+      if (_contains.contains(g)) g,
+  ];
+
+  /// A photo picked here, sent with Save; null keeps the food's own.
+  PickedPhoto? _picked;
+
+  /// The food's own photo taken away (sent with Save), unless one is
+  /// picked after.
+  bool _removed = false;
+
+  /// What went wrong with the photo: on picking, or the server's refusal.
+  String? _photoError;
+
+  /// A photo to show: one picked here, or the food's own not removed.
+  bool get _hasPhoto =>
+      _picked != null || (!_removed && widget.food?.photoUrl != null);
+
   bool get _editing => widget.food != null;
 
   @override
@@ -127,6 +163,10 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
     for (final (key, _) in _numbers) _boxes[key]!.text.trim(),
     _suggestMeals.join(','),
     '${_withRice && _mainMealChosen}',
+    _containsList.join(','),
+    // Any picked photo is a change, even the same picture again.
+    _picked == null ? '' : identityHashCode(_picked),
+    '$_removed',
   ].join('\u0000');
 
   /// Blank is null; anything unreadable is NaN, which fails every check.
@@ -190,7 +230,46 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
     sodiumMg: _number('sodium'),
     suggestMeals: _suggestMeals,
     suggestWithRice: _withRice && _mainMealChosen,
+    contains: _containsList,
+    image: _picked?.bytes,
+    mimeType: _picked?.mimeType,
+    removePhoto: _removed && _picked == null,
   );
+
+  Future<void> _pickPhoto() async {
+    final picker = ref.read(dishPhotoPickerProvider);
+    String? problem;
+    PickedPhoto? picked;
+    try {
+      picked = await picker.pick();
+      if (picked != null && picked.bytes.length > _maxPhotoBytes) {
+        picked = null;
+        problem = _photoTooBig;
+      }
+    } on UnsupportedPhoto {
+      problem = 'The photo must be a JPEG or PNG.';
+    } catch (_) {
+      problem = "Couldn't open your photos. Try again.";
+    }
+    if (!mounted) return;
+    // Backing out of the gallery changes nothing.
+    if (picked == null && problem == null) return;
+    setState(() {
+      _error = null;
+      _photoError = problem;
+      if (picked != null) {
+        _picked = picked;
+        _removed = false;
+      }
+    });
+  }
+
+  void _removePhoto() => setState(() {
+    _picked = null;
+    _removed = true;
+    _photoError = null;
+    _error = null;
+  });
 
   Future<void> _save() async {
     final container = ProviderScope.containerOf(context, listen: false);
@@ -201,6 +280,7 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
     setState(() {
       _saving = true;
       _error = null;
+      _photoError = null;
       _fieldErrors.clear();
     });
     try {
@@ -230,7 +310,8 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
     );
   }
 
-  /// A refusal about one field goes under it; anything else above Save.
+  /// A refusal about one field goes under it, the photo's under the
+  /// preview; anything else above Save.
   void _placeError(Object error) {
     final message = userMessage(error);
     if (error is ApiException) {
@@ -238,8 +319,21 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
         _fieldErrors['name'] = message;
         return;
       }
+      if (error.code == 'INVALID_IMAGE') {
+        _photoError = message;
+        return;
+      }
+      // The body limit refused it before the photo rule could: say the rule.
+      if (error.code == 'PAYLOAD_TOO_LARGE') {
+        _photoError = _photoTooBig;
+        return;
+      }
       for (final detail in error.details) {
         final field = detail['field'];
+        if (field == 'image' || field == 'mimeType' || field == 'removePhoto') {
+          _photoError = message;
+          return;
+        }
         if (field is String && _fieldsShown.contains(field)) {
           _fieldErrors[field] = message;
           return;
@@ -248,6 +342,8 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
     }
     _error = message;
   }
+
+  static const _photoTooBig = 'The photo must be at most 1.5 MB.';
 
   static const _fieldsShown = {
     'name',
@@ -263,6 +359,7 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
     'sodiumMg',
     'suggestMeals',
     'suggestWithRice',
+    'contains',
   };
 
   Future<void> _hide(AdminFood food) async {
@@ -311,6 +408,121 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
     });
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// The dish's photo: a square preview (decorative: the name is above),
+  /// then Upload photo, or Replace and Remove; saved with the form.
+  Widget _photoSection() {
+    final Widget preview;
+    if (_picked case final picked?) {
+      preview = ExcludeSemantics(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(FsRadius.sm),
+          child: Image.memory(
+            picked.bytes,
+            width: _previewSide,
+            height: _previewSide,
+            fit: BoxFit.cover,
+            excludeFromSemantics: true,
+            errorBuilder: (_, _, _) => const DishPhoto(
+              url: null,
+              width: _previewSide,
+              height: _previewSide,
+            ),
+          ),
+        ),
+      );
+    } else {
+      preview = DishPhoto(
+        url: _removed ? null : widget.food?.photoUrl,
+        width: _previewSide,
+        height: _previewSide,
+      );
+    }
+
+    // Each button says what it does to the photo, though it shows one word
+    // beside the preview.
+    Widget button({
+      required String name,
+      required String label,
+      required String spoken,
+      required FsButtonKind kind,
+      required VoidCallback onPressed,
+      Widget? icon,
+    }) {
+      final onTap = _saving ? null : onPressed;
+      return Semantics(
+        key: Key('admin.food.photo.$name'),
+        button: true,
+        label: spoken,
+        enabled: onTap != null,
+        onTap: onTap,
+        excludeSemantics: true,
+        child: FsButton(
+          label: label,
+          kind: kind,
+          small: true,
+          icon: icon,
+          onPressed: onTap,
+        ),
+      );
+    }
+
+    final photoError = _photoError;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Semantics(header: true, child: const FsEyebrow('Photo')),
+        const SizedBox(height: 6),
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: SizedBox.square(
+            key: const Key('admin.food.photo'),
+            dimension: _previewSide,
+            child: preview,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _hasPhoto
+              ? [
+                  button(
+                    name: 'replace',
+                    label: 'Replace',
+                    spoken: 'Replace photo',
+                    kind: FsButtonKind.secondary,
+                    icon: const Icon(Icons.photo_library_outlined),
+                    onPressed: _pickPhoto,
+                  ),
+                  button(
+                    name: 'remove',
+                    label: 'Remove',
+                    spoken: 'Remove photo',
+                    kind: FsButtonKind.ghost,
+                    onPressed: _removePhoto,
+                  ),
+                ]
+              : [
+                  button(
+                    name: 'upload',
+                    label: 'Upload photo',
+                    spoken: 'Upload photo',
+                    kind: FsButtonKind.secondary,
+                    icon: const Icon(Icons.photo_library_outlined),
+                    onPressed: _pickPhoto,
+                  ),
+                ],
+        ),
+        if (photoError != null)
+          Padding(
+            key: const Key('admin.food.photo.error'),
+            padding: const EdgeInsets.only(top: 4),
+            child: FsErrorLine(photoError),
+          ),
+      ],
+    );
   }
 
   @override
@@ -491,6 +703,8 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
             number('sodium', 'sodiumMg', 'Sodium (mg) · optional', hint: 'mg'),
           ),
           const SizedBox(height: 24),
+          _photoSection(),
+          const SizedBox(height: 24),
           Semantics(
             header: true,
             child: const FsEyebrow('Suggest as a local meal'),
@@ -533,6 +747,35 @@ class _FoodFormScreenState extends ConsumerState<FoodFormScreen> {
               }),
             ),
           ?fieldError('suggestWithRice'),
+          const SizedBox(height: 18),
+          Semantics(header: true, child: const FsEyebrow('Contains')),
+          const SizedBox(height: 6),
+          FsTapRoom(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final g in foodGroups)
+                  FsChip(
+                    key: Key('admin.food.contains.$g'),
+                    label: foodGroupLabel(g),
+                    showCheck: true,
+                    selected: _contains.contains(g),
+                    onTap: () => setState(() {
+                      if (!_contains.remove(g)) _contains.add(g);
+                      _fieldErrors.remove('contains');
+                      _error = null;
+                    }),
+                  ),
+              ],
+            ),
+          ),
+          ?fieldError('contains'),
+          const SizedBox(height: 8),
+          Text(
+            'Used to skip dishes for trainees who avoid these foods.',
+            style: TextStyle(fontSize: 12, height: 1.4, color: t.text3),
+          ),
           if (food != null && _hidden) ...[
             const SizedBox(height: 6),
             Text(

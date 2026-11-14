@@ -21,6 +21,8 @@ import 'package:fitsync/core/theme_controller.dart';
 import 'package:fitsync/core/token_store.dart' show InMemorySecureStore;
 import 'package:fitsync/features/health/domain/health_answers.dart';
 import 'package:fitsync/features/health/presentation/providers.dart';
+import 'package:fitsync/features/nutrition/presentation/providers.dart'
+    show nutritionRepositoryProvider;
 import 'package:fitsync/features/onboarding/presentation/steps/health_step.dart';
 import 'package:fitsync/features/plans/presentation/widgets/training_days_row.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
@@ -32,6 +34,7 @@ import 'package:fitsync/features/reminders/presentation/providers.dart';
 import 'package:fitsync/features/reminders/presentation/reminders_screen.dart';
 import 'package:fitsync/features/settings/presentation/change_password_screen.dart';
 import 'package:fitsync/features/settings/presentation/delete_account_screen.dart';
+import 'package:fitsync/features/settings/presentation/meal_preferences_screen.dart';
 import 'package:fitsync/features/settings/presentation/settings_screen.dart';
 import 'package:fitsync/features/streaks/domain/streaks.dart';
 import 'package:fitsync/features/streaks/presentation/providers.dart'
@@ -45,6 +48,7 @@ import 'helpers/a11y.dart' show contrast;
 import 'helpers/dialog_buttons.dart';
 import 'helpers/fake_health.dart';
 import 'helpers/fake_pro_repository.dart';
+import 'nutrition_controller_test.dart' show FakeNutritionRepository;
 
 const _baseProfile = Profile(
   userId: 7,
@@ -86,7 +90,15 @@ class FakeProfileNotifier extends ProfileNotifier {
     this.patchGate,
     this.weightUnit = WeightUnit.kg,
     this.isPremium = false,
+    this.usualRiceCups = 1,
+    this.avoidFoods = const [],
   });
+
+  /// The cups of rice suggested plates carry.
+  final double usualRiceCups;
+
+  /// The food groups suggestions skip.
+  final List<String> avoidFoods;
 
   /// Whether the profile says the account is Pro.
   final bool isPremium;
@@ -163,6 +175,8 @@ class FakeProfileNotifier extends ProfileNotifier {
     weightKg: weightKg,
     goalWeightKg: goalWeightKg,
     weightUnit: weightUnit,
+    usualRiceCups: usualRiceCups,
+    avoidFoods: avoidFoods,
   );
 
   /// Every `patch` call, counted on arrival -- before [patchGate] holds it
@@ -317,6 +331,8 @@ Future<void> _pump(
   bool isPremium = false,
   ThemeStore? themeStore,
   bool hasPassword = true,
+  double usualRiceCups = 1,
+  List<String> avoidFoods = const [],
 }) async {
   _profile = FakeProfileNotifier(
     patches ?? <Map<String, dynamic>>[],
@@ -335,6 +351,8 @@ Future<void> _pump(
     patchGate: patchGate,
     weightUnit: weightUnit,
     isPremium: isPremium,
+    usualRiceCups: usualRiceCups,
+    avoidFoods: avoidFoods,
   );
   await tester.pumpWidget(
     ProviderScope(
@@ -359,6 +377,10 @@ Future<void> _pump(
         proRepositoryProvider.overrideWithValue(pro ?? FakeProRepository()),
         healthRepositoryProvider.overrideWithValue(
           health ?? FakeHealthRepository(),
+        ),
+        // Meal preferences lists the dishes the user hid.
+        nutritionRepositoryProvider.overrideWithValue(
+          FakeNutritionRepository(),
         ),
         // In memory, so a theme pick never reaches the platform channel.
         themeStoreProvider.overrideWithValue(
@@ -2176,6 +2198,96 @@ void main() {
         tester.widget<AboutStep>(find.byType(AboutStep)).mainGoal,
         'lose_weight',
       );
+    });
+  });
+
+  // Round 2: the Rice with meals row became Meal preferences, whose screen
+  // holds the rice chips (meal_preferences_screen_test.dart).
+  group('Meal preferences', () {
+    Finder inRow(String text) => find.descendant(
+      of: find.byKey(const Key('settings.mealPrefs')),
+      matching: find.text(text),
+    );
+
+    testWidgets('named, with the usual rice beside it', (tester) async {
+      await _pump(tester);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('settings.mealPrefs')),
+        200,
+      );
+      expect(inRow('Meal preferences'), findsOneWidget);
+      expect(inRow('1 cup rice'), findsOneWidget);
+      expect(find.text('Rice with meals'), findsNothing);
+    });
+
+    testWidgets('no rice and two foods avoided', (tester) async {
+      await _pump(tester, usualRiceCups: 0, avoidFoods: const ['pork', 'egg']);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('settings.mealPrefs')),
+        200,
+      );
+      expect(inRow('No rice · avoids 2'), findsOneWidget);
+    });
+
+    testWidgets('the longest summary fits a 320 dp phone at 2x text', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1.0;
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await _pump(
+        tester,
+        usualRiceCups: 1.5,
+        avoidFoods: const [
+          'pork',
+          'beef',
+          'chicken',
+          'fish',
+          'shellfish',
+          'egg',
+        ],
+      );
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('settings.mealPrefs')),
+        200,
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(inRow('1½ cups rice · avoids 6'), findsOneWidget);
+    });
+
+    testWidgets('the summary ends flush with the row, as other values do', (
+      tester,
+    ) async {
+      await _pump(tester);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('settings.mealPrefs')),
+        200,
+      );
+      await tester.pumpAndSettle();
+      final row = tester.getRect(
+        find
+            .descendant(
+              of: find.byKey(const Key('settings.mealPrefs')),
+              matching: find.byType(Row),
+            )
+            .first,
+      );
+      // Where the last letter is drawn, not just the text's box.
+      final text = tester.renderObject<RenderParagraph>(inRow('1 cup rice'));
+      final glyphs = text.getBoxesForSelection(
+        const TextSelection(baseOffset: 0, extentOffset: '1 cup rice'.length),
+      );
+      final drawnRight = text.localToGlobal(Offset(glyphs.last.right, 0)).dx;
+      expect(drawnRight, moreOrLessEquals(row.right, epsilon: 0.5));
+    });
+
+    testWidgets('opens the Meal preferences screen', (tester) async {
+      await _pump(tester);
+      await _openRow(tester, const Key('settings.mealPrefs'));
+      expect(find.byType(MealPreferencesScreen), findsOneWidget);
     });
   });
 }

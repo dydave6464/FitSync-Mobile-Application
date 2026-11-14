@@ -170,6 +170,60 @@ test('profile endpoints', async (t) => {
     assert.equal(res.body.error.code, 'INVALID_PROFILE_FIELD');
   });
 
+  // Meal ideas (spec 2026-11-13): the cups of rice a suggested plate carries.
+  await t.test('a new profile has 1 cup of rice with meals', async () => {
+    await reset();
+    const res = await request(app).get('/api/v1/profile').set('Authorization', auth).expect(200);
+    assert.equal(res.body.data.profile.usualRiceCups, 1);
+  });
+
+  await t.test('the usual rice is none, or half a cup to 2 cups in halves', async () => {
+    await reset();
+    for (const cups of [0, 0.5, 1.5, 2, 1]) {
+      const res = await request(app).patch('/api/v1/profile').set('Authorization', auth)
+        .send({ usualRiceCups: cups }).expect(200);
+      assert.equal(res.body.data.profile.usualRiceCups, cups);
+    }
+  });
+
+  await t.test('refuses any other rice amount, a string, a boolean or null', async () => {
+    await reset();
+    for (const bad of [0.25, 3, -1, '1', true, null]) {
+      const res = await request(app).patch('/api/v1/profile').set('Authorization', auth)
+        .send({ usualRiceCups: bad }).expect(400);
+      assert.equal(res.body.error.code, 'INVALID_PROFILE_FIELD', JSON.stringify(bad));
+      assert.deepEqual(res.body.error.details, [{ field: 'usualRiceCups' }]);
+    }
+    const res = await request(app).get('/api/v1/profile').set('Authorization', auth).expect(200);
+    assert.equal(res.body.data.profile.usualRiceCups, 1);
+  });
+
+  await t.test('a new profile avoids nothing', async () => {
+    await reset();
+    const res = await request(app).get('/api/v1/profile').set('Authorization', auth).expect(200);
+    assert.deepEqual(res.body.data.profile.avoidFoods, []);
+  });
+
+  await t.test('avoided foods are saved as a set, in the groups\' own order', async () => {
+    await reset();
+    const save = async (avoidFoods) => (await request(app).patch('/api/v1/profile').set('Authorization', auth)
+      .send({ avoidFoods }).expect(200)).body.data.profile.avoidFoods;
+    assert.deepEqual(await save(['egg', 'pork']), ['pork', 'egg']);
+    assert.deepEqual(await save(['pork', 'beef', 'chicken', 'fish', 'shellfish', 'egg']),
+      ['pork', 'beef', 'chicken', 'fish', 'shellfish', 'egg']);
+    assert.deepEqual(await save([]), []);
+  });
+
+  await t.test('refuses anything but distinct food groups', async () => {
+    await reset();
+    for (const bad of [['peanuts'], ['pork', 'pork'], 'pork', null, [1], {}]) {
+      const res = await request(app).patch('/api/v1/profile').set('Authorization', auth)
+        .send({ avoidFoods: bad }).expect(400);
+      assert.equal(res.body.error.code, 'INVALID_PROFILE_FIELD', JSON.stringify(bad));
+      assert.deepEqual(res.body.error.details, [{ field: 'avoidFoods' }]);
+    }
+  });
+
   await t.test('refuses to write a field that is not editable', async () => {
     await reset();
     await request(app).patch('/api/v1/profile').set('Authorization', auth)

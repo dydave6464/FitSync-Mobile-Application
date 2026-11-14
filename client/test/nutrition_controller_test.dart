@@ -133,6 +133,44 @@ class FakeNutritionRepository implements NutritionRepository {
     return suggestionsByMeal[meal] ??
         MealSuggestions(date: today, meal: meal, state: SuggestionState.noTarget, suggestions: const []);
   }
+
+  /// The dishes the user hid, newest first, kept up to date by
+  /// [hideSuggestion] (at the front, once) and [showSuggestion]. [hideCalls]
+  /// and [showCalls] list the ids sent; [failHidden] makes all three throw
+  /// UNKNOWN_ERROR (never retried, as with [failSuggestions]); [hiddenHold]
+  /// keeps their answer pending until completed.
+  final List<HiddenSuggestion> hidden = [];
+  final List<int> hideCalls = [];
+  final List<int> showCalls = [];
+  bool failHidden = false;
+  Completer<void>? hiddenHold;
+
+  Future<List<HiddenSuggestion>> _answerHidden() async {
+    if (hiddenHold != null) await hiddenHold!.future;
+    if (failHidden) throw const ApiException('UNKNOWN_ERROR', 'Something went wrong on our side. Please try again.');
+    return List.of(hidden);
+  }
+
+  @override
+  Future<List<HiddenSuggestion>> hiddenSuggestions() => _answerHidden();
+
+  @override
+  Future<List<HiddenSuggestion>> hideSuggestion(int foodId) async {
+    hideCalls.add(foodId);
+    await _answerHidden();
+    if (!hidden.any((h) => h.foodId == foodId)) {
+      hidden.insert(0, HiddenSuggestion(foodId: foodId, name: 'Food $foodId', hiddenAt: DateTime.now().toUtc()));
+    }
+    return List.of(hidden);
+  }
+
+  @override
+  Future<List<HiddenSuggestion>> showSuggestion(int foodId) async {
+    showCalls.add(foodId);
+    await _answerHidden();
+    hidden.removeWhere((h) => h.foodId == foodId);
+    return List.of(hidden);
+  }
 }
 
 ProviderContainer _container(FakeNutritionRepository repo, {DateTime? now}) {
@@ -145,6 +183,22 @@ ProviderContainer _container(FakeNutritionRepository repo, {DateTime? now}) {
 }
 
 void main() {
+  test('hiddenSuggestionsProvider lists what the user hid; hide and show keep the fake up to date', () async {
+    final repo = FakeNutritionRepository();
+    final c = _container(repo);
+    expect(await c.read(hiddenSuggestionsProvider.future), isEmpty);
+    await repo.hideSuggestion(10);
+    await repo.hideSuggestion(13);
+    expect((await repo.hideSuggestion(10)).map((h) => h.foodId), [13, 10], reason: 'hidden once, newest first');
+    c.invalidate(hiddenSuggestionsProvider);
+    expect((await c.read(hiddenSuggestionsProvider.future)).map((h) => h.foodId), [13, 10]);
+    expect((await repo.showSuggestion(13)).map((h) => h.foodId), [10]);
+    expect([repo.hideCalls, repo.showCalls], [[10, 13, 10], [13]]);
+    repo.failHidden = true;
+    await expectLater(repo.showSuggestion(10), throwsA(isA<ApiException>()));
+    expect(repo.hidden.map((h) => h.foodId), [10], reason: 'a failed call changes nothing');
+  });
+
   test('loads today (Manila) by default, and a chosen day after set/shift', () async {
     final repo = FakeNutritionRepository();
     final c = _container(repo, now: DateTime.utc(2026, 10, 13, 17)); // 01:00 on the 14th in Manila

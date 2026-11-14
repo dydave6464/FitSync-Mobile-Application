@@ -69,6 +69,34 @@ test('the starting list of local meal suggestions', () => {
   assert.equal(suggested.length, 35);
 });
 
+test('what the starting dishes are often made with', () => {
+  const { FOOD_GROUPS } = require('../src/lib/food-groups');
+  const tagged = FOODS.filter((f) => f.contains !== undefined);
+  for (const f of tagged) {
+    assert.ok(Array.isArray(f.contains) && f.contains.length > 0, `${f.name} contains`);
+    assert.deepEqual(f.contains, FOOD_GROUPS.filter((g) => f.contains.includes(g)), `${f.name}: the six, in order`);
+  }
+  const byTags = Object.fromEntries(tagged.map((f) => [f.name, f.contains.join(',')]));
+  assert.deepEqual(byTags, {
+    Tapsilog: 'beef,egg',
+    Bangsilog: 'fish,egg',
+    'Sarciadong isda (fish with tomato-egg sauce)': 'fish,egg',
+    'Chicken adobo': 'chicken', 'Tinolang manok': 'chicken', 'Chicken inasal': 'chicken', 'Lechon manok': 'chicken',
+    'Chicken afritada': 'chicken',
+    'Sinigang na baboy': 'pork', 'Ginisang monggo': 'pork', 'Adobong kangkong': 'pork',
+    'Sinigang na hipon': 'shellfish',
+    'Nilagang baka': 'beef', 'Bistek tagalog': 'beef',
+    Pinakbet: 'pork,shellfish',
+    Chopsuey: 'pork,shellfish,egg',
+    'Ginisang ampalaya with egg': 'pork,egg',
+    'Tortang talong': 'egg', 'Hard-boiled egg': 'egg',
+    'Grilled bangus': 'fish', 'Daing na bangus': 'fish', 'Paksiw na bangus (milkfish in vinegar)': 'fish',
+    'Sinigang na bangus (milkfish sour soup)': 'fish', 'Tilapia, grilled or steamed': 'fish',
+    'Sutukil sinugba (grilled fish)': 'fish', 'Ginataang tulingan (frigate tuna in coconut milk)': 'fish',
+    'Tinapang galunggong (smoked round scad)': 'fish', 'Inihaw na tuna (grilled tuna steak)': 'fish',
+  });
+});
+
 test('food seed', async (t) => {
   const pool = createPool(testDbConfig());
   await dropAllTables(pool);
@@ -185,6 +213,21 @@ test('food seed', async (t) => {
       ['Lechon kawali', 'lunch', 0],
       ['Tinolang manok', 'snack', 0],
     ]);
+  });
+
+  // Meal ideas round 2: what a dish contains is written on insert too, and
+  // after that it is the admin's.
+  await t.test('inserts what each starting dish is often made with', async () => {
+    const [[row]] = await pool.query("SELECT contains FROM foods WHERE name = 'Chopsuey'");
+    assert.equal(row.contains, 'pork,shellfish,egg');
+  });
+
+  await t.test('a re-seed leaves what a dish contains as it is now', async () => {
+    await pool.query("UPDATE foods SET contains = 'pork' WHERE name = 'Chopsuey'");
+    const s = await seedFoods(testDbConfig());
+    assert.deepEqual([s.inserted, s.updated], [0, 0]);
+    const [[row]] = await pool.query("SELECT contains FROM foods WHERE name = 'Chopsuey'");
+    assert.equal(row.contains, 'pork');
   });
 
   await t.test('updates a changed number in place', async () => {

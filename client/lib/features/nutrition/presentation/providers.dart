@@ -156,6 +156,13 @@ final mealSuggestionsProvider = FutureProvider.autoDispose.family<MealSuggestion
   retry: apiRetryPolicy,
 );
 
+/// The dishes this user asked not to be suggested, newest first (Meal
+/// preferences' "Dishes you hid").
+final hiddenSuggestionsProvider = FutureProvider.autoDispose<List<HiddenSuggestion>>(
+  (ref) => ref.watch(nutritionRepositoryProvider).hiddenSuggestions(),
+  retry: apiRetryPolicy,
+);
+
 /// Keyed by the (already debounced, trimmed) query; Log food debounces.
 final foodSearchProvider = FutureProvider.autoDispose.family<FoodSearchResult, String>(
   (ref, q) => ref.watch(nutritionRepositoryProvider).search(q),

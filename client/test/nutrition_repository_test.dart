@@ -250,4 +250,58 @@ void main() {
     expect(s.suggestions.single.food.name, 'Hard-boiled egg');
     expect(s.suggestions.single.rice, isNull);
   });
+
+  test("suggestions joins each dish's photo to the server's address", () async {
+    final repo = _repo(MockClient((r) async => _ok({
+      'date': '2026-10-14', 'meal': 'lunch', 'state': 'no_target', 'share': null,
+      'suggestions': [{
+        'food': {
+          'foodId': 10, 'name': 'Tinolang manok', 'servingDesc': '1 bowl', 'kcal': 260, 'proteinG': 26,
+          'carbsG': 8, 'fatG': 14, 'photoUrl': '/storage/foods/a.jpg',
+        },
+        'rice': null,
+        'total': {'kcal': 260, 'proteinG': 26, 'carbsG': 8, 'fatG': 14},
+        'highProtein': true,
+      }],
+    })));
+    final s = await repo.suggestions('lunch');
+    expect(s.suggestions.single.food.photoUrl, 'http://test.local/storage/foods/a.jpg');
+  });
+
+  const hiddenAnswer = {
+    'hidden': [
+      {'foodId': 10, 'name': 'Tinolang manok', 'hiddenAt': '2026-11-13T04:00:00.000Z'},
+      {'foodId': 13, 'name': 'Hard-boiled egg', 'hiddenAt': '2026-11-12T09:30:00.000Z'},
+    ],
+  };
+
+  test('hiddenSuggestions reads the hidden dishes, newest first', () async {
+    final repo = _repo(MockClient((r) async {
+      expect(r.method, 'GET');
+      expect(r.url.path, '/api/v1/nutrition/suggestions/hidden');
+      return _ok(hiddenAnswer);
+    }));
+    final hidden = await repo.hiddenSuggestions();
+    expect(hidden.map((h) => h.foodId), [10, 13]);
+    expect(hidden.first.name, 'Tinolang manok');
+    expect(hidden.first.hiddenAt, DateTime.utc(2026, 11, 13, 4));
+  });
+
+  test('hideSuggestion PUTs the dish and reads the updated list', () async {
+    final repo = _repo(MockClient((r) async {
+      expect(r.method, 'PUT');
+      expect(r.url.path, '/api/v1/nutrition/suggestions/hidden/10');
+      return _ok(hiddenAnswer);
+    }));
+    expect((await repo.hideSuggestion(10)).map((h) => h.name), ['Tinolang manok', 'Hard-boiled egg']);
+  });
+
+  test('showSuggestion DELETEs the dish and reads the updated list', () async {
+    final repo = _repo(MockClient((r) async {
+      expect(r.method, 'DELETE');
+      expect(r.url.path, '/api/v1/nutrition/suggestions/hidden/10');
+      return _ok({'hidden': <Object>[]});
+    }));
+    expect(await repo.showSuggestion(10), isEmpty);
+  });
 }

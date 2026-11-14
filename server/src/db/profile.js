@@ -22,6 +22,8 @@ const WRITABLE = {
   city: 'city',
   notificationsEnabled: 'notifications_enabled',
   weightUnit: 'weight_unit',
+  usualRiceCups: 'usual_rice_cups',
+  avoidFoods: 'avoid_foods',
 };
 
 /// A stored health check that reports a condition or a warning sign. Only
@@ -63,7 +65,7 @@ async function getProfile(pool, userId) {
     `SELECT user_id, email, full_name, sex, date_of_birth, height_cm, weight_kg,
             goal_weight_kg, main_goal, fitness_level, activity_level,
             training_location, city, ${isProSql('users')} AS is_premium, notifications_enabled,
-            weight_unit,
+            weight_unit, usual_rice_cups, avoid_foods,
             onboarding_completed_at,
             UNIX_TIMESTAMP(created_at) AS created_at_epoch
        FROM users WHERE user_id = ?`, [userId],
@@ -120,6 +122,10 @@ async function getProfile(pool, userId) {
     isPremium: Boolean(u.is_premium),
     notificationsEnabled: Boolean(u.notifications_enabled),
     weightUnit: u.weight_unit,
+    // DECIMAL arrives as a string ("1.5"); the app reads a number.
+    usualRiceCups: Number(u.usual_rice_cups),
+    // A SET column reads as 'pork,egg' in the groups' own order, '' for none.
+    avoidFoods: u.avoid_foods ? String(u.avoid_foods).split(',') : [],
     onboardingCompleted: u.onboarding_completed_at !== null,
     // created_at_epoch is the row's true UTC instant as seconds (see the
     // query comment). Guarded rather than assumed present: a NULL here
