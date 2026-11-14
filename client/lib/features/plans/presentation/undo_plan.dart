@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart';
 import '../../nutrition/presentation/error_snack_bar.dart'
     show saveOrOfferRetry;
 import '../domain/workout_plan.dart';
 import 'providers.dart';
+
+/// The refusals that mean the plan this phone holds is out of date: a
+/// workout was started on it, or the previous plan is already back (another
+/// phone's Undo). The server has no previous plan to offer either way, so
+/// the plan is reloaded and the card offering one goes.
+const _staleRefusals = {'PLAN_ALREADY_USED', 'NO_PREVIOUS_PLAN'};
 
 /// Whether a bring-back is already on its way to the server. The snackbar's
 /// Undo and the Plan tab's card can both be on hand at once; the second ask
@@ -25,10 +32,21 @@ Future<bool> bringBackPreviousPlan({
   if (_bringingBack) return false;
   _bringingBack = true;
   var restored = false;
+  var stale = false;
   try {
     await saveOrOfferRetry<WorkoutPlan>(
       messenger,
-      save: () => container.read(planRepositoryProvider).restorePrevious(),
+      save: () async {
+        try {
+          return await container.read(planRepositoryProvider).restorePrevious();
+        } on ApiException catch (e) {
+          if (_staleRefusals.contains(e.code)) {
+            stale = true;
+            container.invalidate(activePlanProvider);
+          }
+          rethrow;
+        }
+      },
       failure: "Couldn't bring back your previous plan.",
       persist: persist,
       onSaved: (_) {
@@ -40,7 +58,7 @@ Future<bool> bringBackPreviousPlan({
         );
       },
     );
-    if (restored) {
+    if (restored || stale) {
       try {
         await container.read(activePlanProvider.future);
       } catch (_) {

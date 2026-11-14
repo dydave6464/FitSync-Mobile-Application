@@ -201,10 +201,13 @@ class _SwapRepo implements PlanRepository {
 /// runs as the server answers; [pending], when set, holds the answer back
 /// until the test completes it.
 class _RestoreRepo implements PlanRepository {
-  _RestoreRepo({this.onRestore, this.pending});
+  _RestoreRepo({this.onRestore, this.pending, this.refusal});
 
   final void Function()? onRestore;
   final Completer<void>? pending;
+
+  /// When set, the server refuses with this instead of bringing back.
+  final ApiException? refusal;
   int restoreCalls = 0;
 
   @override
@@ -215,6 +218,7 @@ class _RestoreRepo implements PlanRepository {
     restoreCalls += 1;
     if (pending != null) await pending!.future;
     onRestore?.call();
+    if (refusal != null) throw refusal!;
     return _plan;
   }
 
@@ -963,6 +967,59 @@ void main() {
       expect(repo.restoreCalls, 1);
       expect(loads, 2);
       expect(find.byKey(const Key('plan.previous')), findsNothing);
+    });
+
+    for (final code in ['PLAN_ALREADY_USED', 'NO_PREVIOUS_PLAN']) {
+      testWidgets('a refused Bring it back ($code) reloads the plan and the '
+          'card goes', (tester) async {
+        // The server has moved on since this plan was fetched: a workout
+        // was started on it, or another phone already brought the old one
+        // back. Its refusal is said, and the card follows the server.
+        var current = _planWith(
+          previousPlan: const PreviousPlan(planId: 3, name: 'Plan 1'),
+        );
+        var loads = 0;
+        final repo = _RestoreRepo(
+          onRestore: () => current = _planWith(previousPlan: null),
+          refusal: ApiException(code, 'Refused.'),
+        );
+        await _pump(
+          tester,
+          null,
+          repo: repo,
+          loadPlan: () => current,
+          onPlanLoad: () => loads++,
+        );
+        expect(loads, 1);
+        await tester.tap(find.byKey(const Key('plan.previous.bringBack')));
+        await tester.pumpAndSettle();
+        expect(repo.restoreCalls, 1);
+        expect(
+          find.textContaining("Couldn't bring back your previous plan."),
+          findsOneWidget,
+        );
+        expect(loads, 2);
+        expect(find.byKey(const Key('plan.previous')), findsNothing);
+      });
+    }
+
+    testWidgets('a failure the server may get past keeps the card', (
+      tester,
+    ) async {
+      var loads = 0;
+      final repo = _RestoreRepo(
+        refusal: const ApiException('INTERNAL_ERROR', 'Down.'),
+      );
+      await _pump(
+        tester,
+        _planWith(previousPlan: const PreviousPlan(planId: 3, name: 'P')),
+        repo: repo,
+        onPlanLoad: () => loads++,
+      );
+      await tester.tap(find.byKey(const Key('plan.previous.bringBack')));
+      await tester.pumpAndSettle();
+      expect(loads, 1);
+      expect(find.byKey(const Key('plan.previous')), findsOneWidget);
     });
 
     testWidgets('a second tap while bringing back sends nothing', (
