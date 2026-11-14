@@ -11,10 +11,13 @@ import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
 import '../../sessions/presentation/providers.dart' show activeSessionProvider;
 import '../../sessions/presentation/session_logger_screen.dart';
+import '../../settings/presentation/settings_screen.dart' show InjuriesEditor;
+import '../domain/plan_defaults.dart';
 import '../domain/split_style.dart';
 import '../domain/week_description.dart';
 import '../domain/workout_plan.dart';
 import 'providers.dart';
+import 'widgets/session_length_row.dart';
 import 'widgets/training_days_row.dart';
 
 const _defaultSplit = 'full_body';
@@ -35,6 +38,11 @@ class GeneratorScreen extends ConsumerStatefulWidget {
 class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   String? _splitStyle;
   int? _daysPerWeek;
+
+  /// The length picked by hand; null is Auto, which sends nothing and lets
+  /// the generator derive it from level, goal and health check.
+  int? _sessionLengthMin;
+
   bool _busy = false;
   int? _savingWeekday;
 
@@ -120,6 +128,7 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
           .regenerate(
             splitStyle: split,
             daysPerWeek: days,
+            sessionLengthMin: _sessionLengthMin,
             replaceCustomPlan: replaceCustomPlan,
           );
       // The plan changed underneath every screen that reads it, so the whole
@@ -242,10 +251,9 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
     days: trainingDays.isNotEmpty
         ? trainingDays.length
         : (_daysPerWeek ?? plan?.daysPerWeek ?? _defaultDays),
-    // The session length is not sent: the generator derives it from today's
-    // level, goal and health check, so moving up from New to training, or
-    // adding a condition, changes it. (The `|| 45` default lives only in the
-    // server's test stub.)
+    // The session length is not resolved here: Auto (null) sends nothing,
+    // and the generator derives it from today's level, goal and health
+    // check. See `_sessionLengthMin`.
   );
 
   /// The lead row's sentence: what is actually being applied.
@@ -287,6 +295,39 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
     ref.read(activePlanProvider).value,
     ref.read(profileProvider).value?.trainingDays ?? const [],
   ).days;
+  int? get debugSessionLengthMin => _sessionLengthMin;
+
+  /// Picks a length by hand, or Auto with null. Also what an applied week
+  /// sentence calls.
+  void applyLength(int? minutes) => setState(() => _sessionLengthMin = minutes);
+
+  /// The bar's one-line account of what Generate will send: split, days,
+  /// length and exercise count. Length and count are left out while Auto's
+  /// number is unknown.
+  String _summary(
+    String split,
+    int days,
+    List<int> trainingDays,
+    PlanDefaults? defaults,
+  ) {
+    const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final minutes = _sessionLengthMin ?? defaults?.sessionLengthMin;
+    final count = _sessionLengthMin == null
+        ? defaults?.exercisesPerDay
+        : switch (minutes) {
+            60 => 8,
+            45 => 6,
+            _ => null,
+          };
+    return [
+      splitLabel(split),
+      trainingDays.isEmpty
+          ? daysAWeek(days)
+          : (trainingDays.toList()..sort()).map((d) => names[d - 1]).join(' '),
+      if (minutes != null) '$minutes min',
+      if (count != null) '$count exercises a day',
+    ].join(' · ');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -306,10 +347,10 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
       // Loading and error both used to collapse into "no plan" -- plan?.x on
       // a null value reads the same whether the fetch is still in flight or
       // failed outright. That made a transient fetch failure show the
-      // full_body/3 defaults under "Generating replaces your current
-      // plan", so generating really would discard whatever plan the user
-      // has. Both states are handled explicitly here, before the fallback
-      // chain -- and therefore the controls -- ever runs.
+      // full_body/3 defaults under "Replaces your current plan", so generating
+      // really would discard whatever plan the user has. Both states are
+      // handled explicitly here, before the fallback chain -- and therefore
+      // the controls -- ever runs.
       //
       // A rebuild takes the body over rather than spinning inside the button:
       // it is the same wait onboarding already explains, and a button that
@@ -382,7 +423,11 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
     // stands behind it.
     final inProgress = ref.watch(activeSessionProvider).value != null;
 
-    return ListView(
+    // Auto's number and exercise count. Null while loading or failed: Auto
+    // then shows bare and still works, as it sends nothing either way.
+    final defaults = ref.watch(planDefaultsProvider).value;
+
+    final list = ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
       children: [
         _DescribeCard(
@@ -486,11 +531,13 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
               style: TextStyle(fontSize: 12, color: t.text3, height: 1.35),
             ),
         ],
-        // Session length is deliberately not shown. The service derives it
-        // from goal, fitness level and health check, so it is neither chosen
-        // here nor changeable here, and a number on screen that the user
-        // cannot move is one more thing to rule out. Nor is it sent -- see
-        // `_resolve`.
+        const SizedBox(height: 22),
+        SessionLengthRow(
+          chosen: _sessionLengthMin,
+          autoMinutes: defaults?.sessionLengthMin,
+          lengthReason: defaults?.lengthReason,
+          onChanged: applyLength,
+        ),
         if (avoiding.isNotEmpty) ...[
           const SizedBox(height: 22),
           FsCard(
@@ -509,53 +556,97 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(width: 8),
+                TextButton(
+                  key: const Key('gen.avoiding.edit'),
+                  style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const InjuriesEditor(),
+                    ),
+                  ),
+                  child: const Text('Edit'),
+                ),
               ],
             ),
           ),
         ],
-        const SizedBox(height: 22),
-        Text(
-          inProgress
-              ? _inProgressNote
-              : 'Generating replaces your current plan.',
-          style: TextStyle(
-            fontSize: 12,
-            color: inProgress ? t.text2 : t.text3,
-            height: 1.4,
-          ),
-        ),
-        const SizedBox(height: 18),
-        // While a workout runs, the dimmed button says why as its hint, so a
-        // screen reader hears the reason on the button and not only in the
-        // note a swipe before it. Merged so the hint lands on the button's
-        // own node rather than splitting off one of its own.
-        MergeSemantics(
-          child: Semantics(
-            hint: inProgress ? _inProgressNote : null,
-            child: FsButton(
-              key: const Key('gen.generate'),
-              label: 'Generate plan',
-              // No in-button spinner: `_busy` takes the whole body over with
-              // the building screen, so this button is not on screen to spin.
-              onPressed: inProgress
-                  ? null
-                  : () => _generate(split, days, trainingDays),
-            ),
-          ),
-        ),
-        if (inProgress) ...[
-          const SizedBox(height: 10),
-          FsButton(
-            key: const Key('gen.resume'),
-            label: 'Resume workout',
-            kind: FsButtonKind.secondary,
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const SessionLoggerScreen(resume: true),
+      ],
+    );
+
+    // Pinned under the list, so Generate stays in view however long the
+    // controls above it grow.
+    final bar = Material(
+      key: const Key('gen.bar'),
+      color: t.bg,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                _summary(split, days, trainingDays, defaults),
+                key: const Key('gen.summary'),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12, color: t.text2, height: 1.35),
               ),
-            ),
+              const SizedBox(height: 6),
+              Text(
+                inProgress
+                    ? _inProgressNote
+                    : 'Replaces your current plan. You can undo it.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: inProgress ? t.text2 : t.text3,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 10),
+              // While a workout runs, the dimmed button says why as its hint, so a
+              // screen reader hears the reason on the button and not only in the
+              // note a swipe before it. Merged so the hint lands on the button's
+              // own node rather than splitting off one of its own.
+              MergeSemantics(
+                child: Semantics(
+                  hint: inProgress ? _inProgressNote : null,
+                  child: FsButton(
+                    key: const Key('gen.generate'),
+                    label: 'Generate plan',
+                    // No in-button spinner: `_busy` takes the whole body over with
+                    // the building screen, so this button is not on screen to spin.
+                    onPressed: inProgress
+                        ? null
+                        : () => _generate(split, days, trainingDays),
+                  ),
+                ),
+              ),
+              if (inProgress) ...[
+                const SizedBox(height: 10),
+                FsButton(
+                  key: const Key('gen.resume'),
+                  label: 'Resume workout',
+                  kind: FsButtonKind.secondary,
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const SessionLoggerScreen(resume: true),
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
-        ],
+        ),
+      ),
+    );
+
+    return Column(
+      children: [
+        Expanded(child: list),
+        bar,
       ],
     );
   }

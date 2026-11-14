@@ -361,7 +361,7 @@ class _SettingsList extends ConsumerWidget {
                 icon: Icons.healing_outlined,
                 label: 'Injuries',
                 iconColor: t.red,
-                onTap: () => _open(context, const _InjuriesEditor()),
+                onTap: () => _open(context, const InjuriesEditor()),
               ),
               _SettingsRow(
                 rowKey: const Key('edit.health'),
@@ -1033,14 +1033,14 @@ class _LevelEditorState extends _EditorState<_LevelEditor> {
   }
 }
 
-class _InjuriesEditor extends ConsumerStatefulWidget {
-  const _InjuriesEditor();
+class InjuriesEditor extends ConsumerStatefulWidget {
+  const InjuriesEditor({super.key});
 
   @override
-  ConsumerState<_InjuriesEditor> createState() => _InjuriesEditorState();
+  ConsumerState<InjuriesEditor> createState() => _InjuriesEditorState();
 }
 
-class _InjuriesEditorState extends _EditorState<_InjuriesEditor> {
+class _InjuriesEditorState extends _EditorState<InjuriesEditor> {
   List<SelectedInjury> _value = const [];
   List<SelectedInjury> _seed = const [];
   bool _seeded = false;
