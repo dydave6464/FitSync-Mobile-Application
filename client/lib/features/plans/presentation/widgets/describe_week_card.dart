@@ -414,7 +414,12 @@ class _DescribeWeekCardState extends ConsumerState<DescribeWeekCard> {
     }
 
     final count = reading.daysPerWeek;
-    if (count != null && weekdays.isEmpty) {
+    // A count that matches the ticked days was not overruled, so there is
+    // nothing to say about it. The filled-in sentence is the common case: it
+    // writes its count from those same days.
+    if (count != null &&
+        weekdays.isEmpty &&
+        count != widget.trainingDays.length) {
       understood.add(
         _line(
           t,
@@ -476,8 +481,14 @@ class _DescribeWeekCardState extends ConsumerState<DescribeWeekCard> {
       );
     }
 
+    // The example is for a sentence that said nothing the card knows, not
+    // for one whose every part needs no line: a day count matching the
+    // ticked days, or a region the profile already holds.
+    final recognisedSilently =
+        reading.daysPerWeek != null || reading.injuries.isNotEmpty;
+
     return [
-      if (understood.isEmpty)
+      if (understood.isEmpty && !recognisedSilently)
         _line(
           t,
           Icons.info_outline,

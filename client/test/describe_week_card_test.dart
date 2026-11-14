@@ -215,6 +215,9 @@ void main() {
       expect(repo.readWeekCalls, isEmpty);
       // Read for its lines all the same.
       expect(find.text('Split: Push / Pull / Legs'), findsOneWidget);
+      // Its day count was written from the ticked days, so it agrees with
+      // them and has nothing to be overruled about.
+      expect(find.textContaining('weekdays you have chosen'), findsNothing);
     },
   );
 
@@ -400,6 +403,20 @@ void main() {
     expect(find.textContaining('weekdays you have chosen'), findsOneWidget);
   });
 
+  testWidgets('a day count that matches the ticked days says nothing more', (
+    tester,
+  ) async {
+    await pumpCard(tester, composed: '');
+    await type(tester, '3 days a week');
+    await tester.pump(kPhoneReadDelay);
+    expect(find.textContaining('weekdays you have chosen'), findsNothing);
+    expect(
+      find.text("Nothing to change yet. Try: 'ppl, 45 min, protect my knee'."),
+      findsNothing,
+      reason: 'the count was understood',
+    );
+  });
+
   testWidgets('a day count with no days ticked asks for them', (tester) async {
     await pumpCard(tester, composed: '', trainingDays: const []);
     await type(tester, '4 days a week');
@@ -508,6 +525,13 @@ void main() {
       await type(tester, 'protect my right knee');
       await tester.pump(kPhoneReadDelay);
       expect(find.byKey(const Key('gen.describe.add.3')), findsNothing);
+      expect(
+        find.text(
+          "Nothing to change yet. Try: 'ppl, 45 min, protect my knee'.",
+        ),
+        findsNothing,
+        reason: 'the knee was understood, just already held',
+      );
     });
 
     testWidgets('a failed add says so and keeps the offer', (tester) async {
