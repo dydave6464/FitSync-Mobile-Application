@@ -17,7 +17,8 @@ from app import dish_model as dm
 from app import train_dish as td
 from app.dish_embedders import CLASSIFIER_FILENAME, EMBEDDERS, Embedder
 
-COLOURS = {"sinigang": (220, 40, 40), "tinola": (40, 200, 60), "tapa": (50, 60, 210)}
+COLOURS = {"sinigang": (220, 40, 40), "tinola": (40, 200, 60), "tapa": (50, 60, 210),
+           "other": (200, 200, 40)}
 
 
 def run_for(spec):
@@ -45,36 +46,73 @@ def test_near_duplicates_are_training_rows_too_close_to_another_photo():
     assert td.near_duplicates(train, np.zeros((0, 2))) == []
 
 
-def test_cross_validate_finds_separable_dishes():
+def test_cross_validate_finds_separable_dishes_and_names_its_class_weight():
     rng = np.random.default_rng(1)
     X = np.vstack([rng.normal(loc=c, scale=0.3, size=(30, 4)) for c in (0.0, 2.0, 4.0)])
     y = np.repeat([0, 1, 2], 30)
-    c, accuracy, proba = td.cross_validate(X, y)
-    assert c in td.C_VALUES and accuracy >= 0.95 and proba.shape == (90, 3)
+    c, weight, accuracy, proba = td.cross_validate(X, y)
+    assert c in td.C_VALUES and weight in td.WEIGHTS
+    assert accuracy >= 0.95 and proba.shape == (90, 3)
 
 
-def rows(conf, correct, n):
-    """n probability rows whose top value is conf, right (class 0) or wrong (class 1)."""
-    rest = (1 - conf) / 2
-    row = [conf, rest, rest] if correct else [rest, conf, rest]
+def test_plate_folds_never_split_a_plate():
+    y = np.repeat([0, 1, 2], 20)
+    groups = np.array(["plate-{}".format(i // 2) for i in range(60)])  # two photos per plate
+    for train_idx, test_idx in td.plate_folds(y, groups):
+        assert not set(groups[train_idx]) & set(groups[test_idx])
+
+
+def test_photos_without_a_plate_are_their_own_group():
+    groups = td.groups_for([td.Photo("a.jpg", "tapa", "train", "p1"),
+                            td.Photo("b.jpg", "tapa", "train", None),
+                            td.Photo("c.jpg", "tapa", "train", "p1")])
+    assert list(groups) == ["p1", "photo:b.jpg", "p1"]
+
+
+def rows(conf, correct, n, k=3):
+    """n probability rows over k classes whose top value is conf, right (class 0) or wrong (class 1)."""
+    rest = (1 - conf) / (k - 1)
+    row = [conf] + [rest] * (k - 1) if correct else [rest, conf] + [rest] * (k - 2)
     return [row] * n
 
 
-def test_thresholds_are_the_lowest_levels_that_reach_90_and_70_percent():
+def test_thresholds_are_the_lowest_levels_that_reach_90_70_and_97_percent():
     proba = np.array(rows(0.9, True, 10) + rows(0.6, True, 3) + rows(0.6, False, 2)
                      + rows(0.4, True, 1) + rows(0.4, False, 4))
     y = np.zeros(len(proba), dtype=int)
-    swap_at, choice_at, stats = td.thresholds(proba, y)
+    swap_at, choice_at, outside_at, stats = td.thresholds(proba, y)
     # 0.4 and up: 14/20 right = 70 %; 0.6 and up: 13/15; 0.9 and up: 10/10.
-    assert (swap_at, choice_at) == (0.9, 0.4)
+    assert (swap_at, choice_at, outside_at) == (0.9, 0.4, 0.9)
     assert stats["swapPrecision"] == 1.0 and stats["swapShare"] == 0.5
     assert stats["choicePrecision"] == 0.7 and stats["choiceShare"] == 1.0
+    assert stats["outsideSwapAt"] == 0.9 and stats["outsidePrecision"] == 1.0
 
 
 def test_thresholds_never_swap_when_too_few_photos_reach_the_level():
     proba = np.array(rows(0.99, True, 1) + rows(0.5, False, 19))
-    swap_at, choice_at, _ = td.thresholds(proba, np.zeros(20, dtype=int))
-    assert swap_at == td.NEVER and choice_at == td.NEVER
+    swap_at, choice_at, outside_at, _ = td.thresholds(proba, np.zeros(20, dtype=int))
+    assert swap_at == td.NEVER and choice_at == td.NEVER and outside_at == td.NEVER
+
+
+def test_the_very_sure_bar_is_stricter_and_never_below_the_swap_bar():
+    # 0.95 and up: 10/10; 0.8 and up: 19/20 = 95 % (swap yes, very sure no).
+    proba = np.array(rows(0.95, True, 10) + rows(0.8, True, 9) + rows(0.8, False, 1)
+                     + rows(0.5, False, 10))
+    swap_at, _, outside_at, _ = td.thresholds(proba, np.zeros(30, dtype=int))
+    assert swap_at == 0.8 and outside_at == 0.95
+
+
+def test_thresholds_ignore_photos_called_other_and_count_other_photos_called_a_dish_as_wrong():
+    other = 2
+    called_other = [[0.05, 0.05, 0.9]] * 50      # the model said "other": no swap is ever made
+    dish_right = rows(0.9, True, 9)               # class 0, truly class 0
+    other_as_dish = [[0.9, 0.05, 0.05]]           # said class 0, truly "other": a wrong swap
+    proba = np.array(called_other + dish_right + other_as_dish)
+    y = np.array([other] * 50 + [0] * 9 + [other])
+    swap_at, _, outside_at, stats = td.thresholds(proba, y, other=other)
+    # Among the 10 dish calls: 9/10 = 90 % -> swap at 0.9; never 97 % -> very sure never.
+    assert swap_at == 0.9 and stats["swapShare"] == 1.0
+    assert outside_at == td.NEVER
 
 
 def test_pick_takes_the_smaller_model_within_two_points():
@@ -136,16 +174,19 @@ def test_training_end_to_end(tmp_path, photos, model_dir):
     assert body["photos"]["droppedNearDuplicates"] == 1
     # How many --exclude photos were compared, so a folder matching nothing shows.
     assert body["photos"]["excludeCompared"] == 1
-    assert body["photos"]["train"] == 3 * 22 - 1 and body["photos"]["test"] == 12
+    assert body["photos"]["train"] == 4 * 22 - 1 and body["photos"]["test"] == 16
     assert set(body["embedders"]) == set(EMBEDDERS)
     # Every fake embedder is as good as the others, so the smallest is kept.
     assert body["chosen"] == "mobilenetv4-small"
     assert body["test"]["accuracy"] >= 0.9
     t = body["thresholds"]
-    assert 0.0 <= t["choiceAt"] <= t["swapAt"] <= td.NEVER
+    assert 0.0 <= t["choiceAt"] <= t["swapAt"] <= t["outsideSwapAt"] <= td.NEVER
+    assert set(body["cv"]["perClass"]) == set(COLOURS)
+    assert all(r["classWeight"] in (None, "balanced") for r in body["embedders"].values())
 
     model = dm.DishModel.load(str(model_dir), open_embedder=fake_open)
-    assert model.status == "loaded" and model.version == "dish-lr-1-mobilenetv4-small"
+    assert model.status == "loaded" and model.version == "dish-lr-2-mobilenetv4-small"
+    assert model.outside_swap_at == t["outsideSwapAt"]
     fresh = tmp_path / "fresh.jpg"
     make_photo(fresh, COLOURS["sinigang"], 999)
     assert model.classify(fresh.read_bytes())["dishes"][0]["dish"] == "sinigang"
@@ -155,7 +196,7 @@ def test_training_end_to_end(tmp_path, photos, model_dir):
                                  "--split", "test", "--out", str(out),
                                  "--model-dir", str(model_dir)]) == 0
     preds = json.loads(out.read_text())
-    assert len(preds) == 12 and preds["tinola-000.jpg"]["dishes"][0]["dish"] == "tinola"
+    assert len(preds) == 16 and preds["tinola-000.jpg"]["dishes"][0]["dish"] == "tinola"
 
 
 def test_training_refuses_a_dish_with_too_few_photos(photos, model_dir, tmp_path):
@@ -182,7 +223,7 @@ def test_training_reads_collects_layout_manifest_beside_a_photos_folder(tmp_path
     assert td.main(["--manifest", str(root / "manifest.json"), "--photos", str(root / "photos"),
                     "--model-dir", str(model_dir), "--report", str(report)]) == 0
     body = json.loads(report.read_text())
-    assert body["photos"]["train"] == 3 * 22 and body["photos"]["test"] == 12
+    assert body["photos"]["train"] == 4 * 22 and body["photos"]["test"] == 16
     assert body["photos"]["excludeCompared"] == 0
 
 

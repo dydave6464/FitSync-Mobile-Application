@@ -232,6 +232,8 @@ class DishResponse(BaseModel):
     dishes: List[DishGuess]
     swapAt: float
     choiceAt: float
+    # Round 2: the bar for a dish the AI named outside the 12; None for a round-1 model.
+    outsideSwapAt: Optional[float] = None
     # Every dish the model was trained on, so Node never reads a dish it
     # cannot answer as a disagreement.
     classes: List[str]

@@ -27,7 +27,7 @@ MAX_PHOTO_BYTES = 1_500_000
 
 def write_model(path: str, *, version: str, classes: List[str], embedder_key: str,
                 coef, intercept, swap_at: float, choice_at: float,
-                photos: Dict[str, int]) -> None:
+                photos: Dict[str, int], outside_swap_at: Optional[float] = None) -> None:
     spec = EMBEDDERS[embedder_key]
     payload = {
         "format": FORMAT,
@@ -41,6 +41,10 @@ def write_model(path: str, *, version: str, classes: List[str], embedder_key: st
         "choiceAt": float(choice_at),
         "photos": dict(photos),
     }
+    # Round 2's bar for a dish the AI named outside the 12 (spec 2026-11-12,
+    # section 2). A round-1 file has none, and Node then leaves those alone.
+    if outside_swap_at is not None:
+        payload["outsideSwapAt"] = float(outside_swap_at)
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w") as f:
         json.dump(payload, f, indent=1)
@@ -71,7 +75,8 @@ class DishModel:
     def __init__(self, status: str, version: Optional[str] = None,
                  classes: Optional[List[str]] = None, coef: Optional[np.ndarray] = None,
                  intercept: Optional[np.ndarray] = None, embedder: Optional[Embedder] = None,
-                 swap_at: Optional[float] = None, choice_at: Optional[float] = None):
+                 swap_at: Optional[float] = None, choice_at: Optional[float] = None,
+                 outside_swap_at: Optional[float] = None):
         self.status = status
         self.version = version
         self.classes = classes or []
@@ -80,6 +85,7 @@ class DishModel:
         self._embedder = embedder
         self.swap_at = swap_at
         self.choice_at = choice_at
+        self.outside_swap_at = outside_swap_at
 
     @classmethod
     def load(cls, model_dir: str,
@@ -116,6 +122,15 @@ class DishModel:
             if not 0.0 <= choice_at <= swap_at <= 1.01:
                 raise ValueError("thresholds out of order: choiceAt {} swapAt {}".format(
                     choice_at, swap_at))
+            outside = data.get("outsideSwapAt")
+            outside_swap_at = None
+            if outside is not None:
+                if isinstance(outside, bool) or not isinstance(outside, (int, float)):
+                    raise ValueError("outsideSwapAt {!r} is not a number".format(outside))
+                outside_swap_at = float(outside)
+                if not swap_at <= outside_swap_at <= 1.01:
+                    raise ValueError("thresholds out of order: swapAt {} outsideSwapAt {}".format(
+                        swap_at, outside_swap_at))
             embedder_path = os.path.join(model_dir, spec.filename)
             if not os.path.isfile(embedder_path):
                 logger.warning("dish classifier %s needs %s: run python -m app.fetch_dish_embedder",
@@ -124,7 +139,8 @@ class DishModel:
             return cls(status="loaded", version=str(data["version"]), classes=classes,
                        coef=coef, intercept=intercept,
                        embedder=open_embedder(embedder_path, spec),
-                       swap_at=swap_at, choice_at=choice_at)
+                       swap_at=swap_at, choice_at=choice_at,
+                       outside_swap_at=outside_swap_at)
         except Exception as err:
             logger.error("dish classifier at %s is unusable: %s", path, err)
             return cls(status="absent")
@@ -152,5 +168,6 @@ class DishModel:
                        for i in order],
             "swapAt": self.swap_at,
             "choiceAt": self.choice_at,
+            "outsideSwapAt": self.outside_swap_at,
             "classes": list(self.classes),
         }

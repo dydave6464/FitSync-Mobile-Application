@@ -2,14 +2,23 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { secondOpinion } = require('../src/services/vision/dish-second-opinion');
-const { DISH_FOODS } = require('../src/services/vision/dish-foods');
+const { DISH_FOODS, SIDE_FOODS, PLATE_OF, SILOG_PLATES } = require('../src/services/vision/dish-foods');
 const { FOODS } = require('../src/db/seed-foods');
 
 let nextId = 0;
 const MENU = [
-  'Sinigang na baboy', 'Sinigang na hipon', 'Tinolang manok', 'Red Filipino hotdog', 'Vigan longganisa',
-  'Pork tocino', 'White rice', 'Garlic fried rice (sinangag)', 'Chicken adobo', 'Fried egg',
-].map((name) => ({ foodId: ++nextId, name }));
+  ['Sinigang na baboy', 'home'], ['Sinigang na hipon', 'home'], ['Tinolang manok', 'home'],
+  ['Red Filipino hotdog', 'home'], ['Vigan longganisa', 'home'], ['Pork tocino', 'home'],
+  ['Beef tapa', 'home'], ['White rice', 'home'], ['Garlic fried rice (sinangag)', 'home'],
+  ['Chicken adobo', 'home'], ['Fried egg', 'home'], ['Bistek tagalog', 'home'], ['Pork sisig', 'home'],
+  ['Cola', 'drink'], ['Kamatis (tomato), fresh', 'fruit_veg'], ['Monay', 'bread_kakanin'],
+  ['Toyomansi sawsawan (soy sauce with calamansi)', 'condiment'],
+  ['Tapsilog', 'home'], ['Longsilog', 'home'], ['Tocilog', 'home'], ['Hotsilog', 'home'],
+  ['Cornsilog', 'home'], ['Bangsilog', 'home'], ['Spamsilog', 'home'],
+  ['Chicksilog (fried chicken, garlic rice, egg)', 'home'],
+  // A FatSecret copy: its food_type is unknown.
+  ['Cooked Rice', null],
+].map(([name, group]) => ({ foodId: ++nextId, name, group }));
 const byName = new Map(MENU.map((f) => [f.name.toLowerCase(), f]));
 const food = (name) => byName.get(name.toLowerCase());
 const card = (name, alternatives = []) => ({ food: food(name), servings: 1.5, confidence: 0.8, alternatives: alternatives.map(food) });
@@ -63,7 +72,7 @@ test('nothing changes when the classifier agrees, is unsure, or is already a cho
   assert.equal(chip.items, items);
 });
 
-test('the classifier is ignored when no card is one of the 12', () => {
+test('a round-1 answer (no outsideSwapAt) is ignored when no card is one of the 12', () => {
   const items = [card('Chicken adobo'), card('White rice')];
   const out = secondOpinion(items, opinion('tinola', 0.99), byName);
   assert.equal(out.outcome, 'skipped');
@@ -164,4 +173,132 @@ test('adding a choice leaves the servings alone', () => {
   const out = secondOpinion([sized('Red Filipino hotdog', 2)], opinion('tocino', 0.6), SIZED);
   assert.equal(out.outcome, 'added choice');
   assert.equal(out.items[0].servings, 2);
+});
+
+// --- round 2: a dish the AI named outside the 12 ---------------------------------
+const r2 = (dish, probability, extra = {}) => opinion(dish, probability, {
+  outsideSwapAt: 0.95, classes: [...Object.keys(DISH_FOODS), 'other'].sort(), ...extra,
+});
+
+test('very sure replaces the first non-side card; the AI\'s dish becomes the first choice', () => {
+  const items = [card('White rice'), card('Fried egg'), card('Bistek tagalog', ['Chicken adobo'])];
+  const out = secondOpinion(items, r2('tapa', 0.97), byName);
+  assert.equal(out.outcome, 'swapped outside');
+  assert.deepEqual(shown(out.items), [
+    ['White rice', []], ['Fried egg', []], ['Beef tapa', ['Bistek tagalog', 'Chicken adobo']],
+  ]);
+  assert.equal(out.items.length, items.length, 'never adds or removes a card');
+  assert.deepEqual(shown(items)[2], ['Bistek tagalog', ['Chicken adobo']], 'the input is not changed');
+});
+
+test('fairly sure adds the dish as the first choice on that card', () => {
+  const items = [card('Pork sisig'), card('Kamatis (tomato), fresh')];
+  const out = secondOpinion(items, r2('tapa', 0.7), byName);
+  assert.equal(out.outcome, 'added choice outside');
+  assert.deepEqual(shown(out.items), [['Pork sisig', ['Beef tapa']], ['Kamatis (tomato), fresh', []]]);
+});
+
+test('drinks, condiments, bread and fresh sides are never the AI\'s dish', () => {
+  const items = [card('Cola'), card('Toyomansi sawsawan (soy sauce with calamansi)'), card('Monay'),
+    card('Kamatis (tomato), fresh'), card('Garlic fried rice (sinangag)'), card('Fried egg')];
+  const out = secondOpinion(items, r2('longganisa', 0.99), byName);
+  assert.equal(out.outcome, 'skipped');
+  assert.equal(out.items, items);
+});
+
+test('below the choice bar, an "other" answer, or no very-sure bar changes nothing outside the 12', () => {
+  const items = [card('Bistek tagalog')];
+  for (const o of [r2('tapa', 0.3), r2('other', 0.99), opinion('tapa', 0.99)]) {
+    const out = secondOpinion(items, o, byName);
+    assert.equal(out.outcome, 'skipped', JSON.stringify(o));
+    assert.equal(out.items, items);
+  }
+});
+
+test('fairly sure skips when the dish is already a choice on that card', () => {
+  const items = [card('Bistek tagalog', ['Beef tapa'])];
+  assert.equal(secondOpinion(items, r2('tapa', 0.7), byName).outcome, 'skipped');
+});
+
+test('a swap outside keeps the version the AI listed as a choice', () => {
+  const out = secondOpinion([card('Chicken adobo', ['Sinigang na hipon'])], r2('sinigang', 0.99), byName);
+  assert.equal(out.outcome, 'swapped outside');
+  assert.deepEqual(shown(out.items), [['Sinigang na hipon', ['Chicken adobo']]]);
+});
+
+test('when the AI named one of the 12, the round-2 answer behaves exactly as round 1', () => {
+  const items = [card('Tinolang manok', ['Chicken adobo']), card('White rice')];
+  const out = secondOpinion(items, r2('sinigang', 0.93), byName);
+  assert.equal(out.outcome, 'swapped');
+  assert.deepEqual(shown(out.items), [['Sinigang na baboy', ['Tinolang manok', 'Chicken adobo']], ['White rice', []]]);
+});
+
+test('a very-sure bar below the swap bar, or not a probability, is unavailable', () => {
+  const items = [card('Bistek tagalog')];
+  for (const o of [r2('tapa', 0.99, { outsideSwapAt: 0.5 }), r2('tapa', 0.99, { outsideSwapAt: 2 }),
+    r2('tapa', 0.99, { outsideSwapAt: 'high' })]) {
+    assert.equal(secondOpinion(items, o, byName).outcome, 'unavailable', JSON.stringify(o));
+  }
+});
+
+test('the side foods are all seed foods', () => {
+  const menu = new Set(FOODS.map((f) => f.name));
+  for (const n of SIDE_FOODS) assert.ok(menu.has(n), `${n} is not a seed food`);
+});
+
+test('a card of the 12 the model dropped from training keeps round 1\'s answer, not the outside rule', () => {
+  // The AI named tocino, one of the 12: "as today" (spec 2026-11-12, section 3),
+  // so a model that cannot answer tocino does not swap it as a dish outside the 12.
+  const classes = [...Object.keys(DISH_FOODS).filter((d) => d !== 'tocino'), 'other'];
+  const items = [card('Pork tocino')];
+  const out = secondOpinion(items, r2('longganisa', 0.99, { classes }), byName);
+  assert.equal(out.outcome, 'skipped');
+  assert.equal(out.items, items);
+});
+
+test('a silog plate keeps round 1\'s answer, so a very sure classifier never swaps it for a bare dish', () => {
+  // Its own dish (tapa on a Tapsilog) or another (longganisa on a Spamsilog):
+  // swapping the plate for a bare dish would drop the rice and egg.
+  for (const [plate, dish] of [['Tapsilog', 'tapa'], ['Longsilog', 'longganisa'], ['Tocilog', 'tocino'],
+    ['Hotsilog', 'hotdog'], ['Cornsilog', 'longganisa'], ['Bangsilog', 'tocino'], ['Spamsilog', 'longganisa'],
+    ['Chicksilog (fried chicken, garlic rice, egg)', 'tocino']]) {
+    const items = [card(plate)];
+    const out = secondOpinion(items, r2(dish, 0.99), byName);
+    assert.equal(out.outcome, 'skipped', plate);
+    assert.equal(out.items, items, plate);
+  }
+});
+
+test('the silog plates are all seed foods and the four of the 12 point to their dish', () => {
+  const seed = new Set(FOODS.map((f) => f.name));
+  assert.equal(SILOG_PLATES.length, 8);
+  for (const n of SILOG_PLATES) assert.ok(seed.has(n), `${n} is not a seed food`);
+  const menu = new Set(FOODS.map((f) => f.name.toLowerCase()));
+  assert.deepEqual([...PLATE_OF], [
+    ['tapsilog', 'tapa'], ['longsilog', 'longganisa'], ['hotsilog', 'hotdog'], ['tocilog', 'tocino'],
+  ]);
+  for (const [plate, dish] of PLATE_OF) {
+    assert.ok(menu.has(plate), `${plate} is not a seed food`);
+    assert.ok(Object.hasOwn(DISH_FOODS, dish), `${dish} is not one of the 12`);
+  }
+});
+
+test('a food of unknown type (a FatSecret copy) is never the AI\'s dish', () => {
+  const items = [card('Cooked Rice'), card('Bistek tagalog')];
+  const out = secondOpinion(items, r2('tapa', 0.97), byName);
+  assert.equal(out.outcome, 'swapped outside');
+  assert.deepEqual(shown(out.items), [['Cooked Rice', []], ['Beef tapa', ['Bistek tagalog']]]);
+});
+
+test('between the swap bar and the very-sure bar, outside the 12 only adds a choice', () => {
+  const items = [card('Bistek tagalog')];
+  const out = secondOpinion(items, r2('tapa', 0.9), byName);
+  assert.equal(out.outcome, 'added choice outside');
+  assert.deepEqual(shown(out.items), [['Bistek tagalog', ['Beef tapa']]]);
+});
+
+test('exactly the very-sure bar swaps outside the 12', () => {
+  const out = secondOpinion([card('Bistek tagalog')], r2('tapa', 0.95), byName);
+  assert.equal(out.outcome, 'swapped outside');
+  assert.deepEqual(shown(out.items), [['Beef tapa', ['Bistek tagalog']]]);
 });
