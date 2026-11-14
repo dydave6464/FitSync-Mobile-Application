@@ -27,6 +27,7 @@ from app.schemas import (
     InjuryRiskRequest,
     InjuryRiskResponse,
     PlanExercise,
+    PlanParametersResponse,
     PlanResponse,
     ProfileRequest,
     parse_history,
@@ -357,6 +358,20 @@ def create_app(settings: Settings, ranker: Optional[Ranker] = None,
             sessionLengthMin=params.session_length_min,
             weekNo=1,
             exercises=exercises,
+        )
+
+    @app.post("/plan-parameters", response_model=PlanParametersResponse)
+    def plan_parameters(profile: ProfileRequest):
+        # The generator screen's "Auto · 45 min": the same derive() as
+        # /generate-plan, so the number shown is the number built. No
+        # catalogue, no ranker, no database.
+        overrides = profile.overrides.model_dump() if profile.overrides else None
+        fields = profile.model_dump()
+        params = parameters.derive(fields, overrides)
+        return PlanParametersResponse(
+            sessionLengthMin=params.session_length_min,
+            exercisesPerDay=params.exercise_count,
+            lengthReason=parameters.length_reason(fields, overrides),
         )
 
     @app.post("/injury-risk", response_model=InjuryRiskResponse)
