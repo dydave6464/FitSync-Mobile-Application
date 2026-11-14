@@ -9,8 +9,9 @@ const MIN_Q = 2;
 const MAX_Q = 60;
 const LIMIT = 20;
 // FitSync's own foods per search; FatSecret's stay at LIMIT. 60 since the
-// 2026-11-14 food round: "chicken" alone matches 50 foods, and at 30 the
-// broad searches dropped Grilled chicken breast and Fried chicken.
+// 2026-11-14 food round: "chicken" alone matches 50 foods, so at 30 a broad
+// search hid 20 chain items, and a short query ("ch", "ri") pushed even
+// Grilled chicken breast and Fried chicken past the cut.
 const OWN_LIMIT = 60;
 const MAX_EXTERNAL_ID = 64;
 // The whole FatSecret search (token + request) gets this long before the
