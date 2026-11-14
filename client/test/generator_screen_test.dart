@@ -2128,6 +2128,85 @@ void main() {
       expect(find.byKey(const Key('gen.bar')), findsNothing);
     });
 
+    // iOS has no back key to close the keyboard, and the bar (Generate with
+    // it) stays hidden while the keyboard is up, so the screen itself must
+    // offer a way to put the keyboard away.
+    group('closing the keyboard on iOS', () {
+      Future<void> typeWithKeyboard(WidgetTester tester) async {
+        tester.view.physicalSize = const Size(390, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await _pump(
+          tester,
+          plan: _pplPlan,
+          trainingDays: const [1, 3, 5],
+          tall: false,
+        );
+        await tester.tap(find.byKey(const Key('gen.describe.field')));
+        tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+        await tester.pumpAndSettle();
+        expect(_describeFocused(tester), isTrue);
+        expect(find.byKey(const Key('gen.bar')), findsNothing);
+      }
+
+      testWidgets('a tap outside the field closes the keyboard', (
+        tester,
+      ) async {
+        await typeWithKeyboard(tester);
+        // The card's own heading: outside the field, inside the screen.
+        await tester.tap(
+          find.descendant(
+            of: find.byKey(const Key('gen.describe')),
+            matching: find.byType(FsEyebrow),
+          ),
+        );
+        await tester.pump();
+        expect(_describeFocused(tester), isFalse);
+
+        // The system then drops the keyboard, and Generate is back.
+        tester.view.resetViewInsets();
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('gen.generate')).hitTestable(),
+          findsOneWidget,
+        );
+      }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+
+      testWidgets('dragging the list closes the keyboard', (tester) async {
+        await typeWithKeyboard(tester);
+        // On the field itself the field's own scrolling takes the drag, so
+        // the drag starts lower down the list, as a thumb would.
+        final list = find.byType(ListView);
+        expect(
+          tester.widget<ListView>(list).keyboardDismissBehavior,
+          ScrollViewKeyboardDismissBehavior.onDrag,
+        );
+        final scrollable = tester.state<ScrollableState>(
+          find.descendant(of: list, matching: find.byType(Scrollable)).first,
+        );
+        await tester.dragFrom(const Offset(195, 500), const Offset(0, -120));
+        await tester.pump();
+        expect(scrollable.position.pixels, greaterThan(0));
+        expect(_describeFocused(tester), isFalse);
+      }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+
+      testWidgets('the return key is Done and closes the keyboard', (
+        tester,
+      ) async {
+        await typeWithKeyboard(tester);
+        final field = tester.widget<TextField>(
+          find.descendant(
+            of: find.byKey(const Key('gen.describe.field')),
+            matching: find.byType(TextField),
+          ),
+        );
+        expect(field.textInputAction, TextInputAction.done);
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await tester.pump();
+        expect(_describeFocused(tester), isFalse);
+      }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+    });
+
     testWidgets('the summary follows a chosen length', (tester) async {
       await _pump(tester, plan: _pplPlan, trainingDays: const [1, 3, 5]);
       await tester.tap(find.byKey(const Key('gen.length.60')));
@@ -2162,3 +2241,14 @@ void main() {
     });
   });
 }
+
+/// Whether the "Describe your week" field holds the focus (keyboard up).
+bool _describeFocused(WidgetTester tester) => tester
+    .widget<EditableText>(
+      find.descendant(
+        of: find.byKey(const Key('gen.describe.field')),
+        matching: find.byType(EditableText),
+      ),
+    )
+    .focusNode
+    .hasFocus;

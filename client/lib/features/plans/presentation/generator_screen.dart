@@ -428,6 +428,9 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
     final defaults = ref.watch(planDefaultsProvider).value;
 
     final list = ListView(
+      // The bar, Generate with it, is hidden while the keyboard is up, and
+      // iOS has no back key to close it: a drag down the list puts it away.
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
       children: [
         _DescribeCard(
@@ -804,6 +807,10 @@ class _DescribeCardState extends ConsumerState<_DescribeCard> {
               hint: 'e.g. full body, 4 days a week, protecting my lower back',
               maxLines: 3,
               textCapitalization: TextCapitalization.sentences,
+              // A sentence needs no new lines, so Return is Done; it and a
+              // tap anywhere else close the keyboard and bring Generate back.
+              textInputAction: TextInputAction.done,
+              onTapOutside: (_) => FocusScope.of(context).unfocus(),
             ),
             const SizedBox(height: 10),
             FsTapRoom(
