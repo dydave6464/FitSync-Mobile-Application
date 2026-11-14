@@ -275,11 +275,16 @@ Future<void> _pumpWithController(
   // Stands in for the server when the pain answer is sent. Left out, the
   // tests that answer nothing never reach it.
   SessionRepository? sessions,
+  // Stands in for GET /plans/active, called on every (re)load. Left out,
+  // the plan is [_plan] every time.
+  WorkoutPlan Function()? loadPlan,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        activePlanProvider.overrideWith((ref) async => _plan),
+        activePlanProvider.overrideWith(
+          (ref) async => loadPlan != null ? loadPlan() : _plan,
+        ),
         if (sessions != null)
           sessionRepositoryProvider.overrideWithValue(sessions),
         activeSessionProvider.overrideWith(controller),
@@ -450,6 +455,76 @@ void main() {
           .resume,
       isTrue,
     );
+  });
+
+  // Undo for a generated plan lasts only until a workout starts on it
+  // (spec 2026-11-14): the server then answers previousPlan null, and the
+  // Plan tab has to ask again or it goes on offering "Bring it back" for a
+  // plan the server will refuse to bring back.
+  testWidgets('a started workout reloads the plan, so its Undo card goes', (
+    tester,
+  ) async {
+    var withPrevious = true;
+    var loads = 0;
+    final controller = _RecordingController();
+    await _pumpWithController(
+      tester,
+      () => controller,
+      loadPlan: () {
+        loads++;
+        return WorkoutPlan(
+          planId: _plan.planId,
+          name: _plan.name,
+          splitStyle: _plan.splitStyle,
+          daysPerWeek: _plan.daysPerWeek,
+          sessionLengthMin: _plan.sessionLengthMin,
+          weekNo: _plan.weekNo,
+          exercises: _plan.exercises,
+          previousPlan: withPrevious
+              ? const PreviousPlan(planId: 3, name: 'Plan 1')
+              : null,
+        );
+      },
+    );
+    expect(loads, 1);
+    expect(find.byKey(const Key('plan.previous')), findsOneWidget);
+
+    // The server's answer changes the moment the session exists.
+    withPrevious = false;
+    await tester.tap(find.byKey(const Key('session.start')));
+    await tester.pumpAndSettle();
+
+    expect(controller.startCalls, 1);
+    expect(find.byType(SessionLoggerScreen), findsOneWidget);
+    expect(loads, 2);
+    expect(
+      find.byKey(const Key('plan.previous'), skipOffstage: false),
+      findsNothing,
+    );
+  });
+
+  testWidgets('a resumed workout does not reload the plan', (tester) async {
+    var loads = 0;
+    final controller = _RecordingController(
+      initial: const ActiveSession(
+        sessionId: 7,
+        status: 'in_progress',
+        sessionDate: '2026-09-08',
+      ),
+    );
+    await _pumpWithController(
+      tester,
+      () => controller,
+      loadPlan: () {
+        loads++;
+        return _plan;
+      },
+    );
+    await tester.tap(find.byKey(const Key('session.start')));
+    await tester.pumpAndSettle();
+    expect(controller.startCalls, 0);
+    expect(find.byType(SessionLoggerScreen), findsOneWidget);
+    expect(loads, 1);
   });
 
   // Beyond the brief -- a failed start (the realistic case: the user's plan

@@ -130,6 +130,7 @@ class _PlanViewState extends ConsumerState<_PlanView> {
     if (_starting) return;
     final controller = ref.read(activeSessionProvider.notifier);
     final messenger = ScaffoldMessenger.of(context);
+    final container = ProviderScope.containerOf(context, listen: false);
     setState(() => _starting = true);
     try {
       if (ref.read(activeSessionProvider).value == null) {
@@ -150,6 +151,14 @@ class _PlanViewState extends ConsumerState<_PlanView> {
           }
         }
         await controller.start();
+        // A workout on this plan ends its Undo (spec 2026-11-14): the
+        // server now answers previousPlan null, so the plan is asked for
+        // again and the "Bring it back" card goes. Done here, where both
+        // providers are in reach, rather than in the session controller,
+        // which would have to import the plans feature (and through it
+        // profile, which imports sessions) to do it. This is the only start
+        // of a plan session; a hand-picked one has no plan to end Undo on.
+        container.invalidate(activePlanProvider);
       }
       if (!mounted) return;
       await Navigator.of(context).push(
