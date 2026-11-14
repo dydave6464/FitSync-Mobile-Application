@@ -109,3 +109,19 @@ test('the stub has no dish classifier: classifyDish answers null', async () => {
   const ml = createMlService({ mode: 'stub' });
   assert.equal(await ml.classifyDish({ imageBase64: 'aGk=', mimeType: 'image/jpeg' }), null);
 });
+
+test('the stub answers plan parameters like derive()', async () => {
+  const stub = require('../src/services/ml/stub');
+  assert.deepEqual(await stub.planParameters({ mainGoal: 'build_muscle', fitnessLevel: 'intermediate' }),
+    { sessionLengthMin: 60, exercisesPerDay: 8, lengthReason: 'goal' });
+  assert.deepEqual(await stub.planParameters({ mainGoal: 'build_muscle', fitnessLevel: 'beginner' }),
+    { sessionLengthMin: 45, exercisesPerDay: 6, lengthReason: 'level' });
+  assert.deepEqual(await stub.planParameters({ mainGoal: 'gain_strength', fitnessLevel: 'intermediate', healthCaution: true }),
+    { sessionLengthMin: 45, exercisesPerDay: 6, lengthReason: 'health' });
+  assert.deepEqual(await stub.planParameters({ mainGoal: 'lose_weight', fitnessLevel: 'intermediate' }),
+    { sessionLengthMin: 45, exercisesPerDay: 6, lengthReason: 'goal' });
+  assert.deepEqual(await stub.planParameters({ mainGoal: 'lose_weight', overrides: { sessionLengthMin: 50 } }),
+    { sessionLengthMin: 45, exercisesPerDay: 6, lengthReason: 'chosen' });
+  assert.deepEqual(await stub.planParameters({}),
+    { sessionLengthMin: 45, exercisesPerDay: 6, lengthReason: 'goal' });
+});

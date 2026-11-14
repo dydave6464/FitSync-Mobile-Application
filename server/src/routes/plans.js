@@ -101,6 +101,16 @@ module.exports = function buildPlansRouter(deps) {
     } catch (err) { next(err); }
   });
 
+  // What "Auto" means for this user right now (spec 2026-11-14, Part 2):
+  // ML's own derive(), so the number shown is the number Generate builds.
+  router.get('/defaults', requireAuth(deps), async (req, res, next) => {
+    try {
+      const profile = await getProfile(deps.pool, req.user.userId);
+      const { sessionLengthMin, exercisesPerDay, lengthReason } = await deps.ml.planParameters({ ...profile });
+      res.json({ data: { sessionLengthMin, exercisesPerDay, lengthReason } });
+    } catch (err) { next(err); }
+  });
+
   router.post('/regenerate', requireAuth(deps), async (req, res, next) => {
     try {
       const userId = req.user.userId;
