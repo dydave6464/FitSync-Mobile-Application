@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -195,8 +197,14 @@ class _SwapRepo implements PlanRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-/// Brings the earlier plan back on request, counting each ask.
+/// Brings the earlier plan back on request, counting each ask. [onRestore]
+/// runs as the server answers; [pending], when set, holds the answer back
+/// until the test completes it.
 class _RestoreRepo implements PlanRepository {
+  _RestoreRepo({this.onRestore, this.pending});
+
+  final void Function()? onRestore;
+  final Completer<void>? pending;
   int restoreCalls = 0;
 
   @override
@@ -205,6 +213,8 @@ class _RestoreRepo implements PlanRepository {
   @override
   Future<WorkoutPlan> restorePrevious() async {
     restoreCalls += 1;
+    if (pending != null) await pending!.future;
+    onRestore?.call();
     return _plan;
   }
 
@@ -235,6 +245,7 @@ Future<void> _pump(
   WorkoutPlan? plan, {
   PlanRepository? repo,
   void Function()? onPlanLoad,
+  WorkoutPlan? Function()? loadPlan,
   List<ExerciseAlternative>? alternatives,
   VoidCallback? onGoToProfile,
   Set<String> completedDays = const <String>{},
@@ -263,7 +274,7 @@ Future<void> _pump(
         ],
         activePlanProvider.overrideWith((ref) async {
           onPlanLoad?.call();
-          return plan;
+          return loadPlan != null ? loadPlan() : plan;
         }),
         // The screen now also watches these two -- the session card's
         // Start/Resume label and the week strip's filled dots.
@@ -926,6 +937,86 @@ void main() {
       expect(repo.restoreCalls, 1);
       await tester.pump();
       expect(find.text('Your previous plan is back.'), findsOneWidget);
+    });
+
+    testWidgets('Bring it back refreshes the plan and the card goes', (
+      tester,
+    ) async {
+      var current = _planWith(
+        previousPlan: const PreviousPlan(planId: 3, name: 'Plan 1'),
+      );
+      var loads = 0;
+      final repo = _RestoreRepo(
+        onRestore: () => current = _planWith(previousPlan: null),
+      );
+      await _pump(
+        tester,
+        null,
+        repo: repo,
+        loadPlan: () => current,
+        onPlanLoad: () => loads++,
+      );
+      expect(loads, 1);
+      expect(find.byKey(const Key('plan.previous')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('plan.previous.bringBack')));
+      await tester.pumpAndSettle();
+      expect(repo.restoreCalls, 1);
+      expect(loads, 2);
+      expect(find.byKey(const Key('plan.previous')), findsNothing);
+    });
+
+    testWidgets('a second tap while bringing back sends nothing', (
+      tester,
+    ) async {
+      final pending = Completer<void>();
+      final repo = _RestoreRepo(pending: pending);
+      await _pump(
+        tester,
+        _planWith(previousPlan: const PreviousPlan(planId: 3, name: 'P')),
+        repo: repo,
+      );
+      final button = find.byKey(const Key('plan.previous.bringBack'));
+      await tester.tap(button);
+      await tester.pump();
+      expect(tester.widget<FsButton>(button).busy, isTrue);
+      await tester.tap(button, warnIfMissed: false);
+      await tester.pump();
+      expect(repo.restoreCalls, 1);
+      pending.complete();
+      await tester.pumpAndSettle();
+      expect(repo.restoreCalls, 1);
+      expect(find.text('Your previous plan is back.'), findsOneWidget);
+      expect(find.textContaining("Couldn't bring back"), findsNothing);
+    });
+
+    testWidgets('at 2x text on a small phone the card text stays readable', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await _pump(
+        tester,
+        _planWith(
+          previousPlan: const PreviousPlan(
+            planId: 3,
+            name: 'Push / Pull / Legs',
+          ),
+        ),
+        repo: _RestoreRepo(),
+        textScale: 2.0,
+      );
+      expect(tester.takeException(), isNull);
+      final text = find.text("This plan replaced 'Push / Pull / Legs'.");
+      expect(tester.getSize(text).width, greaterThanOrEqualTo(180));
+      // The button sits below the words, not squeezing them, at the end.
+      final button = tester.getRect(
+        find.byKey(const Key('plan.previous.bringBack')),
+      );
+      final card = tester.getRect(find.byKey(const Key('plan.previous')));
+      expect(button.top, greaterThanOrEqualTo(tester.getRect(text).bottom));
+      expect(button.right, lessThanOrEqualTo(card.right));
+      expect(button.height, greaterThanOrEqualTo(48));
     });
 
     testWidgets('no previous plan, no card', (tester) async {

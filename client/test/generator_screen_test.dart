@@ -2317,6 +2317,32 @@ void main() {
         find.textContaining("You've started a workout on the new plan"),
         findsOneWidget,
       );
+      // Asking again would only be refused again.
+      expect(find.text('Try again'), findsNothing);
+    });
+
+    testWidgets('a failed Undo that a retry can fix offers Try again', (
+      tester,
+    ) async {
+      final repo = FakePlanRepository(
+        result: _pplPlanReplacing,
+        restoreError: const ApiException('NETWORK_ERROR', 'unreachable'),
+      );
+      await _pumpBehind(tester, repo);
+      await _tapGenerate(tester);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      expect(repo.restoreCalls, 1);
+      expect(
+        find.textContaining("Couldn't bring back your previous plan."),
+        findsOneWidget,
+      );
+      expect(find.textContaining("Couldn't reach FitSync."), findsOneWidget);
+      expect(find.text('Try again'), findsOneWidget);
+      await tester.tap(find.text('Try again'));
+      await tester.pumpAndSettle();
+      expect(repo.restoreCalls, 2);
     });
   });
 }
