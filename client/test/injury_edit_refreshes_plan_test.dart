@@ -1,6 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/features/exercises/data/exercise_repository.dart';
+import 'package:fitsync/features/exercises/domain/exercise.dart';
+import 'package:fitsync/features/exercises/presentation/providers.dart'
+    show exerciseRepositoryProvider, exerciseDetailProvider;
 import 'package:fitsync/features/plans/data/plan_repository.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
@@ -89,6 +93,30 @@ class _FakeSessionRepo implements SessionRepository {
       throw UnimplementedError('${i.memberName} is not used here');
 }
 
+/// Counts exercise fetches: the detail's `contraindicated` flag is worked out
+/// on the server from the injury list, so only a refetch can change it.
+class _FakeExerciseRepo implements ExerciseRepository {
+  int fetchCount = 0;
+
+  @override
+  Future<ExerciseDetail> byId(int id) async {
+    fetchCount += 1;
+    return ExerciseDetail(
+      exerciseId: id,
+      name: 'Exercise $id',
+      muscleGroup: 'chest',
+      equipment: 'barbell',
+      thumbnailUrl: null,
+      animationUrl: null,
+      cues: const [],
+    );
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation i) =>
+      throw UnimplementedError('${i.memberName} is not used here');
+}
+
 void main() {
   test('editing injuries refetches the active plan and session', () async {
     final profileRepo = _FakeProfileRepo();
@@ -124,6 +152,35 @@ void main() {
     // fresh fetch can carry the new one.
     expect(planRepo.fetchCount, 2);
     expect(sessionRepo.fetchCount, 2);
+  });
+
+  // JR-1: an exercise opened before the edit kept its old "loads an injury
+  // you reported" warning, or kept its absence.
+  test('editing injuries refetches a loaded exercise detail', () async {
+    final profileRepo = _FakeProfileRepo();
+    final exerciseRepo = _FakeExerciseRepo();
+    final container = ProviderContainer(
+      overrides: [
+        profileRepositoryProvider.overrideWithValue(profileRepo),
+        planRepositoryProvider.overrideWithValue(_FakePlanRepo()),
+        sessionRepositoryProvider.overrideWithValue(_FakeSessionRepo()),
+        exerciseRepositoryProvider.overrideWithValue(exerciseRepo),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    // Listened, so a refetch can only come from an invalidation.
+    container.listen(exerciseDetailProvider(101), (_, _) {});
+    await container.read(profileProvider.future);
+    await container.read(exerciseDetailProvider(101).future);
+    expect(exerciseRepo.fetchCount, 1);
+
+    await container.read(profileProvider.notifier).setInjuries(
+      const [SelectedInjury(injuryId: 3)],
+    );
+    await container.read(exerciseDetailProvider(101).future);
+
+    expect(exerciseRepo.fetchCount, 2);
   });
 
   // PT-18: the server derives the plan's days a week from the chosen days,

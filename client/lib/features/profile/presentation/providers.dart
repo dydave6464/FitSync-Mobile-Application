@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/units.dart';
 import '../../exercises/presentation/providers.dart'
-    show apiClientProvider, apiRetryPolicy;
+    show apiClientProvider, apiRetryPolicy, exerciseDetailProvider;
 import '../../nutrition/presentation/providers.dart'
     show mealSuggestionsProvider, nutritionDayProvider;
 import '../../plans/presentation/providers.dart' show activePlanProvider;
@@ -88,9 +88,13 @@ class ProfileNotifier extends AsyncNotifier<Profile> {
       await ref.read(profileRepositoryProvider).setInjuries(injuries),
     );
     // Both hold exercises tagged with `coaching` from the OLD injury list --
-    // only a fresh fetch reads the gate again under the new one.
+    // only a fresh fetch reads the gate again under the new one. The same
+    // goes for every exercise detail opened so far: its `contraindicated`
+    // flag, behind the "loads an injury you reported" warning, was worked out
+    // from the old list too (the whole family).
     ref.invalidate(activePlanProvider);
     ref.invalidate(activeSessionProvider);
+    ref.invalidate(exerciseDetailProvider);
   }
 
   Future<void> setTrainingDays(List<int> weekdays) async {
