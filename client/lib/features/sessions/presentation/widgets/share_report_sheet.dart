@@ -97,6 +97,9 @@ Future<void> showShareReportSheet(
     // 9/16 cap, so a wide accessibility text scale cannot push the button
     // past the bottom edge.
     isScrollControlled: true,
+    // Scroll-controlled, the sheet may grow to the full height of the screen;
+    // this keeps its handle and title out from under a status bar or notch.
+    useSafeArea: true,
     builder: (_) => _ShareReportSheet(period: period),
   );
 }
