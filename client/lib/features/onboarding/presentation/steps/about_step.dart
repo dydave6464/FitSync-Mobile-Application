@@ -569,20 +569,26 @@ class _AboutStepState extends State<AboutStep> {
         ] else
           Align(
             alignment: AlignmentDirectional.centerStart,
-            child: TextButton.icon(
-              key: const Key('goalWeight.add'),
-              style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
-              onPressed: () {
-                setState(() => _showGoalWeight = true);
-                // The field exists from the next frame. Focus it then, which
-                // also takes the cursor from the weight just typed: a tap
-                // outside a field does not unfocus it on a phone.
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted) _goalWeightFocus.requestFocus();
-                });
-              },
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('Add a goal weight (optional)'),
+            // Inside the text fields' tap group: otherwise pointer-down here
+            // counts as a tap outside the Weight box just typed in, which lets
+            // go and closes the keypad, and the goal weight's focus below
+            // opens it again.
+            child: TextFieldTapRegion(
+              child: TextButton.icon(
+                key: const Key('goalWeight.add'),
+                style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+                onPressed: () {
+                  setState(() => _showGoalWeight = true);
+                  // The field exists from the next frame. Focus it then,
+                  // which takes the cursor straight from the weight just
+                  // typed, so the keypad stays up.
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) _goalWeightFocus.requestFocus();
+                  });
+                },
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Add a goal weight (optional)'),
+              ),
             ),
           ),
         const SizedBox(height: 18),
