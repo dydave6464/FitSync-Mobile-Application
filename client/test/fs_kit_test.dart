@@ -2700,6 +2700,93 @@ void main() {
       expect(find.text('Discard your changes?'), findsNothing);
     });
   });
+
+  // NU-3, AD-1: the iPhone number and decimal pads have no return key, and
+  // a finger on a phone does not take the cursor out of a field by itself,
+  // so a focused number box kept its keypad up over the rest of the form.
+  group('a tap outside a field', () {
+    bool focused(WidgetTester tester) => tester
+        .state<EditableTextState>(find.byType(EditableText))
+        .widget
+        .focusNode
+        .hasFocus;
+
+    Future<void> focusThenTapOutside(WidgetTester tester, Widget field) async {
+      await tester.pumpWidget(host(SizedBox(width: 200, child: field)));
+      await tester.tap(find.byKey(const Key('f')));
+      await tester.pump();
+      expect(focused(tester), isTrue);
+      // Top-left of the screen: empty, and well away from the centred field.
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pump();
+    }
+
+    testWidgets('closes the keypad of a number FsField', (tester) async {
+      final controller = TextEditingController();
+      addTearDown(controller.dispose);
+      await focusThenTapOutside(
+        tester,
+        FsField(
+          controller: controller,
+          hint: 'kcal',
+          fieldKey: const Key('f'),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        ),
+      );
+      expect(focused(tester), isFalse);
+    });
+
+    testWidgets('leaves a text FsField focused', (tester) async {
+      // A text keyboard has its own return key; closing it on every stray
+      // touch would only get in the way.
+      final controller = TextEditingController();
+      addTearDown(controller.dispose);
+      await focusThenTapOutside(
+        tester,
+        FsField(controller: controller, hint: 'Name', fieldKey: const Key('f')),
+      );
+      expect(focused(tester), isTrue);
+    });
+
+    testWidgets('runs a number FsField\'s own onTapOutside instead', (
+      tester,
+    ) async {
+      final controller = TextEditingController();
+      addTearDown(controller.dispose);
+      var calls = 0;
+      await focusThenTapOutside(
+        tester,
+        FsField(
+          controller: controller,
+          hint: 'kcal',
+          fieldKey: const Key('f'),
+          keyboardType: TextInputType.number,
+          onTapOutside: (_) => calls += 1,
+        ),
+      );
+      expect(calls, 1);
+      expect(
+        focused(tester),
+        isTrue,
+        reason: "the caller's callback replaces the default unfocus",
+      );
+    });
+
+    testWidgets('closes the keypad of an FsStatField', (tester) async {
+      final controller = TextEditingController();
+      addTearDown(controller.dispose);
+      await focusThenTapOutside(
+        tester,
+        FsStatField(
+          fieldKey: const Key('f'),
+          label: 'Height',
+          unit: 'cm',
+          controller: controller,
+        ),
+      );
+      expect(focused(tester), isFalse);
+    });
+  });
 }
 
 void _noop() {}
