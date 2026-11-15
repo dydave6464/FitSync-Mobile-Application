@@ -4,7 +4,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fitsync/features/exercises/data/exercise_repository.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart'
-    show exerciseRepositoryProvider, exerciseDetailProvider;
+    show
+        exerciseRepositoryProvider,
+        exerciseDetailProvider,
+        exerciseListProvider;
 import 'package:fitsync/features/plans/data/plan_repository.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
@@ -93,10 +96,24 @@ class _FakeSessionRepo implements SessionRepository {
       throw UnimplementedError('${i.memberName} is not used here');
 }
 
-/// Counts exercise fetches: the detail's `contraindicated` flag is worked out
-/// on the server from the injury list, so only a refetch can change it.
+/// Counts exercise fetches: the detail's and each library row's
+/// `contraindicated` flag is worked out on the server from the injury list,
+/// so only a refetch can change it.
 class _FakeExerciseRepo implements ExerciseRepository {
   int fetchCount = 0;
+  int listCount = 0;
+
+  @override
+  Future<ExercisePage> list({
+    List<String> muscleGroups = const [],
+    String? equipment,
+    String? search,
+    int page = 1,
+    int limit = 20,
+  }) async {
+    listCount += 1;
+    return const ExercisePage(items: [], page: 1, limit: 20, total: 0);
+  }
 
   @override
   Future<ExerciseDetail> byId(int id) async {
@@ -181,6 +198,35 @@ void main() {
     await container.read(exerciseDetailProvider(101).future);
 
     expect(exerciseRepo.fetchCount, 2);
+  });
+
+  // The library list's rows carry the same per-user flag behind the tile
+  // badge and the pick bar's warning, and the list is not autoDispose.
+  test('editing injuries refetches the exercise library list', () async {
+    final profileRepo = _FakeProfileRepo();
+    final exerciseRepo = _FakeExerciseRepo();
+    final container = ProviderContainer(
+      overrides: [
+        profileRepositoryProvider.overrideWithValue(profileRepo),
+        planRepositoryProvider.overrideWithValue(_FakePlanRepo()),
+        sessionRepositoryProvider.overrideWithValue(_FakeSessionRepo()),
+        exerciseRepositoryProvider.overrideWithValue(exerciseRepo),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    // Listened, so a refetch can only come from an invalidation.
+    container.listen(exerciseListProvider, (_, _) {});
+    await container.read(profileProvider.future);
+    await container.read(exerciseListProvider.future);
+    expect(exerciseRepo.listCount, 1);
+
+    await container.read(profileProvider.notifier).setInjuries(
+      const [SelectedInjury(injuryId: 3)],
+    );
+    await container.read(exerciseListProvider.future);
+
+    expect(exerciseRepo.listCount, 2);
   });
 
   // PT-18: the server derives the plan's days a week from the chosen days,

@@ -2,7 +2,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/units.dart';
 import '../../exercises/presentation/providers.dart'
-    show apiClientProvider, apiRetryPolicy, exerciseDetailProvider;
+    show
+        apiClientProvider,
+        apiRetryPolicy,
+        exerciseDetailProvider,
+        exerciseListProvider;
 import '../../nutrition/presentation/providers.dart'
     show mealSuggestionsProvider, nutritionDayProvider;
 import '../../plans/presentation/providers.dart' show activePlanProvider;
@@ -91,10 +95,13 @@ class ProfileNotifier extends AsyncNotifier<Profile> {
     // only a fresh fetch reads the gate again under the new one. The same
     // goes for every exercise detail opened so far: its `contraindicated`
     // flag, behind the "loads an injury you reported" warning, was worked out
-    // from the old list too (the whole family).
+    // from the old list too (the whole family). The library list's rows carry
+    // the same flag (the tile badge, and the pick bar ORs it with the
+    // detail's), and the list is kept alive, so it refetches as well.
     ref.invalidate(activePlanProvider);
     ref.invalidate(activeSessionProvider);
     ref.invalidate(exerciseDetailProvider);
+    ref.invalidate(exerciseListProvider);
   }
 
   Future<void> setTrainingDays(List<int> weekdays) async {
