@@ -210,6 +210,14 @@ class AuthController extends AsyncNotifier<AuthState> {
   /// `currentAdProvider` and `adViewsReportedProvider` are kept for the
   /// session: the ad on the cards, and the views already reported. The next
   /// account starts both afresh.
+  ///
+  /// `bodyWeightProvider` holds the weigh-ins Progress, the weigh-ins list and
+  /// the coach report draw, and that list's delete is keyed by day: a leftover
+  /// list would delete the next account's own weigh-in for the same date.
+  /// `restSecondsProvider` is the rest length stored for this account.
+  /// `exerciseDetailProvider` is the one part of the catalogue that is not the
+  /// same for everyone: its `contraindicated` flag, behind the "loads an
+  /// injury you reported" warning, is worked out for the signed-in user.
   void _clearUserScopedCaches() {
     ref.invalidate(profileProvider);
     ref.invalidate(activePlanProvider);
@@ -237,6 +245,9 @@ class AuthController extends AsyncNotifier<AuthState> {
     ref.invalidate(proPendingCheckoutProvider);
     ref.invalidate(currentAdProvider);
     ref.invalidate(adViewsReportedProvider);
+    ref.invalidate(bodyWeightProvider);
+    ref.invalidate(restSecondsProvider);
+    ref.invalidate(exerciseDetailProvider);
   }
 
   Future<void> signOut() => _signOutLocally();
