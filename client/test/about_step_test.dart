@@ -265,7 +265,8 @@ void main() {
     });
 
     // The usual path: the weight was just typed, so that field still has
-    // focus when Add is tapped (a tap outside a field does not unfocus it).
+    // focus when Add is tapped (the button is in the fields' tap group, so
+    // the tap does not take it away first).
     testWidgets(
       'tapping Add right after typing the weight moves the cursor to goal weight',
       (tester) async {
@@ -292,6 +293,49 @@ void main() {
 
         expect(editable(tester, 'goalWeightKg').focusNode.hasFocus, isTrue);
         expect(editable(tester, 'weightKg').focusNode.hasFocus, isFalse);
+      },
+    );
+
+    // The keypad must not drop and rise again on the way: the cursor goes
+    // from Weight straight to the goal weight, never to no field at all.
+    testWidgets(
+      'tapping Add right after typing the weight keeps a field focused '
+      'throughout',
+      (tester) async {
+        EditableText editable(WidgetTester t, String key) =>
+            t.widget<EditableText>(
+              find.descendant(
+                of: find.byKey(Key(key)),
+                matching: find.byType(EditableText),
+              ),
+            );
+        final seen = <FocusNode?>[];
+        void record() => seen.add(FocusManager.instance.primaryFocus);
+        await _pumpAndEdit(tester, (t) async {
+          await t.enterText(
+            find.descendant(
+              of: find.byKey(const Key('weightKg')),
+              matching: find.byType(EditableText),
+            ),
+            '72',
+          );
+          await t.pumpAndSettle();
+          await t.ensureVisible(find.byKey(const Key('goalWeight.add')));
+          await t.pumpAndSettle();
+          FocusManager.instance.addListener(record);
+          await t.tap(find.byKey(const Key('goalWeight.add')));
+          await t.pumpAndSettle();
+          FocusManager.instance.removeListener(record);
+        }, goals: const ['build_muscle']);
+
+        final weight = editable(tester, 'weightKg').focusNode;
+        final goal = editable(tester, 'goalWeightKg').focusNode;
+        expect(goal.hasFocus, isTrue);
+        expect(
+          seen.where((node) => node != weight && node != goal),
+          isEmpty,
+          reason: 'the keypad closed between the two fields',
+        );
       },
     );
 

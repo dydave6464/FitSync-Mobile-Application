@@ -232,6 +232,39 @@ void main() {
     expectSheetHeaderAtSideInset(tester, title: 'Share with coach');
   });
 
+  // TR-1: once the link exists the sheet is taller than the space below the
+  // status bar. Scroll-controlled, it may grow to the full screen height, so
+  // without the safe area its handle, title and × slide under the clock and
+  // notch.
+  testWidgets('keeps its header below the status bar once the link exists', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 700);
+    tester.view.devicePixelRatio = 1;
+    tester.view.padding = const FakeViewPadding(top: 47, bottom: 34);
+    addTearDown(tester.view.reset);
+    _stubClipboard(tester);
+
+    await _open(tester);
+    await _tap(tester, find.byKey(const Key('share.copy')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('share.open')), findsOneWidget);
+
+    expect(
+      tester.getTopLeft(find.byType(BottomSheet)).dy,
+      greaterThanOrEqualTo(47),
+      reason: 'the sheet top',
+    );
+    // Reaching Copy link scrolled the content; scroll back up to the header.
+    await tester.ensureVisible(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getTopLeft(find.byTooltip('Close')).dy,
+      greaterThanOrEqualTo(47),
+      reason: 'the ×',
+    );
+  });
+
   testWidgets('has the shared sheet header, and its Close shuts the sheet', (
     tester,
   ) async {

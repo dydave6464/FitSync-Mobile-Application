@@ -192,8 +192,8 @@ class AuthController extends AsyncNotifier<AuthState> {
   /// library to a list narrowed by a word someone else typed.
   ///
   /// Lookup data (`equipmentOptionsProvider`, `injuryOptionsProvider`, the
-  /// exercise catalogue itself) is the same for everyone and is deliberately
-  /// kept.
+  /// library's filter options) is the same for everyone and is deliberately
+  /// kept. The exercises themselves are not: see the end of this list.
   ///
   /// `routineTodayProvider`, `homeSummaryProvider`, `trainingSummaryProvider`,
   /// `trainingAnalyticsProvider`, `sessionHistoryProvider`,
@@ -210,33 +210,58 @@ class AuthController extends AsyncNotifier<AuthState> {
   /// `currentAdProvider` and `adViewsReportedProvider` are kept for the
   /// session: the ad on the cards, and the views already reported. The next
   /// account starts both afresh.
+  ///
+  /// `bodyWeightProvider` holds the weigh-ins Progress, the weigh-ins list and
+  /// the coach report draw, and that list's delete is keyed by day: a leftover
+  /// list would delete the next account's own weigh-in for the same date.
+  /// `restSecondsProvider` is the rest length stored for this account.
+  /// `exerciseDetailProvider` and `exerciseListProvider` are the parts of the
+  /// catalogue that are not the same for everyone: the detail and each
+  /// library row carry a `contraindicated` flag, behind the "loads an injury
+  /// you reported" warning and badge, worked out for the signed-in user.
+  /// Resetting `selectedFiltersProvider` does not rebuild the list when the
+  /// filters were already at their default (the new value equals the old, so
+  /// nothing is notified), so the list is cleared here itself.
+  /// `recentExercisesProvider` is autoDispose and needs no entry.
+  ///
+  /// Every entry is invalidated as a reload. A plain invalidate is a refresh,
+  /// and `.when(...)` with its defaults keeps drawing the previous account's
+  /// data until the next account's own arrives; after a reload it draws the
+  /// loading branch instead. This runs only on a sign-in or a sign-out, so the
+  /// cost is a spinner during an account switch. A reload still carries the
+  /// old data in `.value`, so a screen that reads `.value` directly must not
+  /// rely on this alone.
   void _clearUserScopedCaches() {
-    ref.invalidate(profileProvider);
-    ref.invalidate(activePlanProvider);
-    ref.invalidate(activeSessionProvider);
-    ref.invalidate(completedDaysProvider);
-    ref.invalidate(workoutDraftProvider);
-    ref.invalidate(selectedFiltersProvider);
-    ref.invalidate(routineTodayProvider);
-    ref.invalidate(homeSummaryProvider);
-    ref.invalidate(trainingSummaryProvider);
-    ref.invalidate(trainingAnalyticsProvider);
-    ref.invalidate(sessionHistoryProvider);
-    ref.invalidate(lastWorkoutProvider);
-    ref.invalidate(pendingOutcomeProvider);
-    ref.invalidate(recoveryOverviewProvider);
-    ref.invalidate(streakProvider);
-    ref.invalidate(reminderSettingsProvider);
-    ref.invalidate(activityProvider);
-    ref.invalidate(stepAccessProvider);
-    ref.invalidate(nutritionDayProvider);
-    ref.invalidate(nutritionDateProvider);
-    ref.invalidate(recentFoodsProvider);
-    ref.invalidate(mealSuggestionsProvider);
-    ref.invalidate(planReadyProvider);
-    ref.invalidate(proPendingCheckoutProvider);
-    ref.invalidate(currentAdProvider);
-    ref.invalidate(adViewsReportedProvider);
+    ref.invalidate(profileProvider, asReload: true);
+    ref.invalidate(activePlanProvider, asReload: true);
+    ref.invalidate(activeSessionProvider, asReload: true);
+    ref.invalidate(completedDaysProvider, asReload: true);
+    ref.invalidate(workoutDraftProvider, asReload: true);
+    ref.invalidate(selectedFiltersProvider, asReload: true);
+    ref.invalidate(routineTodayProvider, asReload: true);
+    ref.invalidate(homeSummaryProvider, asReload: true);
+    ref.invalidate(trainingSummaryProvider, asReload: true);
+    ref.invalidate(trainingAnalyticsProvider, asReload: true);
+    ref.invalidate(sessionHistoryProvider, asReload: true);
+    ref.invalidate(lastWorkoutProvider, asReload: true);
+    ref.invalidate(pendingOutcomeProvider, asReload: true);
+    ref.invalidate(recoveryOverviewProvider, asReload: true);
+    ref.invalidate(streakProvider, asReload: true);
+    ref.invalidate(reminderSettingsProvider, asReload: true);
+    ref.invalidate(activityProvider, asReload: true);
+    ref.invalidate(stepAccessProvider, asReload: true);
+    ref.invalidate(nutritionDayProvider, asReload: true);
+    ref.invalidate(nutritionDateProvider, asReload: true);
+    ref.invalidate(recentFoodsProvider, asReload: true);
+    ref.invalidate(mealSuggestionsProvider, asReload: true);
+    ref.invalidate(planReadyProvider, asReload: true);
+    ref.invalidate(proPendingCheckoutProvider, asReload: true);
+    ref.invalidate(currentAdProvider, asReload: true);
+    ref.invalidate(adViewsReportedProvider, asReload: true);
+    ref.invalidate(bodyWeightProvider, asReload: true);
+    ref.invalidate(restSecondsProvider, asReload: true);
+    ref.invalidate(exerciseDetailProvider, asReload: true);
+    ref.invalidate(exerciseListProvider, asReload: true);
   }
 
   Future<void> signOut() => _signOutLocally();

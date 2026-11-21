@@ -8,6 +8,7 @@ import 'package:fitsync/features/auth/data/auth_repository.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
 import 'package:fitsync/features/auth/domain/sign_in_outcome.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
+import 'package:fitsync/features/exercises/data/exercise_repository.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
 import 'package:fitsync/features/pro/domain/pro_status.dart';
@@ -17,6 +18,7 @@ import 'package:fitsync/features/profile/domain/body_weight.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/sessions/data/session_repository.dart';
+import 'package:fitsync/features/sessions/data/training_settings_repository.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/domain/session_detail.dart';
 import 'package:fitsync/features/sessions/domain/session_history.dart';
@@ -179,6 +181,108 @@ class SequenceSessionRepository implements SessionRepository {
     required String period,
     required Map<String, bool> include,
   }) => throw UnimplementedError();
+}
+
+/// Hands out a different weigh-in series on each call, so a cached one is
+/// distinguishable from a freshly loaded one.
+class SequenceBodyWeightRepository extends SequenceProfileRepository {
+  SequenceBodyWeightRepository(this._series)
+    : super([_profile(userId: 1, email: 'a@b.c')]);
+
+  final List<BodyWeightSeries> _series;
+  int weightLoads = 0;
+
+  @override
+  Future<BodyWeightSeries> bodyWeight(String period) async {
+    final s = _series[weightLoads.clamp(0, _series.length - 1)];
+    weightLoads += 1;
+    return s;
+  }
+}
+
+BodyWeightSeries _weighIn(String loggedOn, double weightKg) => BodyWeightSeries(
+  widened: false,
+  points: [BodyWeightPoint(loggedOn: loggedOn, weightKg: weightKg)],
+  reference: null,
+  unit: 'kg',
+);
+
+/// Hands out a different rest length on each call.
+class SequenceTrainingSettingsRepository implements TrainingSettingsRepository {
+  SequenceTrainingSettingsRepository(this._seconds);
+
+  final List<int> _seconds;
+  int loads = 0;
+
+  @override
+  Future<int> restSeconds() async {
+    final s = _seconds[loads.clamp(0, _seconds.length - 1)];
+    loads += 1;
+    return s;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation i) =>
+      throw UnimplementedError('${i.memberName} is not used here');
+}
+
+/// Hands out the same exercise with a different `contraindicated` flag on
+/// each call: the server works the flag out for whoever is signed in. The
+/// detail ([byId]) and the library list ([list]) keep separate counts.
+class SequenceExerciseRepository implements ExerciseRepository {
+  SequenceExerciseRepository(this._contraindicated);
+
+  final List<bool> _contraindicated;
+  int loads = 0;
+  int listLoads = 0;
+
+  @override
+  Future<ExercisePage> list({
+    List<String> muscleGroups = const [],
+    String? equipment,
+    String? search,
+    int page = 1,
+    int limit = 20,
+  }) async {
+    final flag =
+        _contraindicated[listLoads.clamp(0, _contraindicated.length - 1)];
+    listLoads += 1;
+    return ExercisePage(
+      items: [
+        ExerciseSummary(
+          exerciseId: 101,
+          name: 'Exercise 101',
+          muscleGroup: 'chest',
+          equipment: 'barbell',
+          thumbnailUrl: null,
+          contraindicated: flag,
+        ),
+      ],
+      page: page,
+      limit: limit,
+      total: 1,
+    );
+  }
+
+  @override
+  Future<ExerciseDetail> byId(int id) async {
+    final flag = _contraindicated[loads.clamp(0, _contraindicated.length - 1)];
+    loads += 1;
+    return ExerciseDetail(
+      exerciseId: id,
+      name: 'Exercise $id',
+      muscleGroup: 'chest',
+      equipment: 'barbell',
+      thumbnailUrl: null,
+      animationUrl: null,
+      cues: const [],
+      contraindicated: flag,
+    );
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation i) =>
+      throw UnimplementedError('${i.memberName} is not used here');
 }
 
 class FakeAuthRepository implements AuthRepository {
@@ -470,6 +574,269 @@ void main() {
       expect(container.read(adViewsReportedProvider), isEmpty);
     },
   );
+
+  // JR-1: three more per-account caches outlived the sign-out. Each is
+  // listened to, as a screen would, so a refetch can only come from the
+  // sign-out clearing it.
+  test("signing out drops the previous account's weigh-ins", () async {
+    // Progress, the weigh-ins list and the coach report all read this. A
+    // leftover list is worse than stale: its delete is keyed by day, so it
+    // would remove the next account's own weigh-in for that date.
+    final profiles = SequenceBodyWeightRepository([
+      _weighIn('2026-11-01', 80),
+      _weighIn('2026-11-02', 55),
+    ]);
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('token-for-juan');
+    final container = ProviderContainer(
+      overrides: [
+        tokenStoreProvider.overrideWithValue(tokens),
+        authRepositoryProvider.overrideWithValue(FakeAuthRepository(tokens)),
+        profileRepositoryProvider.overrideWithValue(profiles),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container.listen(bodyWeightProvider('month'), (_, _) {});
+    expect(
+      (await container.read(bodyWeightProvider('month').future))
+          .points
+          .single
+          .weightKg,
+      80,
+    );
+    expect(profiles.weightLoads, 1);
+
+    await container.read(authControllerProvider.notifier).signOut();
+
+    expect(
+      (await container.read(bodyWeightProvider('month').future))
+          .points
+          .single
+          .weightKg,
+      55,
+      reason: "the next account was shown the previous account's weigh-ins",
+    );
+    expect(
+      profiles.weightLoads,
+      2,
+      reason: 'the weigh-ins were not re-fetched',
+    );
+  });
+
+  test("signing out drops the previous account's rest length", () async {
+    final settings = SequenceTrainingSettingsRepository([150, 60]);
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('token-for-juan');
+    final container = ProviderContainer(
+      overrides: [
+        tokenStoreProvider.overrideWithValue(tokens),
+        authRepositoryProvider.overrideWithValue(FakeAuthRepository(tokens)),
+        profileRepositoryProvider.overrideWithValue(
+          SequenceProfileRepository([_profile(userId: 1, email: 'a@b.c')]),
+        ),
+        trainingSettingsRepositoryProvider.overrideWithValue(settings),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container.listen(restSecondsProvider, (_, _) {});
+    expect(await container.read(restSecondsProvider.future), 150);
+    expect(settings.loads, 1);
+
+    await container.read(authControllerProvider.notifier).signOut();
+
+    expect(
+      await container.read(restSecondsProvider.future),
+      60,
+      reason: "the rest timer started from the previous account's length",
+    );
+    expect(settings.loads, 2, reason: 'the rest length was not re-fetched');
+  });
+
+  test("signing out drops the previous account's injury warning", () async {
+    // `contraindicated` is worked out on the server for the signed-in user:
+    // Juan's shoulder injury flags this exercise, Maria has none.
+    final exercises = SequenceExerciseRepository([true, false]);
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('token-for-juan');
+    final container = ProviderContainer(
+      overrides: [
+        tokenStoreProvider.overrideWithValue(tokens),
+        authRepositoryProvider.overrideWithValue(FakeAuthRepository(tokens)),
+        profileRepositoryProvider.overrideWithValue(
+          SequenceProfileRepository([_profile(userId: 1, email: 'a@b.c')]),
+        ),
+        exerciseRepositoryProvider.overrideWithValue(exercises),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container.listen(exerciseDetailProvider(101), (_, _) {});
+    expect(
+      (await container.read(exerciseDetailProvider(101).future))
+          .contraindicated,
+      isTrue,
+    );
+    expect(exercises.loads, 1);
+
+    await container.read(authControllerProvider.notifier).signOut();
+
+    expect(
+      (await container.read(exerciseDetailProvider(101).future))
+          .contraindicated,
+      isFalse,
+      reason: "the next account was shown the previous account's warning",
+    );
+    expect(exercises.loads, 2, reason: 'the exercise was not re-fetched');
+  });
+
+  test(
+    "signing out drops the previous account's exercise library rows",
+    () async {
+      // Each library row carries the same per-user `contraindicated` flag as
+      // the detail. Juan leaves the filters at their default, so resetting
+      // the filters changes nothing a dependent could notice: the list
+      // itself has to be dropped.
+      final exercises = SequenceExerciseRepository([true, false]);
+      final tokens = TokenStore(backing: InMemorySecureStore());
+      await tokens.write('token-for-juan');
+      final container = ProviderContainer(
+        overrides: [
+          tokenStoreProvider.overrideWithValue(tokens),
+          authRepositoryProvider.overrideWithValue(FakeAuthRepository(tokens)),
+          profileRepositoryProvider.overrideWithValue(
+            SequenceProfileRepository([_profile(userId: 1, email: 'a@b.c')]),
+          ),
+          exerciseRepositoryProvider.overrideWithValue(exercises),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container.listen(exerciseListProvider, (_, _) {});
+      expect(container.read(selectedFiltersProvider).isEmpty, isTrue);
+      final before = await container.read(exerciseListProvider.future);
+      expect(before.items.single.contraindicated, isTrue);
+      expect(exercises.listLoads, 1);
+
+      await container.read(authControllerProvider.notifier).signOut();
+
+      // The library screen draws `listing.when(...)` with its defaults. A
+      // plain refresh keeps Juan's rows as the data branch until the next
+      // page arrives; a reload shows the loading branch instead.
+      final first = container.read(exerciseListProvider);
+      expect(
+        first.when(
+          data: (page) => 'data',
+          loading: () => 'loading',
+          error: (_, _) => 'error',
+        ),
+        'loading',
+        reason: "the next account's first frame drew the previous rows",
+      );
+      expect(first.isReloading, isTrue);
+
+      final after = await container.read(exerciseListProvider.future);
+      expect(
+        after.items.single.contraindicated,
+        isFalse,
+        reason: "the next account was shown the previous account's badges",
+      );
+      expect(exercises.listLoads, 2, reason: 'the list was not re-fetched');
+    },
+  );
+
+  // The same flash on the other screens: Home draws `profile.when(...)` and
+  // Progress `bodyWeight.when(...)`, both with their defaults. A plain
+  // refresh hands the next account the previous name and weigh-ins as the
+  // data branch until its own arrive; a reload shows the loading branch.
+  String branch<T>(AsyncValue<T> value) => value.when(
+    data: (_) => 'data',
+    loading: () => 'loading',
+    error: (_, _) => 'error',
+  );
+
+  test("the next account's first frame of the profile is loading, not the "
+      "previous account's", () async {
+    final profiles = SequenceProfileRepository([
+      _profile(userId: 1, email: 'juan@example.com'),
+      _profile(userId: 2, email: 'maria@example.com'),
+    ]);
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('token-for-juan');
+    final container = ProviderContainer(
+      overrides: [
+        tokenStoreProvider.overrideWithValue(tokens),
+        authRepositoryProvider.overrideWithValue(FakeAuthRepository(tokens)),
+        profileRepositoryProvider.overrideWithValue(profiles),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container.listen(profileProvider, (_, _) {});
+    expect(
+      (await container.read(profileProvider.future)).email,
+      'juan@example.com',
+    );
+
+    await container.read(authControllerProvider.notifier).signOut();
+
+    final first = container.read(profileProvider);
+    expect(
+      branch(first),
+      'loading',
+      reason: "the next account's first frame drew the previous profile",
+    );
+    expect(first.isReloading, isTrue);
+    expect(
+      (await container.read(profileProvider.future)).email,
+      'maria@example.com',
+    );
+  });
+
+  test("the next account's first frame of the weigh-ins is loading, not the "
+      "previous account's", () async {
+    final profiles = SequenceBodyWeightRepository([
+      _weighIn('2026-11-01', 80),
+      _weighIn('2026-11-02', 55),
+    ]);
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('token-for-juan');
+    final container = ProviderContainer(
+      overrides: [
+        tokenStoreProvider.overrideWithValue(tokens),
+        authRepositoryProvider.overrideWithValue(FakeAuthRepository(tokens)),
+        profileRepositoryProvider.overrideWithValue(profiles),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container.listen(bodyWeightProvider('month'), (_, _) {});
+    expect(
+      (await container.read(bodyWeightProvider('month').future))
+          .points
+          .single
+          .weightKg,
+      80,
+    );
+
+    await container.read(authControllerProvider.notifier).signOut();
+
+    final first = container.read(bodyWeightProvider('month'));
+    expect(
+      branch(first),
+      'loading',
+      reason: "the next account's first frame drew the previous weigh-ins",
+    );
+    expect(first.isReloading, isTrue);
+    expect(
+      (await container.read(bodyWeightProvider('month').future))
+          .points
+          .single
+          .weightKg,
+      55,
+    );
+  });
 
   test('signing out clears the stored token', () async {
     final tokens = TokenStore(backing: InMemorySecureStore());

@@ -164,6 +164,10 @@ class ExerciseListNotifier extends AsyncNotifier<ExerciseListState> {
 
     state = AsyncData(current.copyWith(loadingMore: true));
 
+    // The Ref of the build this page belongs to. The notifier itself outlives
+    // a rebuild, and its `ref` getter moves on to the new build's Ref, so
+    // only this captured one can tell that the list was rebuilt meanwhile.
+    final ref = this.ref;
     final filters = ref.read(selectedFiltersProvider);
     final repo = ref.read(exerciseRepositoryProvider);
 
@@ -174,35 +178,23 @@ class ExerciseListNotifier extends AsyncNotifier<ExerciseListState> {
         search: filters.search,
         page: current.page + 1,
       );
+      // The list was rebuilt while this request was in flight: an injury
+      // edit or a sign-out invalidates it without touching SelectedFilters,
+      // so the equality check below cannot see that. The captured Ref stops
+      // being mounted once the list actually rebuilds, which for a list no
+      // one is listening to is only at its next read. A response landing
+      // before that is written, and the rebuild then replaces it. After it,
+      // the response belongs to a list that is gone (for a sign-out, to
+      // another account). Drop it; reading through the old Ref would also
+      // throw UnmountedRefException.
+      if (!ref.mounted) return;
       // The selection may have changed while this request was in flight —
       // build() already reran and produced a fresh state for it. Applying
       // this response on top would silently show the old filter's data
       // under the new selection, so discard it instead.
       //
-      // Known gap, left alone on purpose: A -> B -> A. If the user switches
-      // away from a filter and back while an old request for A is still in
-      // flight, this equality check compares the captured `filters` against
-      // the current selection and finds them equal again, even though
-      // build() reran in between and this response is stale with respect to
-      // it. The response still gets merged in.
-      //
-      // That is fine today because the merge is still correct data for the
-      // selected filter: the catalogue is read-only with deterministic
-      // ordering, so a stale page for filter A is identical to a fresh page
-      // for filter A. The only visible artefact is a brief flicker (items
-      // from the in-flight page appearing after the rebuilt list already
-      // rendered) that self-heals on the next successful fetch.
-      //
-      // Reach for a generation counter instead of this value-equality guard
-      // if any of these become true:
-      //   - a write path is added, so page 1 (or any page) can change
-      //     between the two A requests;
-      //   - results become per-user or otherwise not deterministic, so a
-      //     stale page for filter A is no longer guaranteed to match a
-      //     fresh one;
-      //   - any caller invalidates this list provider without changing
-      //     SelectedFilters — value equality is blind to that by
-      //     construction, since the filters object never actually changes.
+      // A -> B -> A needs no extra care: switching filters rebuilds the
+      // list, so the mounted check above already drops the old A page.
       if (filters != ref.read(selectedFiltersProvider)) return;
       state = AsyncData(
         current.copyWith(
@@ -214,6 +206,7 @@ class ExerciseListNotifier extends AsyncNotifier<ExerciseListState> {
         ),
       );
     } catch (err, stack) {
+      if (!ref.mounted) return;
       if (filters != ref.read(selectedFiltersProvider)) return;
       // A failed "load more" must not discard the pages already shown.
       state = AsyncData(current.copyWith(loadingMore: false));

@@ -432,6 +432,11 @@ class FsChip extends StatelessWidget {
   );
 }
 
+/// Takes the cursor out of whichever field has it, which closes the
+/// keyboard. The tap-outside default of the kit's number fields.
+void _letGo(PointerDownEvent event) =>
+    FocusManager.instance.primaryFocus?.unfocus();
+
 /// `.field` — 52px, 16px radius, surface, accent border on focus.
 class FsField extends StatelessWidget {
   const FsField({
@@ -495,11 +500,17 @@ class FsField extends StatelessWidget {
   final ValueChanged<String>? onSubmitted;
   final TextInputAction? textInputAction;
 
-  /// Called on a pointer down anywhere outside the field. On a phone the
-  /// field's default does nothing, and iOS has no back key to close the
-  /// keyboard, so a screen whose keyboard can hide its controls passes one
-  /// that unfocuses.
+  /// Called on a pointer down anywhere outside the field. Left null, a
+  /// number field lets go of the cursor, which closes its keypad: the iPhone
+  /// number and decimal pads have no return key, iOS has no back key, and
+  /// Flutter's own default does nothing for a finger on a phone, so the pad
+  /// stayed up over the rest of the form. A text field keeps Flutter's
+  /// default, since its keyboard has a return key. Another field is not
+  /// "outside" -- text fields share a tap region -- so moving between boxes
+  /// keeps the keyboard up.
   final TapRegionCallback? onTapOutside;
+
+  bool get _numeric => keyboardType?.index == TextInputType.number.index;
 
   /// Lines the box may grow to before it scrolls. One, as every field in the
   /// app has been, until something needs to hold a sentence: typed into a
@@ -527,7 +538,7 @@ class FsField extends StatelessWidget {
       onChanged: onChanged,
       onSubmitted: onSubmitted,
       textInputAction: textInputAction,
-      onTapOutside: onTapOutside,
+      onTapOutside: onTapOutside ?? (_numeric ? _letGo : null),
       inputFormatters: inputFormatters,
       autofillHints: autofillHints,
       autocorrect: false,
@@ -915,6 +926,9 @@ class FsStatField extends StatelessWidget {
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
+                        // A number pad with no return key: see
+                        // [FsField.onTapOutside].
+                        onTapOutside: _letGo,
                         inputFormatters: [
                           TextInputFormatter.withFunction(
                             (previous, next) => _measurement.hasMatch(next.text)
