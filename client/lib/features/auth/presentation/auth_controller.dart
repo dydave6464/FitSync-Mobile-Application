@@ -192,8 +192,8 @@ class AuthController extends AsyncNotifier<AuthState> {
   /// library to a list narrowed by a word someone else typed.
   ///
   /// Lookup data (`equipmentOptionsProvider`, `injuryOptionsProvider`, the
-  /// exercise catalogue itself) is the same for everyone and is deliberately
-  /// kept.
+  /// library's filter options) is the same for everyone and is deliberately
+  /// kept. The exercises themselves are not: see the end of this list.
   ///
   /// `routineTodayProvider`, `homeSummaryProvider`, `trainingSummaryProvider`,
   /// `trainingAnalyticsProvider`, `sessionHistoryProvider`,
@@ -215,9 +215,14 @@ class AuthController extends AsyncNotifier<AuthState> {
   /// the coach report draw, and that list's delete is keyed by day: a leftover
   /// list would delete the next account's own weigh-in for the same date.
   /// `restSecondsProvider` is the rest length stored for this account.
-  /// `exerciseDetailProvider` is the one part of the catalogue that is not the
-  /// same for everyone: its `contraindicated` flag, behind the "loads an
-  /// injury you reported" warning, is worked out for the signed-in user.
+  /// `exerciseDetailProvider` and `exerciseListProvider` are the parts of the
+  /// catalogue that are not the same for everyone: the detail and each
+  /// library row carry a `contraindicated` flag, behind the "loads an injury
+  /// you reported" warning and badge, worked out for the signed-in user.
+  /// Resetting `selectedFiltersProvider` does not rebuild the list when the
+  /// filters were already at their default (the new value equals the old, so
+  /// nothing is notified), so the list is cleared here itself.
+  /// `recentExercisesProvider` is autoDispose and needs no entry.
   void _clearUserScopedCaches() {
     ref.invalidate(profileProvider);
     ref.invalidate(activePlanProvider);
@@ -248,6 +253,7 @@ class AuthController extends AsyncNotifier<AuthState> {
     ref.invalidate(bodyWeightProvider);
     ref.invalidate(restSecondsProvider);
     ref.invalidate(exerciseDetailProvider);
+    ref.invalidate(exerciseListProvider);
   }
 
   Future<void> signOut() => _signOutLocally();

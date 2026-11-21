@@ -127,6 +127,149 @@ void main() {
   );
 
   test(
+    'a stale loadMore response is dropped after switching away and back',
+    () async {
+      final page2Completer = Completer<ExercisePage>();
+      final fake = FakeExerciseRepository(
+        pageOneByMuscleGroup: {
+          'abs': ExercisePage(
+            items: [_summary(1, 'core page 1')],
+            page: 1,
+            limit: 20,
+            total: 40,
+          ),
+          'biceps': ExercisePage(
+            items: [_summary(101, 'arms page 1')],
+            page: 1,
+            limit: 20,
+            total: 40,
+          ),
+        },
+        page2Provider: () => page2Completer.future,
+      );
+
+      final container = ProviderContainer(
+        overrides: [exerciseRepositoryProvider.overrideWithValue(fake)],
+      );
+      addTearDown(container.dispose);
+      final filters = container.read(selectedFiltersProvider.notifier);
+
+      filters.setRegion(MuscleRegion.core);
+      await container.read(exerciseListProvider.future);
+      final loadMoreFuture = container
+          .read(exerciseListProvider.notifier)
+          .loadMore();
+
+      // A -> B -> A: the selection ends where the request started.
+      filters.setRegion(MuscleRegion.arms);
+      await container.read(exerciseListProvider.future);
+      filters.setRegion(MuscleRegion.core);
+      await container.read(exerciseListProvider.future);
+
+      page2Completer.complete(
+        ExercisePage(
+          items: [_summary(2, 'core page 2')],
+          page: 2,
+          limit: 20,
+          total: 40,
+        ),
+      );
+      await loadMoreFuture;
+
+      final state = container.read(exerciseListProvider).value!;
+      expect(state.items.map((e) => e.name), ['core page 1']);
+    },
+  );
+
+  test('a loadMore still in flight when the list is invalidated is dropped quietly', () async {
+    // An injury edit and a sign-out both invalidate the list without
+    // changing the filters. The old page must neither throw (the build it
+    // belongs to is gone) nor land on top of the rebuilt list.
+    final page2Completer = Completer<ExercisePage>();
+    final fake = FakeExerciseRepository(
+      pageOneByMuscleGroup: {
+        '': ExercisePage(
+          items: [_summary(1, 'page 1')],
+          page: 1,
+          limit: 20,
+          total: 40,
+        ),
+      },
+      page2Provider: () => page2Completer.future,
+    );
+
+    final container = ProviderContainer(
+      overrides: [exerciseRepositoryProvider.overrideWithValue(fake)],
+    );
+    addTearDown(container.dispose);
+    container.listen(exerciseListProvider, (_, _) {});
+
+    await container.read(exerciseListProvider.future);
+    final loadMoreFuture = container
+        .read(exerciseListProvider.notifier)
+        .loadMore();
+
+    container.invalidate(exerciseListProvider);
+    await container.read(exerciseListProvider.future);
+
+    page2Completer.complete(
+      ExercisePage(
+        items: [_summary(2, 'stale page 2')],
+        page: 2,
+        limit: 20,
+        total: 40,
+      ),
+    );
+    await expectLater(loadMoreFuture, completes);
+
+    final state = container.read(exerciseListProvider).value!;
+    expect(state.items.map((e) => e.name), ['page 1']);
+    expect(state.loadingMore, isFalse);
+    expect(container.read(listErrorProvider), isNull);
+  });
+
+  test('a failing loadMore still in flight when the list is invalidated is '
+      'dropped quietly', () async {
+    final page2Completer = Completer<ExercisePage>();
+    final fake = FakeExerciseRepository(
+      pageOneByMuscleGroup: {
+        '': ExercisePage(
+          items: [_summary(1, 'page 1')],
+          page: 1,
+          limit: 20,
+          total: 40,
+        ),
+      },
+      page2Provider: () => page2Completer.future,
+    );
+
+    final container = ProviderContainer(
+      overrides: [exerciseRepositoryProvider.overrideWithValue(fake)],
+    );
+    addTearDown(container.dispose);
+    container.listen(exerciseListProvider, (_, _) {});
+
+    await container.read(exerciseListProvider.future);
+    final loadMoreFuture = container
+        .read(exerciseListProvider.notifier)
+        .loadMore();
+
+    container.invalidate(exerciseListProvider);
+    await container.read(exerciseListProvider.future);
+
+    page2Completer.completeError(StateError('offline'));
+    await expectLater(loadMoreFuture, completes);
+
+    final state = container.read(exerciseListProvider).value!;
+    expect(state.items.map((e) => e.name), ['page 1']);
+    expect(
+      container.read(listErrorProvider),
+      isNull,
+      reason: 'a failure for a list no longer shown must not snack-bar',
+    );
+  });
+
+  test(
     'loadMore appends the next page when the selection has not changed',
     () async {
       final fake = FakeExerciseRepository(

@@ -227,12 +227,42 @@ class SequenceTrainingSettingsRepository implements TrainingSettingsRepository {
 }
 
 /// Hands out the same exercise with a different `contraindicated` flag on
-/// each call: the server works the flag out for whoever is signed in.
+/// each call: the server works the flag out for whoever is signed in. The
+/// detail ([byId]) and the library list ([list]) keep separate counts.
 class SequenceExerciseRepository implements ExerciseRepository {
   SequenceExerciseRepository(this._contraindicated);
 
   final List<bool> _contraindicated;
   int loads = 0;
+  int listLoads = 0;
+
+  @override
+  Future<ExercisePage> list({
+    List<String> muscleGroups = const [],
+    String? equipment,
+    String? search,
+    int page = 1,
+    int limit = 20,
+  }) async {
+    final flag =
+        _contraindicated[listLoads.clamp(0, _contraindicated.length - 1)];
+    listLoads += 1;
+    return ExercisePage(
+      items: [
+        ExerciseSummary(
+          exerciseId: 101,
+          name: 'Exercise 101',
+          muscleGroup: 'chest',
+          equipment: 'barbell',
+          thumbnailUrl: null,
+          contraindicated: flag,
+        ),
+      ],
+      page: page,
+      limit: limit,
+      total: 1,
+    );
+  }
 
   @override
   Future<ExerciseDetail> byId(int id) async {
@@ -660,6 +690,46 @@ void main() {
     );
     expect(exercises.loads, 2, reason: 'the exercise was not re-fetched');
   });
+
+  test(
+    "signing out drops the previous account's exercise library rows",
+    () async {
+      // Each library row carries the same per-user `contraindicated` flag as
+      // the detail. Juan leaves the filters at their default, so resetting
+      // the filters changes nothing a dependent could notice: the list
+      // itself has to be dropped.
+      final exercises = SequenceExerciseRepository([true, false]);
+      final tokens = TokenStore(backing: InMemorySecureStore());
+      await tokens.write('token-for-juan');
+      final container = ProviderContainer(
+        overrides: [
+          tokenStoreProvider.overrideWithValue(tokens),
+          authRepositoryProvider.overrideWithValue(FakeAuthRepository(tokens)),
+          profileRepositoryProvider.overrideWithValue(
+            SequenceProfileRepository([_profile(userId: 1, email: 'a@b.c')]),
+          ),
+          exerciseRepositoryProvider.overrideWithValue(exercises),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container.listen(exerciseListProvider, (_, _) {});
+      expect(container.read(selectedFiltersProvider).isEmpty, isTrue);
+      final before = await container.read(exerciseListProvider.future);
+      expect(before.items.single.contraindicated, isTrue);
+      expect(exercises.listLoads, 1);
+
+      await container.read(authControllerProvider.notifier).signOut();
+
+      final after = await container.read(exerciseListProvider.future);
+      expect(
+        after.items.single.contraindicated,
+        isFalse,
+        reason: "the next account was shown the previous account's badges",
+      );
+      expect(exercises.listLoads, 2, reason: 'the list was not re-fetched');
+    },
+  );
 
   test('signing out clears the stored token', () async {
     final tokens = TokenStore(backing: InMemorySecureStore());
