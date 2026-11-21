@@ -221,40 +221,46 @@ class AuthController extends AsyncNotifier<AuthState> {
   /// you reported" warning and badge, worked out for the signed-in user.
   /// Resetting `selectedFiltersProvider` does not rebuild the list when the
   /// filters were already at their default (the new value equals the old, so
-  /// nothing is notified), so the list is cleared here itself, as a reload:
-  /// a plain invalidate is a refresh that keeps the old rows as the data the
-  /// library draws until the next account's first page arrives.
+  /// nothing is notified), so the list is cleared here itself.
   /// `recentExercisesProvider` is autoDispose and needs no entry.
+  ///
+  /// Every entry is invalidated as a reload. A plain invalidate is a refresh,
+  /// and `.when(...)` with its defaults keeps drawing the previous account's
+  /// data until the next account's own arrives; after a reload it draws the
+  /// loading branch instead. This runs only on a sign-in or a sign-out, so the
+  /// cost is a spinner during an account switch. A reload still carries the
+  /// old data in `.value`, so a screen that reads `.value` directly must not
+  /// rely on this alone.
   void _clearUserScopedCaches() {
-    ref.invalidate(profileProvider);
-    ref.invalidate(activePlanProvider);
-    ref.invalidate(activeSessionProvider);
-    ref.invalidate(completedDaysProvider);
-    ref.invalidate(workoutDraftProvider);
-    ref.invalidate(selectedFiltersProvider);
-    ref.invalidate(routineTodayProvider);
-    ref.invalidate(homeSummaryProvider);
-    ref.invalidate(trainingSummaryProvider);
-    ref.invalidate(trainingAnalyticsProvider);
-    ref.invalidate(sessionHistoryProvider);
-    ref.invalidate(lastWorkoutProvider);
-    ref.invalidate(pendingOutcomeProvider);
-    ref.invalidate(recoveryOverviewProvider);
-    ref.invalidate(streakProvider);
-    ref.invalidate(reminderSettingsProvider);
-    ref.invalidate(activityProvider);
-    ref.invalidate(stepAccessProvider);
-    ref.invalidate(nutritionDayProvider);
-    ref.invalidate(nutritionDateProvider);
-    ref.invalidate(recentFoodsProvider);
-    ref.invalidate(mealSuggestionsProvider);
-    ref.invalidate(planReadyProvider);
-    ref.invalidate(proPendingCheckoutProvider);
-    ref.invalidate(currentAdProvider);
-    ref.invalidate(adViewsReportedProvider);
-    ref.invalidate(bodyWeightProvider);
-    ref.invalidate(restSecondsProvider);
-    ref.invalidate(exerciseDetailProvider);
+    ref.invalidate(profileProvider, asReload: true);
+    ref.invalidate(activePlanProvider, asReload: true);
+    ref.invalidate(activeSessionProvider, asReload: true);
+    ref.invalidate(completedDaysProvider, asReload: true);
+    ref.invalidate(workoutDraftProvider, asReload: true);
+    ref.invalidate(selectedFiltersProvider, asReload: true);
+    ref.invalidate(routineTodayProvider, asReload: true);
+    ref.invalidate(homeSummaryProvider, asReload: true);
+    ref.invalidate(trainingSummaryProvider, asReload: true);
+    ref.invalidate(trainingAnalyticsProvider, asReload: true);
+    ref.invalidate(sessionHistoryProvider, asReload: true);
+    ref.invalidate(lastWorkoutProvider, asReload: true);
+    ref.invalidate(pendingOutcomeProvider, asReload: true);
+    ref.invalidate(recoveryOverviewProvider, asReload: true);
+    ref.invalidate(streakProvider, asReload: true);
+    ref.invalidate(reminderSettingsProvider, asReload: true);
+    ref.invalidate(activityProvider, asReload: true);
+    ref.invalidate(stepAccessProvider, asReload: true);
+    ref.invalidate(nutritionDayProvider, asReload: true);
+    ref.invalidate(nutritionDateProvider, asReload: true);
+    ref.invalidate(recentFoodsProvider, asReload: true);
+    ref.invalidate(mealSuggestionsProvider, asReload: true);
+    ref.invalidate(planReadyProvider, asReload: true);
+    ref.invalidate(proPendingCheckoutProvider, asReload: true);
+    ref.invalidate(currentAdProvider, asReload: true);
+    ref.invalidate(adViewsReportedProvider, asReload: true);
+    ref.invalidate(bodyWeightProvider, asReload: true);
+    ref.invalidate(restSecondsProvider, asReload: true);
+    ref.invalidate(exerciseDetailProvider, asReload: true);
     ref.invalidate(exerciseListProvider, asReload: true);
   }
 

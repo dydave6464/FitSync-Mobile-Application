@@ -180,10 +180,13 @@ class ExerciseListNotifier extends AsyncNotifier<ExerciseListState> {
       );
       // The list was rebuilt while this request was in flight: an injury
       // edit or a sign-out invalidates it without touching SelectedFilters,
-      // so the equality check below cannot see that. The captured Ref is no
-      // longer mounted then, and the response belongs to a list that is gone
-      // (for a sign-out, to another account). Drop it; reading through the
-      // old Ref would also throw UnmountedRefException.
+      // so the equality check below cannot see that. The captured Ref stops
+      // being mounted once the list actually rebuilds, which for a list no
+      // one is listening to is only at its next read. A response landing
+      // before that is written, and the rebuild then replaces it. After it,
+      // the response belongs to a list that is gone (for a sign-out, to
+      // another account). Drop it; reading through the old Ref would also
+      // throw UnmountedRefException.
       if (!ref.mounted) return;
       // The selection may have changed while this request was in flight —
       // build() already reran and produced a fresh state for it. Applying

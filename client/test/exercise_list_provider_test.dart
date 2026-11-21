@@ -269,6 +269,48 @@ void main() {
     );
   });
 
+  test('a failing loadMore on a list still shown reports the error and keeps '
+      'the pages', () async {
+    // Nothing is invalidated here: the guard that drops a page for a rebuilt
+    // list must not swallow a real failure.
+    final page2Completer = Completer<ExercisePage>();
+    final fake = FakeExerciseRepository(
+      pageOneByMuscleGroup: {
+        '': ExercisePage(
+          items: [_summary(1, 'page 1')],
+          page: 1,
+          limit: 20,
+          total: 40,
+        ),
+      },
+      page2Provider: () => page2Completer.future,
+    );
+
+    final container = ProviderContainer(
+      overrides: [exerciseRepositoryProvider.overrideWithValue(fake)],
+    );
+    addTearDown(container.dispose);
+    container.listen(exerciseListProvider, (_, _) {});
+
+    await container.read(exerciseListProvider.future);
+    final loadMoreFuture = container
+        .read(exerciseListProvider.notifier)
+        .loadMore();
+    expect(container.read(exerciseListProvider).value!.loadingMore, isTrue);
+
+    page2Completer.completeError(StateError('offline'));
+    await expectLater(loadMoreFuture, completes);
+
+    final state = container.read(exerciseListProvider).value!;
+    expect(state.items.map((e) => e.name), ['page 1']);
+    expect(state.loadingMore, isFalse);
+    expect(
+      container.read(listErrorProvider),
+      isA<StateError>(),
+      reason: 'a failed load more must still reach the snack bar',
+    );
+  });
+
   test(
     'loadMore appends the next page when the selection has not changed',
     () async {

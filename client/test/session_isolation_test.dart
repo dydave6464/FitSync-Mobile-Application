@@ -746,6 +746,98 @@ void main() {
     },
   );
 
+  // The same flash on the other screens: Home draws `profile.when(...)` and
+  // Progress `bodyWeight.when(...)`, both with their defaults. A plain
+  // refresh hands the next account the previous name and weigh-ins as the
+  // data branch until its own arrive; a reload shows the loading branch.
+  String branch<T>(AsyncValue<T> value) => value.when(
+    data: (_) => 'data',
+    loading: () => 'loading',
+    error: (_, _) => 'error',
+  );
+
+  test("the next account's first frame of the profile is loading, not the "
+      "previous account's", () async {
+    final profiles = SequenceProfileRepository([
+      _profile(userId: 1, email: 'juan@example.com'),
+      _profile(userId: 2, email: 'maria@example.com'),
+    ]);
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('token-for-juan');
+    final container = ProviderContainer(
+      overrides: [
+        tokenStoreProvider.overrideWithValue(tokens),
+        authRepositoryProvider.overrideWithValue(FakeAuthRepository(tokens)),
+        profileRepositoryProvider.overrideWithValue(profiles),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container.listen(profileProvider, (_, _) {});
+    expect(
+      (await container.read(profileProvider.future)).email,
+      'juan@example.com',
+    );
+
+    await container.read(authControllerProvider.notifier).signOut();
+
+    final first = container.read(profileProvider);
+    expect(
+      branch(first),
+      'loading',
+      reason: "the next account's first frame drew the previous profile",
+    );
+    expect(first.isReloading, isTrue);
+    expect(
+      (await container.read(profileProvider.future)).email,
+      'maria@example.com',
+    );
+  });
+
+  test("the next account's first frame of the weigh-ins is loading, not the "
+      "previous account's", () async {
+    final profiles = SequenceBodyWeightRepository([
+      _weighIn('2026-11-01', 80),
+      _weighIn('2026-11-02', 55),
+    ]);
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('token-for-juan');
+    final container = ProviderContainer(
+      overrides: [
+        tokenStoreProvider.overrideWithValue(tokens),
+        authRepositoryProvider.overrideWithValue(FakeAuthRepository(tokens)),
+        profileRepositoryProvider.overrideWithValue(profiles),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container.listen(bodyWeightProvider('month'), (_, _) {});
+    expect(
+      (await container.read(bodyWeightProvider('month').future))
+          .points
+          .single
+          .weightKg,
+      80,
+    );
+
+    await container.read(authControllerProvider.notifier).signOut();
+
+    final first = container.read(bodyWeightProvider('month'));
+    expect(
+      branch(first),
+      'loading',
+      reason: "the next account's first frame drew the previous weigh-ins",
+    );
+    expect(first.isReloading, isTrue);
+    expect(
+      (await container.read(bodyWeightProvider('month').future))
+          .points
+          .single
+          .weightKg,
+      55,
+    );
+  });
+
   test('signing out clears the stored token', () async {
     final tokens = TokenStore(backing: InMemorySecureStore());
     await tokens.write('token-for-juan');
