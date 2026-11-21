@@ -721,6 +721,21 @@ void main() {
 
       await container.read(authControllerProvider.notifier).signOut();
 
+      // The library screen draws `listing.when(...)` with its defaults. A
+      // plain refresh keeps Juan's rows as the data branch until the next
+      // page arrives; a reload shows the loading branch instead.
+      final first = container.read(exerciseListProvider);
+      expect(
+        first.when(
+          data: (page) => 'data',
+          loading: () => 'loading',
+          error: (_, _) => 'error',
+        ),
+        'loading',
+        reason: "the next account's first frame drew the previous rows",
+      );
+      expect(first.isReloading, isTrue);
+
       final after = await container.read(exerciseListProvider.future);
       expect(
         after.items.single.contraindicated,

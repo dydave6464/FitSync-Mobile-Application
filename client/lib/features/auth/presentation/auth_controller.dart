@@ -221,7 +221,9 @@ class AuthController extends AsyncNotifier<AuthState> {
   /// you reported" warning and badge, worked out for the signed-in user.
   /// Resetting `selectedFiltersProvider` does not rebuild the list when the
   /// filters were already at their default (the new value equals the old, so
-  /// nothing is notified), so the list is cleared here itself.
+  /// nothing is notified), so the list is cleared here itself, as a reload:
+  /// a plain invalidate is a refresh that keeps the old rows as the data the
+  /// library draws until the next account's first page arrives.
   /// `recentExercisesProvider` is autoDispose and needs no entry.
   void _clearUserScopedCaches() {
     ref.invalidate(profileProvider);
@@ -253,7 +255,7 @@ class AuthController extends AsyncNotifier<AuthState> {
     ref.invalidate(bodyWeightProvider);
     ref.invalidate(restSecondsProvider);
     ref.invalidate(exerciseDetailProvider);
-    ref.invalidate(exerciseListProvider);
+    ref.invalidate(exerciseListProvider, asReload: true);
   }
 
   Future<void> signOut() => _signOutLocally();
