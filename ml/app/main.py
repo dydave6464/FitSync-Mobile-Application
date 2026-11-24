@@ -250,6 +250,23 @@ def create_app(settings: Settings, ranker: Optional[Ranker] = None,
         ranked = app.state.ranker.rank(candidates, context)
         ranked_top_up = app.state.ranker.rank(top_up, context) if top_up else []
 
+        # New plan with nothing changed (server/src/routes/plans.js asks again
+        # with the recent plans' exercises). Applied after the ranker, so the
+        # model's order still picks the next-best, and only to these lists, so
+        # nothing the filters above ruled out can come back.
+        #
+        # Unlike the ranker (app/ranker.py), this does cross the curated
+        # marks: a team 'alternative' may move ahead of a 'first' choice the
+        # user already has -- that is the point. It never crosses the line
+        # between the two lists: ranked and ranked_top_up are reordered
+        # apart, so a body-weight fill-in still cannot displace the user's
+        # own equipment.
+        if profile.avoid is not None:
+            current = set(profile.avoid.current)
+            previous = set(profile.avoid.previous)
+            ranked = selection.deprioritise(ranked, current, previous)
+            ranked_top_up = selection.deprioritise(ranked_top_up, current, previous)
+
         # One session per rotation day, each from that day's muscle pool. The
         # pools within a rotation are disjoint (see app/rules/splits), so an
         # exercise cannot land on two days and no de-duplication is needed.

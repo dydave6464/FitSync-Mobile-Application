@@ -16,7 +16,9 @@ const { PAIN_LEVELS } = require('../../db/session-outcomes');
 /// training-load index; for the risk estimate, the reported injuries and the
 /// worst recent pain level; the user's own training history for the plan
 /// ranker (days since each catalogue muscle group was trained; per exercise,
-/// times done, skipped and swapped out in the last 90 days). Never sent: email, name, user id, city, date of birth,
+/// times done, skipped and swapped out in the last 90 days); and, on New
+/// plan's second ask, the exercise ids of the current and previous plans
+/// (avoid). Never sent: email, name, user id, city, date of birth,
 /// sex, height, weight, goal weight, activity level, account flags, catalogue
 /// names, injury side, the health check's conditions and answers, and
 /// check-in ids and dates -- no rule reads any of them.
@@ -79,7 +81,15 @@ function toPlanPayload(profile) {
   }
   const history = toHistory(p.history);
   if (history) payload.history = history;
+  if (p.avoid && typeof p.avoid === 'object') payload.avoid = toAvoid(p.avoid);
   return payload;
+}
+
+/// New plan with nothing changed (routes/plans.js): the exercises to move to
+/// the back. Whole-number ids only; the service types them as int.
+function toAvoid(avoid) {
+  const ids = (value) => list(value).filter(Number.isInteger);
+  return { current: ids(avoid.current), previous: ids(avoid.previous) };
 }
 
 /// The body of POST /injury-risk: each check-in's four answers, the

@@ -242,6 +242,59 @@ async function previousPlanFor(pool, userId, activePlanId, replacedPlanId) {
   return rows.length === 0 ? null : { planId: rows[0].plan_id, name: rows[0].name };
 }
 
+/// Plan [planId] as it was saved, for New plan with nothing changed
+/// (routes/plans.js): the settings the generator was given and the exercises
+/// it chose. null when it is not this user's plan.
+///
+/// daysPerWeek is the saved column, not getActivePlan's effective count: the
+/// generator screen saves training days as they are tapped, so by the time
+/// Generate is pressed the schedule already shows the new count.
+async function savedPlanForComparison(pool, userId, planId) {
+  const [plans] = await pool.query(
+    `SELECT split_style, days_per_week, session_length_min
+       FROM workout_plans WHERE plan_id = ? AND user_id = ?`,
+    [planId, userId],
+  );
+  if (plans.length === 0) return null;
+  const [exercises] = await pool.query(
+    `SELECT pe.day_no, pe.exercise_id, pe.target_sets, pe.target_reps, x.name
+       FROM plan_exercises pe JOIN exercises x ON x.exercise_id = pe.exercise_id
+      WHERE pe.plan_id = ? ORDER BY pe.day_no, pe.order_no`,
+    [planId],
+  );
+  return {
+    splitStyle: plans[0].split_style,
+    daysPerWeek: plans[0].days_per_week,
+    sessionLengthMin: plans[0].session_length_min,
+    exercises: exercises.map((e) => ({
+      dayNo: e.day_no,
+      exerciseId: e.exercise_id,
+      name: e.name,
+      targetSets: e.target_sets,
+      targetReps: e.target_reps,
+    })),
+  };
+}
+
+/// The plan New plan avoids next after the current one, or null: the plan the
+/// current one replaced or, when Undo brought the current one back (which
+/// clears its replaced_plan_id), the plan most recently undone in its favour.
+/// Unlike previousPlanFor this ignores whether Undo is still offered: a
+/// logged workout ends Undo, not the rotation. Every row must be this user's.
+async function previousPlanIdForNewPlan(pool, userId, planId) {
+  const [[row]] = await pool.query(
+    `SELECT COALESCE(
+        (SELECT prev.plan_id FROM workout_plans cur
+           JOIN workout_plans prev ON prev.plan_id = cur.replaced_plan_id AND prev.user_id = cur.user_id
+          WHERE cur.plan_id = ? AND cur.user_id = ?),
+        (SELECT MAX(undone.plan_id) FROM workout_plans undone
+          WHERE undone.user_id = ? AND undone.replaced_plan_id = ? AND undone.is_active = FALSE)
+      ) AS plan_id`,
+    [planId, userId, userId, planId],
+  );
+  return row.plan_id ?? null;
+}
+
 async function getActivePlan(pool, userId) {
   const [plans] = await pool.query(
     `SELECT wp.plan_id, wp.name, wp.split_style,
@@ -593,5 +646,6 @@ async function createPlanFromSession(pool, userId, { sessionId, splitStyle, dayN
 
 module.exports = {
   resolveExerciseIds, savePlan, restorePreviousPlan, getActivePlan, dayNamesFor,
-  createPlanFromSession, effectiveDaysPerWeekSql,
+  createPlanFromSession, effectiveDaysPerWeekSql, savedPlanForComparison,
+  previousPlanIdForNewPlan,
 };

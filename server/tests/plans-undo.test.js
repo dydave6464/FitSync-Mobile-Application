@@ -20,12 +20,15 @@ test('undoing a generated plan', async (t) => {
 
   let planNo = 0;
   // Every `overrides` the generator was handed, as handed, so a test can
-  // see what reached ML rather than what the fake echoed back.
+  // see what reached ML rather than what the fake echoed back. One per
+  // request: this fake returns the same exercises every time, so a request
+  // after the first also makes a second ask (New plan with nothing changed),
+  // with the same overrides -- plans-regenerate-variety.test.js pins that.
   const sentOverrides = [];
   const ml = {
     generatePlan: async (profile = {}) => {
       planNo += 1;
-      sentOverrides.push(profile.overrides);
+      if (!profile.avoid) sentOverrides.push(profile.overrides);
       const overrides = profile.overrides || {};
       return {
         name: `Plan ${planNo}`,
