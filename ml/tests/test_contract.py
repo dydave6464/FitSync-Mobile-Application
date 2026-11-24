@@ -1019,6 +1019,7 @@ def test_the_previous_plans_exercises_are_avoided_too(client, catalogue, add_exe
     _with_choices(add_exercise)
     profile = _body_weight_profile(catalogue)
     first = post_plan(client, **profile)
+    assert "fixture squat" in _names(first)
     again = post_plan(client, **profile, avoid={"current": [], "previous": _ids(first)})
     assert "fixture wall sit" in _names(again) and "fixture squat" not in _names(again)
 
@@ -1043,3 +1044,15 @@ def test_avoiding_never_brings_back_an_exercise_the_injury_rules_out(
     second = post_plan(client, **profile, avoid={"current": _ids(first), "previous": []})
     assert "fixture wall sit" in _names(second)
     assert "fixture squat" not in _names(second)
+
+
+def test_avoiding_never_brings_in_equipment_the_user_lacks(client, catalogue, add_exercise):
+    # Guard: with every first-plan exercise avoided, the plan still holds only
+    # body-weight rows -- the dumbbell, cable and pull-up-bar rows stay out.
+    _with_choices(add_exercise)
+    profile = _body_weight_profile(catalogue)
+    first = post_plan(client, **profile)
+    second = post_plan(client, **profile, avoid={"current": _ids(first), "previous": []})
+    lacking = {"fixture dumbbell curl", "fixture dumbbell bench press", "fixture cable row",
+               "fixture pull-up", "fixture dumbbell fly"}
+    assert not lacking & set(_names(second)), _names(second)

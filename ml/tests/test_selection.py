@@ -253,3 +253,15 @@ def test_deprioritising_never_adds_or_drops_a_candidate():
     candidates = [c(1, "quads"), c(2, "quads"), c(3, "lats")]
     out = deprioritise(candidates, current={1, 99}, previous={3, 98})
     assert sorted(x.exercise_id for x in out) == [1, 2, 3]
+
+
+def test_with_a_top_up_only_the_fill_in_rotates():
+    # The user's own rows have no other option and stay; the body-weight
+    # fill-in for the short slot moves on to the next one.
+    own = [c(1, "pectorals"), c(2, "quads")]
+    top_up = [c(10, "pectorals"), c(11, "pectorals")]
+    current = {1, 2, 10}
+    chosen = select_with_top_up(deprioritise(own, current, set()),
+                                deprioritise(top_up, current, set()), 3)
+    # Quads before pectorals (MUSCLE_PRIORITY), then the fill-in.
+    assert [x.exercise_id for x in chosen] == [2, 1, 11]

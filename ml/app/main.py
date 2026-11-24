@@ -254,6 +254,13 @@ def create_app(settings: Settings, ranker: Optional[Ranker] = None,
         # with the recent plans' exercises). Applied after the ranker, so the
         # model's order still picks the next-best, and only to these lists, so
         # nothing the filters above ruled out can come back.
+        #
+        # Unlike the ranker (app/ranker.py), this does cross the curated
+        # marks: a team 'alternative' may move ahead of a 'first' choice the
+        # user already has -- that is the point. It never crosses the line
+        # between the two lists: ranked and ranked_top_up are reordered
+        # apart, so a body-weight fill-in still cannot displace the user's
+        # own equipment.
         if profile.avoid is not None:
             current = set(profile.avoid.current)
             previous = set(profile.avoid.previous)

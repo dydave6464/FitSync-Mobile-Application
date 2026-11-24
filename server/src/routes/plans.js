@@ -3,7 +3,8 @@ const express = require('express');
 const requireAuth = require('../middleware/require-auth');
 const AppError = require('../lib/app-error');
 const {
-  getActivePlan, savePlan, restorePreviousPlan, createPlanFromSession, replacedPlanExercises,
+  getActivePlan, savePlan, restorePreviousPlan, createPlanFromSession,
+  savedPlanForComparison, previousPlanIdForNewPlan,
 } = require('../db/plans');
 const { getProfile, listInjuries } = require('../db/profile');
 const { readRankerHistory } = require('../db/ranker-history');
@@ -34,44 +35,69 @@ const MIN_SESSION_MIN = 20;
 const MAX_SESSION_MIN = 120;
 
 /// True when [generated] has the same exercises on each day as [saved] (a
-/// plan's exercises as getActivePlan or replacedPlanExercises give them).
-/// Order within a day is ignored: the user would see the same exercises.
-/// By id when the generator sent ids, as the ML service does; by name for a
-/// generator that sends only names, as the stub does.
+/// plan's exercises as savedPlanForComparison gives them). Order within a day
+/// is ignored: the user would see the same exercises. By id when the
+/// generator sent ids, as the ML service does; by name, ignoring case as
+/// resolveExerciseIds does, for a generator that sends only names (the stub).
 function sameExercises(generated, saved) {
   if (generated.length === 0 || saved.length === 0) return false;
   const byId = generated.every((e) => Number.isInteger(e.exerciseId));
   const keys = (list) => list
-    .map((e) => `${e.dayNo || 1}|${byId ? e.exerciseId : e.name}`)
+    .map((e) => `${e.dayNo || 1}|${byId ? e.exerciseId : String(e.name).toLowerCase()}`)
     .sort();
   const a = keys(generated);
   const b = keys(saved);
   return a.length === b.length && a.every((key, i) => key === b[i]);
 }
 
+/// True when [generated] was built from the settings [saved] was: the same
+/// split, days, session length and sets x reps. Days never change which
+/// exercises are picked, but a user who changed them still changed something.
+function sameSettings(generated, saved) {
+  const dosage = (list) => [...new Set(list.map((e) => `${e.targetSets}x${e.targetReps}`))]
+    .sort().join(',');
+  return generated.splitStyle === saved.splitStyle
+    && generated.daysPerWeek === saved.daysPerWeek
+    && generated.sessionLengthMin === saved.sessionLengthMin
+    && dosage(generated.exercises) === dosage(saved.exercises);
+}
+
 /// New plan, varied when nothing changed (2026-11-24).
 ///
 /// The generator is deterministic, so with unchanged settings it returns the
-/// plan the user already has. When its plan has the same exercises as the
-/// current plan, or as the one before it (the user tapping New plan again),
-/// it is asked once more with both plans' exercise ids: it moves the current
-/// plan's to the back, the previous plan's just ahead of them, and takes each
-/// muscle group's next-best -- A, B, C, then A again. It only reorders the
-/// exercises its own safety filters already allowed. A plan that differs is
-/// kept as it is: the user changed something, and gets the best fit for it.
-async function generateNewPlan(deps, userId, request, current) {
+/// plan the user already has. When the settings are unchanged and its plan
+/// has the same exercises as the current plan, or as the one before it (the
+/// user tapping New plan again), it is asked once more with both plans'
+/// exercise ids: it moves the current plan's to the back, the previous
+/// plan's just ahead of them, and takes each muscle group's next-best -- A,
+/// B, C, then A again. It only reorders the exercises its own safety filters
+/// already allowed. When any setting changed, the first plan is kept: the
+/// user gets the best fit for what they asked.
+///
+/// The second ask is an improvement, not a requirement: if it fails, the
+/// plan already in hand is saved rather than failing the request.
+async function generateNewPlan(deps, userId, request, activePlanId) {
   const generated = await deps.ml.generatePlan(request);
-  if (current === null) return generated;
-  const previous = await replacedPlanExercises(deps.pool, userId, current.planId);
+  if (activePlanId === null) return generated;
+  const current = await savedPlanForComparison(deps.pool, userId, activePlanId);
+  if (current === null || !sameSettings(generated, current)) return generated;
+  const previousId = await previousPlanIdForNewPlan(deps.pool, userId, activePlanId);
+  const previous = previousId === null
+    ? [] : (await savedPlanForComparison(deps.pool, userId, previousId)).exercises;
   if (!sameExercises(generated.exercises, current.exercises)
       && !sameExercises(generated.exercises, previous)) {
     return generated;
   }
   const ids = (list) => [...new Set(list.map((e) => e.exerciseId))];
-  return deps.ml.generatePlan({
-    ...request,
-    avoid: { current: ids(current.exercises), previous: ids(previous) },
-  });
+  try {
+    return await deps.ml.generatePlan({
+      ...request,
+      avoid: { current: ids(current.exercises), previous: ids(previous) },
+    });
+  } catch (err) {
+    deps.logger.warn({ err }, 'new plan: the varied ask failed, saving the first plan');
+    return generated;
+  }
 }
 
 /// The refusal both plan-changing routes give while a workout is open. It
@@ -235,7 +261,7 @@ module.exports = function buildPlansRouter(deps) {
       const profile = await getProfile(deps.pool, userId);
       const history = await readRankerHistory(deps.pool, userId);
       const generated = await generateNewPlan(
-        deps, userId, { ...profile, overrides, history }, current,
+        deps, userId, { ...profile, overrides, history }, current === null ? null : current.planId,
       );
       await savePlan(deps.pool, userId, generated);
 

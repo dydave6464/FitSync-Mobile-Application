@@ -28,29 +28,37 @@ test('New plan with nothing changed', async (t) => {
 
   // A stand-in for the ML service with the same contract: the best plan is A,
   // and with avoid lists it takes the first exercise in neither, then the
-  // first not in the current plan. `onlyA` is a catalogue with nothing else.
+  // first not in the current plan. It echoes the settings it was given, as
+  // the real one does. `onlyA` is a catalogue with nothing else; `failSecond`
+  // makes the second ask fail; `namesOnly` answers like the stub, with names
+  // and no ids, in a different case from the catalogue's.
   let onlyA = false;
+  let failSecond = false;
+  let namesOnly = false;
   const asks = [];
   const ml = {
     generatePlan: async (profile = {}) => {
       asks.push(profile);
       const overrides = profile.overrides || {};
       const avoid = profile.avoid;
+      if (avoid && failSecond) throw new Error('ML service unavailable');
       let pick = A;
       if (avoid && !onlyA) {
         const fresh = [A, B, C].find((x) => !avoid.current.includes(x.exerciseId)
           && !avoid.previous.includes(x.exerciseId));
         pick = fresh || [A, B, C].find((x) => !avoid.current.includes(x.exerciseId)) || A;
       }
-      const exercises = [{ ...pick, dayNo: 1, orderNo: 1, targetSets: 3, targetReps: '8-12' }];
-      if (overrides.splitStyle === 'upper_lower') {
-        exercises.push({ ...B, dayNo: 2, orderNo: 1, targetSets: 3, targetReps: '8-12' });
-      }
+      const row = (x, dayNo) => ({
+        ...(namesOnly ? { name: x.name.toUpperCase() } : x),
+        dayNo, orderNo: 1, targetSets: 3, targetReps: '8-12',
+      });
+      const exercises = [row(pick, 1)];
+      if (overrides.splitStyle === 'upper_lower') exercises.push(row(B, 2));
       return {
         name: 'Generated',
         splitStyle: overrides.splitStyle || 'full_body',
-        daysPerWeek: 3,
-        sessionLengthMin: 45,
+        daysPerWeek: overrides.daysPerWeek || 3,
+        sessionLengthMin: overrides.sessionLengthMin || 45,
         weekNo: 1,
         exercises,
       };
@@ -73,6 +81,8 @@ test('New plan with nothing changed', async (t) => {
     await pool.query('DELETE FROM user_identities');
     await pool.query('DELETE FROM users');
     onlyA = false;
+    failSecond = false;
+    namesOnly = false;
     const email = 'v@example.com';
     const res = await request(app).post('/api/v1/auth/register')
       .send({ email, password: 's3cret-pass', fullName: 'V' }).expect(201);
@@ -106,7 +116,7 @@ test('New plan with nothing changed', async (t) => {
   });
 
   await t.test('the second ask keeps the settings and history of the first', async () => {
-    await newPlan();
+    await newPlan({ sessionLengthMin: 60 });
     await newPlan({ sessionLengthMin: 60 });
     const { avoid, ...secondAsk } = asks[1];
     assert.ok(avoid);
@@ -139,6 +149,63 @@ test('New plan with nothing changed', async (t) => {
     onlyA = true;
     await newPlan();
     assert.deepEqual(await newPlan(), [A.exerciseId]);
+    assert.equal(asks.length, 2);
+  });
+
+  await t.test('changing a setting and changing it back gives the best fit, not a variation', async () => {
+    await newPlan();
+    await newPlan({ splitStyle: 'upper_lower' });
+    assert.deepEqual(await newPlan(), [A.exerciseId]);
+    assert.equal(asks.length, 1);
+  });
+
+  await t.test('a change of days alone keeps the best fit', async () => {
+    // Days per week never changes which exercises are picked, so the plan
+    // comes back with the same ones -- but the user did change something.
+    await newPlan();
+    assert.deepEqual(await newPlan({ daysPerWeek: 4 }), [A.exerciseId]);
+    assert.equal(asks.length, 1);
+  });
+
+  await t.test('a change of session length alone keeps the best fit', async () => {
+    await newPlan();
+    assert.deepEqual(await newPlan({ sessionLengthMin: 60 }), [A.exerciseId]);
+    assert.equal(asks.length, 1);
+  });
+
+  await t.test('days come from the saved plan, not the schedule the screen already saved', async () => {
+    // The generator screen saves training days as they are tapped, before
+    // Generate: the schedule then already says 4 while the plan still has 3.
+    await newPlan();
+    const [[user]] = await pool.query('SELECT user_id FROM users LIMIT 1');
+    for (const day of [1, 2, 4, 5]) {
+      await pool.query('INSERT INTO user_training_days (user_id, weekday) VALUES (?, ?)',
+        [user.user_id, day]);
+    }
+    assert.deepEqual(await newPlan({ daysPerWeek: 4 }), [A.exerciseId]);
+    assert.equal(asks.length, 1);
+  });
+
+  await t.test('New plan after Undo avoids the plan that was undone', async () => {
+    await newPlan();
+    await newPlan();
+    await request(app).post('/api/v1/plans/restore-previous')
+      .set('Authorization', auth).expect(200);
+    assert.deepEqual(await newPlan(), [C.exerciseId]);
+    assert.deepEqual(asks[1].avoid, { current: [A.exerciseId], previous: [B.exerciseId] });
+  });
+
+  await t.test('a failed second ask still saves the plan from the first', async () => {
+    await newPlan();
+    failSecond = true;
+    assert.deepEqual(await newPlan(), [A.exerciseId]);
+    assert.equal(asks.length, 2);
+  });
+
+  await t.test('a generator that sends names only is compared by name, ignoring case', async () => {
+    namesOnly = true;
+    await newPlan();
+    await newPlan();
     assert.equal(asks.length, 2);
   });
 
