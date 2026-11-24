@@ -242,6 +242,27 @@ async function previousPlanFor(pool, userId, activePlanId, replacedPlanId) {
   return rows.length === 0 ? null : { planId: rows[0].plan_id, name: rows[0].name };
 }
 
+/// The exercises of the plan [planId] replaced, as { dayNo, exerciseId, name },
+/// or [] when it replaced none (a first plan, or one Undo brought back).
+///
+/// For New plan with nothing changed (routes/plans.js), which avoids them
+/// next after the current plan's. Unlike previousPlanFor this does not care
+/// whether Undo is still offered: a logged workout ends Undo, not the
+/// rotation. Both rows must be this user's.
+async function replacedPlanExercises(pool, userId, planId) {
+  const [rows] = await pool.query(
+    `SELECT pe.day_no, pe.exercise_id, x.name
+       FROM workout_plans cur
+       JOIN workout_plans prev ON prev.plan_id = cur.replaced_plan_id AND prev.user_id = cur.user_id
+       JOIN plan_exercises pe ON pe.plan_id = prev.plan_id
+       JOIN exercises x ON x.exercise_id = pe.exercise_id
+      WHERE cur.plan_id = ? AND cur.user_id = ?
+      ORDER BY pe.day_no, pe.order_no`,
+    [planId, userId],
+  );
+  return rows.map((r) => ({ dayNo: r.day_no, exerciseId: r.exercise_id, name: r.name }));
+}
+
 async function getActivePlan(pool, userId) {
   const [plans] = await pool.query(
     `SELECT wp.plan_id, wp.name, wp.split_style,
@@ -593,5 +614,5 @@ async function createPlanFromSession(pool, userId, { sessionId, splitStyle, dayN
 
 module.exports = {
   resolveExerciseIds, savePlan, restorePreviousPlan, getActivePlan, dayNamesFor,
-  createPlanFromSession, effectiveDaysPerWeekSql,
+  createPlanFromSession, effectiveDaysPerWeekSql, replacedPlanExercises,
 };

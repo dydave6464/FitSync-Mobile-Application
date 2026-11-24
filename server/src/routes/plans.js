@@ -3,7 +3,7 @@ const express = require('express');
 const requireAuth = require('../middleware/require-auth');
 const AppError = require('../lib/app-error');
 const {
-  getActivePlan, savePlan, restorePreviousPlan, createPlanFromSession,
+  getActivePlan, savePlan, restorePreviousPlan, createPlanFromSession, replacedPlanExercises,
 } = require('../db/plans');
 const { getProfile, listInjuries } = require('../db/profile');
 const { readRankerHistory } = require('../db/ranker-history');
@@ -32,6 +32,47 @@ const MIN_DAYS = 1;
 const MAX_DAYS = 7;
 const MIN_SESSION_MIN = 20;
 const MAX_SESSION_MIN = 120;
+
+/// True when [generated] has the same exercises on each day as [saved] (a
+/// plan's exercises as getActivePlan or replacedPlanExercises give them).
+/// Order within a day is ignored: the user would see the same exercises.
+/// By id when the generator sent ids, as the ML service does; by name for a
+/// generator that sends only names, as the stub does.
+function sameExercises(generated, saved) {
+  if (generated.length === 0 || saved.length === 0) return false;
+  const byId = generated.every((e) => Number.isInteger(e.exerciseId));
+  const keys = (list) => list
+    .map((e) => `${e.dayNo || 1}|${byId ? e.exerciseId : e.name}`)
+    .sort();
+  const a = keys(generated);
+  const b = keys(saved);
+  return a.length === b.length && a.every((key, i) => key === b[i]);
+}
+
+/// New plan, varied when nothing changed (2026-11-24).
+///
+/// The generator is deterministic, so with unchanged settings it returns the
+/// plan the user already has. When its plan has the same exercises as the
+/// current plan, or as the one before it (the user tapping New plan again),
+/// it is asked once more with both plans' exercise ids: it moves the current
+/// plan's to the back, the previous plan's just ahead of them, and takes each
+/// muscle group's next-best -- A, B, C, then A again. It only reorders the
+/// exercises its own safety filters already allowed. A plan that differs is
+/// kept as it is: the user changed something, and gets the best fit for it.
+async function generateNewPlan(deps, userId, request, current) {
+  const generated = await deps.ml.generatePlan(request);
+  if (current === null) return generated;
+  const previous = await replacedPlanExercises(deps.pool, userId, current.planId);
+  if (!sameExercises(generated.exercises, current.exercises)
+      && !sameExercises(generated.exercises, previous)) {
+    return generated;
+  }
+  const ids = (list) => [...new Set(list.map((e) => e.exerciseId))];
+  return deps.ml.generatePlan({
+    ...request,
+    avoid: { current: ids(current.exercises), previous: ids(previous) },
+  });
+}
 
 /// The refusal both plan-changing routes give while a workout is open. It
 /// names that workout, so the app can offer to resume it instead of leaving
@@ -193,7 +234,9 @@ module.exports = function buildPlansRouter(deps) {
       // else's profile by sending one.
       const profile = await getProfile(deps.pool, userId);
       const history = await readRankerHistory(deps.pool, userId);
-      const generated = await deps.ml.generatePlan({ ...profile, overrides, history });
+      const generated = await generateNewPlan(
+        deps, userId, { ...profile, overrides, history }, current,
+      );
       await savePlan(deps.pool, userId, generated);
 
       res.json({ data: { plan: withUrls(await getActivePlan(deps.pool, userId)) } });

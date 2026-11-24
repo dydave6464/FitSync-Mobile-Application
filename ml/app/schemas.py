@@ -37,6 +37,18 @@ class InjuryRef(BaseModel):
     side: Optional[str] = None
 
 
+class PlanAvoid(BaseModel):
+    """New plan with nothing changed: the exercises to move to the back.
+
+    Sent only by POST /plans/regenerate, and only on its second ask, when the
+    first plan came back with the same exercises as the current one. current
+    is the active plan's exercises, previous the plan it replaced. See
+    app.rules.selection.deprioritise.
+    """
+    current: List[int] = Field(default_factory=list)
+    previous: List[int] = Field(default_factory=list)
+
+
 class PlanOverrides(BaseModel):
     """What the generator screen lets someone choose.
 
@@ -121,6 +133,7 @@ class ProfileRequest(BaseModel):
     # (app/ranker.py). Typed loosely and parsed with parse_history, so a
     # malformed value orders as for a new user instead of refusing the plan.
     history: Optional[Any] = None
+    avoid: Optional[PlanAvoid] = None
 
 
 class PlanExercise(BaseModel):

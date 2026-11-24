@@ -5,11 +5,13 @@ catalogue must yield the same plan, so the thesis can reproduce a result and a
 test can assert one. Ties break on the lowest exercise_id, matching the
 tiebreaker resolveExerciseIds already uses on the Node side.
 
-The cost is that every user with identical inputs gets an identical plan. That
-is correct here and dull in a product; varying it is a model concern, deferred.
+The cost is that every user with identical inputs gets an identical plan, so
+New plan with nothing changed would hand back the plan the user already has.
+deprioritise() is the answer that keeps determinism: the recent plans'
+exercises become an input, and the same inputs still give the same plan.
 See the design, sections 6.6 and 13.
 """
-from typing import Dict, List, Sequence, Tuple
+from typing import AbstractSet, Dict, List, Sequence, Tuple
 
 from app.catalogue import Candidate
 
@@ -62,6 +64,33 @@ def _rank(muscle_group: str) -> int:
         # A group the priority list does not name still gets offered; it simply
         # sorts after every named one.
         return _UNLISTED
+
+
+def deprioritise(candidates: Sequence[Candidate],
+                 current: AbstractSet[int],
+                 previous: AbstractSet[int]) -> List[Candidate]:
+    """The same candidates, with the recent plans' exercises moved to the back.
+
+    For New plan with nothing changed: the server asks again when the plan it
+    got would repeat the current one. Exercises in the current plan go last,
+    those in the plan before it just ahead of them, and everything else keeps
+    the caller's order -- so each muscle group's next-best exercise moves up,
+    and tapping again walks on to a third choice before coming back round.
+
+    Nothing is added or removed. Every candidate already passed the equipment,
+    injury and curation filters, so the plan can change only to another
+    exercise those filters allowed; a group with no other option keeps its
+    exercise. The same inputs still give the same order.
+    """
+    def recency(candidate: Candidate) -> int:
+        if candidate.exercise_id in current:
+            return 2
+        if candidate.exercise_id in previous:
+            return 1
+        return 0
+
+    # sorted() is stable: within each tier the caller's order is untouched.
+    return sorted(candidates, key=recency)
 
 
 def select(candidates: Sequence[Candidate], count: int) -> List[Candidate]:

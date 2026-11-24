@@ -163,3 +163,21 @@ test('the plan request carries the caution flag, never the health answers', () =
   assert.equal(toPlanPayload({}).healthCaution, false);
   assert.equal(toPlanPayload({ healthCaution: 'yes' }).healthCaution, false);
 });
+
+// New plan with nothing changed: regenerate's second ask names the exercises
+// to move to the back. Built field by field, like history, so only the two
+// id lists the generator reads leave Node.
+test('the plan payload carries the avoid lists when regenerate sends them', () => {
+  const p = toPlanPayload({ avoid: { current: [3, 7], previous: [9], extra: 'x' } });
+  assert.deepEqual(p.avoid, { current: [3, 7], previous: [9] });
+});
+
+test('avoid keeps only whole-number ids', () => {
+  const p = toPlanPayload({ avoid: { current: [3, '4', null, 5.5, 6], previous: 'x' } });
+  assert.deepEqual(p.avoid, { current: [3, 6], previous: [] });
+});
+
+test('no avoid, no avoid key', () => {
+  assert.equal('avoid' in toPlanPayload({}), false);
+  assert.equal('avoid' in toPlanPayload({ avoid: null }), false);
+});

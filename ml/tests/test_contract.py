@@ -972,3 +972,74 @@ def test_the_history_and_attributes_reach_the_ranker(settings, engine, catalogue
     assert any(r[col["times_swapped"]] == 2 and r[col["days_since_trained"]] == 3
                and r[col["picked_equipment"]] == 1 for r in rows)
     assert all(r[col["goal_build_muscle"]] == 1 for r in rows)
+
+
+
+# --- New plan with nothing changed: the avoid lists -------------------------
+#
+# The fixture alone gives a body-weight user one strength exercise per group,
+# so there would be nothing to move to. _with_choices adds two more groups (so
+# six slots fill one per group) and a second quads row, the one choice there is.
+
+
+def _with_choices(add_exercise):
+    add_exercise("fixture towel row", "lats", "body weight")
+    add_exercise("fixture pike push-up", "delts", "body weight")
+    add_exercise("fixture wall sit", "quads", "body weight")
+
+
+def _body_weight_profile(catalogue, **extra):
+    eq = catalogue["equipment"]
+    return dict(mainGoal="build_muscle",
+                equipment=[{"equipmentId": eq["body weight"], "name": "Bodyweight"}],
+                **extra)
+
+
+def _names(plan):
+    return sorted(e["name"] for e in plan["exercises"])
+
+
+def _ids(plan):
+    return [e["exerciseId"] for e in plan["exercises"]]
+
+
+def test_avoiding_the_current_plan_picks_other_exercises_from_the_same_list(
+        client, catalogue, add_exercise):
+    _with_choices(add_exercise)
+    profile = _body_weight_profile(catalogue)
+    first = post_plan(client, **profile)
+    assert "fixture squat" in _names(first) and "fixture wall sit" not in _names(first)
+    second = post_plan(client, **profile, avoid={"current": _ids(first), "previous": []})
+    # Quads is the only group with another option; every other slot stays.
+    assert _names(second) == sorted(
+        n if n != "fixture squat" else "fixture wall sit" for n in _names(first))
+
+
+def test_the_previous_plans_exercises_are_avoided_too(client, catalogue, add_exercise):
+    _with_choices(add_exercise)
+    profile = _body_weight_profile(catalogue)
+    first = post_plan(client, **profile)
+    again = post_plan(client, **profile, avoid={"current": [], "previous": _ids(first)})
+    assert "fixture wall sit" in _names(again) and "fixture squat" not in _names(again)
+
+
+def test_no_avoid_lists_give_exactly_the_plan_as_before(client, catalogue, add_exercise):
+    _with_choices(add_exercise)
+    profile = _body_weight_profile(catalogue)
+    assert post_plan(client, **profile, avoid={"current": [], "previous": []}) == \
+        post_plan(client, **profile)
+
+
+def test_avoiding_never_brings_back_an_exercise_the_injury_rules_out(
+        client, catalogue, add_exercise):
+    # Guard: avoidance reorders the safe list; it must never widen it. A knee
+    # rules out fixture squat, so wall sit is quads' only option and stays.
+    _with_choices(add_exercise)
+    inj = catalogue["injuries"]
+    profile = _body_weight_profile(catalogue, injuries=[{
+        "injuryId": inj["Knee"], "name": "Knee",
+        "isLateral": True, "regionGroup": "lower_body", "side": "left"}])
+    first = post_plan(client, **profile)
+    second = post_plan(client, **profile, avoid={"current": _ids(first), "previous": []})
+    assert "fixture wall sit" in _names(second)
+    assert "fixture squat" not in _names(second)

@@ -569,7 +569,10 @@ test('plan endpoints', async (t) => {
       .set('Authorization', auth).expect(200);
     await request(app).post('/api/v1/plans/regenerate')
       .set('Authorization', auth).send({}).expect(200);
-    assert.equal(ml.calls.length, 2);
+    // Onboarding and regenerate. This stub returns the same exercises every
+    // time, so regenerate also asks a second time (New plan with nothing
+    // changed); that ask carries the history too.
+    assert.equal(ml.calls.filter((call) => !call.avoid).length, 2);
     for (const call of ml.calls) {
       assert.deepEqual(call.history, { muscleDaysAgo: {}, exercises: {} });
     }

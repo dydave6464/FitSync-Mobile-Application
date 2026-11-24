@@ -1,5 +1,5 @@
 from app.catalogue import Candidate
-from app.rules.selection import MUSCLE_PRIORITY, select, select_with_top_up
+from app.rules.selection import MUSCLE_PRIORITY, deprioritise, select, select_with_top_up
 
 
 def c(exercise_id, muscle_group, name=None):
@@ -195,3 +195,61 @@ def test_the_top_up_never_repeats_a_row_already_chosen():
     chosen = select_with_top_up(_SHORT_PUSH, [_SHORT_PUSH[0], c(10, "pectorals")], 6)
 
     assert len({x.exercise_id for x in chosen}) == len(chosen) == 6
+
+
+# --- New plan with nothing changed (deprioritise) ---------------------------
+#
+# A regenerate whose plan would repeat the current one asks again, naming the
+# exercises of the current plan and of the one before it. They move to the
+# back of the line; everything else keeps the caller's (ranker's) order.
+
+
+def test_the_current_plans_exercises_give_way_to_the_next_in_each_group():
+    candidates = [c(1, "quads"), c(2, "quads"), c(3, "pectorals"), c(4, "pectorals")]
+    chosen = select(deprioritise(candidates, current={1, 3}, previous=set()), 2)
+    assert [x.exercise_id for x in chosen] == [2, 4]
+
+
+def test_the_previous_plans_exercises_come_after_fresh_ones():
+    candidates = [c(1, "quads"), c(2, "quads"), c(3, "quads")]
+    chosen = select(deprioritise(candidates, current={1}, previous={2}), 1)
+    assert [x.exercise_id for x in chosen] == [3]
+
+
+def test_the_previous_plans_exercises_come_before_the_current_ones():
+    # Two options only: tapping New plan again alternates rather than sticking.
+    candidates = [c(1, "quads"), c(2, "quads")]
+    chosen = select(deprioritise(candidates, current={2}, previous={1}), 1)
+    assert [x.exercise_id for x in chosen] == [1]
+
+
+def test_a_group_with_no_other_option_keeps_its_exercise():
+    candidates = [c(1, "quads"), c(2, "pectorals"), c(3, "pectorals")]
+    chosen = select(deprioritise(candidates, current={1, 2}, previous=set()), 2)
+    assert [x.exercise_id for x in chosen] == [1, 3]
+
+
+def test_the_next_choice_follows_the_callers_order_not_the_lowest_id():
+    # The ranker's order is the preference; deprioritising must not re-sort it.
+    candidates = [c(5, "quads"), c(9, "quads"), c(3, "quads")]
+    chosen = select(deprioritise(candidates, current={5}, previous=set()), 1)
+    assert [x.exercise_id for x in chosen] == [9]
+
+
+def test_reserved_arm_slots_change_too():
+    candidates = [c(1, "quads"), c(2, "pectorals"), c(3, "lats"),
+                  c(10, "triceps"), c(11, "triceps"), c(20, "biceps"), c(21, "biceps")]
+    chosen = select(deprioritise(candidates, current={10, 20}, previous=set()), 6)
+    assert {11, 21} <= {x.exercise_id for x in chosen}
+    assert not {10, 20} & {x.exercise_id for x in chosen}
+
+
+def test_nothing_to_avoid_leaves_the_order_untouched():
+    candidates = [c(5, "quads"), c(9, "quads"), c(3, "pectorals")]
+    assert deprioritise(candidates, current=set(), previous=set()) == candidates
+
+
+def test_deprioritising_never_adds_or_drops_a_candidate():
+    candidates = [c(1, "quads"), c(2, "quads"), c(3, "lats")]
+    out = deprioritise(candidates, current={1, 99}, previous={3, 98})
+    assert sorted(x.exercise_id for x in out) == [1, 2, 3]

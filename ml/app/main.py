@@ -250,6 +250,16 @@ def create_app(settings: Settings, ranker: Optional[Ranker] = None,
         ranked = app.state.ranker.rank(candidates, context)
         ranked_top_up = app.state.ranker.rank(top_up, context) if top_up else []
 
+        # New plan with nothing changed (server/src/routes/plans.js asks again
+        # with the recent plans' exercises). Applied after the ranker, so the
+        # model's order still picks the next-best, and only to these lists, so
+        # nothing the filters above ruled out can come back.
+        if profile.avoid is not None:
+            current = set(profile.avoid.current)
+            previous = set(profile.avoid.previous)
+            ranked = selection.deprioritise(ranked, current, previous)
+            ranked_top_up = selection.deprioritise(ranked_top_up, current, previous)
+
         # One session per rotation day, each from that day's muscle pool. The
         # pools within a rotation are disjoint (see app/rules/splits), so an
         # exercise cannot land on two days and no de-duplication is needed.
